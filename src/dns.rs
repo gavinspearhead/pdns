@@ -138,13 +138,7 @@ pub enum DNS_RR_type {
     X25 = 19,
     ZONEMD = 63,
 }
-/*
-impl PartialEq for DNS_RR_type {
-    fn eq(&self, other: &Self) -> bool {
-        //return matches!(self, other);
-        return *self as u16 == *other as u16;
-    }
-}*/
+
 
 impl DNS_RR_type {
     pub fn to_str(self) -> Result<String, Box<dyn std::error::Error>> {
@@ -468,5 +462,28 @@ pub fn cert_type_str(t: u16) -> Result<&'static str, Box<dyn std::error::Error>>
         _ => {
             return Err("Unkown digest".into());
         }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, EnumIter, AsStaticStr)]
+pub enum SVC_Param_Keys {
+    mandatory = 0,
+    alpn = 1,
+    no_default_alpn = 2,
+    port = 3,
+    ipv4hint = 4,
+    ech = 5,
+    ipv6hint = 6,
+}
+
+
+impl SVC_Param_Keys {
+    pub fn find(val: u16) -> Result<Self, Box<dyn std::error::Error>> {
+        for k in SVC_Param_Keys::iter() {
+            if (k as u16) == val {
+                return Ok(k);
+            }
+        }
+        return Err(format!("Invalid RR type  {:?}", val).into());
     }
 }

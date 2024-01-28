@@ -1,35 +1,86 @@
 #![allow(non_camel_case_types)]
 
 pub mod dns;
-
 use base64::{engine::general_purpose, Engine as _};
 use byteorder::{BigEndian, ByteOrder};
-use chrono::{offset, DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use clap::{arg, Command, Parser};
 use colored::Colorize;
 use dns::{
     cert_type_str, dns_reply_type, dnssec_algorithm, dnssec_digest, sshfp_algorithm, sshfp_fp_type,
     tlsa_algorithm, tlsa_cert_usage, tlsa_selector, zonemd_digest, DNS_Class, DNS_RR_type,
-    DNS_record,
+    DNS_record, SVC_Param_Keys,
 };
 use futures::executor::block_on;
-use libc::off64_t;
-use openssl::init;
 use pcap::{Capture, Linktype};
+use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlPoolOptions;
 use sqlx::{MySql, Pool};
-use std::borrow::Borrow;
 use std::collections::{HashMap, VecDeque};
-//use std::fmt::format;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::process::exit;
 use std::str::{self, FromStr};
-use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
+use std::sync::mpsc::TryRecvError;
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread::sleep;
+use std::{
+    io::{prelude::*, BufReader},
+    net::{TcpListener, TcpStream},
+};
 use std::{thread, time};
-use strum::IntoEnumIterator;
+use strum::{AsStaticRef, IntoEnumIterator};
+
+fn server(
+    listener: TcpListener,
+    stats: &Arc<Mutex<statistics>>,
+    tcp_list: &Arc<Mutex<TCP_Connections>>,
+) {
+    for stream in listener.incoming() {
+        let stream = stream.unwrap();
+
+        handle_connection(stream, stats, tcp_list);
+    }
+}
+
+fn handle_connection(
+    mut stream: TcpStream,
+    stats: &Arc<Mutex<statistics>>,
+    tcp_list: &Arc<Mutex<TCP_Connections>>,
+) 
+ {
+    let buf_reader = BufReader::new(&mut stream);
+    let http_request: Vec<_> = buf_reader
+        .lines()
+        .map(|result| result.unwrap())
+        .take_while(|line| !line.is_empty())
+        .collect();
+
+    let  req: Vec<&str> = http_request[0].split(" ").collect();
+    println!("{:?} {:?}", req, req[0]);
+    if req[0] != ("GET") {
+        println!("Not get {}", req[0]);
+        return ;
+    }
+    println!("path {}", req[1]);
+    let status_line = "HTTP/1.1 200 OK";
+    if req[1] == ("/stats") {
+        let mut stats_data = stats.lock().unwrap().clone();
+        let mut stats_str = serde_json::to_string(&stats_data).unwrap();
+        let len = stats_str.len() + 2;
+        let response = format!("{status_line}\r\nContent-Length: {len}\r\n\r\n{stats_str}\r\n");
+        stream.write_all(response.as_bytes()).unwrap();
+    } else if req[1] == ("/debug") {
+        let tcp_len = tcp_list.lock().unwrap().len();
+        let debug_str = format!("TCP LEN: {}\r\n", tcp_len);
+        let len = debug_str.len();
+        let response = format!("{status_line}\r\nContent-Length: {len}\r\n\r\n{debug_str}");
+        stream.write_all(response.as_bytes()).unwrap();
+
+    }
+    return ;
+}
 
 #[derive(Debug, Clone)]
 struct Config {
@@ -40,6 +91,8 @@ struct Config {
     output: String,
     output_type: String,
     database: String,
+    server: String,
+    port: u16,
 }
 
 impl Config {
@@ -52,6 +105,8 @@ impl Config {
             output: String::new(),
             output_type: String::new(),
             database: String::new(),
+            server: String::new(),
+            port: 0,
         };
         c.rr_type.extend(vec![
             DNS_RR_type::A,
@@ -64,6 +119,7 @@ impl Config {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct statistics {
     errors: HashMap<String, u128>,
     types: HashMap<String, u128>,
@@ -246,7 +302,7 @@ impl Mysql_connection {
                 return Mysql_connection { pool: mysql_pool };
             }
             Err(err) => {
-                //println!("🔥 Failed to connect to the database: {:?}", err);
+                println!("Failed to connect to the database: {:?}", err);
                 std::process::exit(1);
             }
         };
@@ -296,6 +352,90 @@ fn timestame_to_str(timestamp: u32) -> Result<String, Box<dyn std::error::Error>
     };
     let datetime_again: DateTime<Utc> = DateTime::from_naive_utc_and_offset(naive_datetime, Utc);
     return Ok(datetime_again.to_string());
+}
+
+fn parse_dns_https(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let svc_prio = dns_read_u16(rdata, 0)?;
+    let (target, mut offset) = dns_parse_name(rdata, 2)?;
+    let mut res = String::new();
+    res += &format!("{} {} ", svc_prio, target);
+    while offset < rdata.len() {
+        let svc_param_key = SVC_Param_Keys::find(dns_read_u16(rdata, offset)?)?;
+        let svc_param_len = dns_read_u16(rdata, offset + 2)? as usize;
+        match svc_param_key {
+            SVC_Param_Keys::mandatory => {
+                let mut pos: usize = 0;
+                res += "mandatory=";
+                while pos < svc_param_len {
+                    let man_val = dns_read_u16(rdata, offset + pos + 4)?;
+                    res += &format!("{},", SVC_Param_Keys::find(man_val)?.as_static());
+                    pos += 2;
+                }
+                res = String::from_str(res.trim_end_matches(','))?;
+                res += " ";
+            }
+            SVC_Param_Keys::alpn => {
+                let mut pos: usize = 0;
+                res += "alpn=";
+                while pos < svc_param_len {
+                    let alpn_len = rdata[offset + pos + 4] as usize;
+                    let alpn = String::from_utf8_lossy(
+                        &rdata[offset + pos + 4 + 1..offset + pos + 4 + 1 + alpn_len],
+                    );
+                    pos += 1 + alpn_len;
+                    res += &format!("{},", alpn);
+                }
+                res = String::from_str(res.trim_end_matches(','))?;
+                res += " ";
+            }
+            SVC_Param_Keys::ech => {
+                res += "ech=";
+                let data = general_purpose::STANDARD
+                    .encode(&rdata[offset + 4..offset + 4 + svc_param_len]);
+                res += &data;
+                res += " ";
+            }
+            SVC_Param_Keys::ipv4hint => {
+                res += "ipv4hint=";
+                let mut pos: usize = 0;
+                while pos + 4 <= svc_param_len {
+                    let loc = offset + 4 + pos;
+                    res += &format!(
+                        "{}.{}.{}.{},",
+                        rdata[loc],
+                        rdata[loc + 1],
+                        rdata[loc + 2],
+                        rdata[loc + 3]
+                    );
+                    pos += 4;
+                }
+                res = String::from_str(res.trim_end_matches(','))?;
+                res += " ";
+            }
+            SVC_Param_Keys::ipv6hint => {
+                res += "ipv6hint=";
+                let mut pos: usize = 0;
+                while pos + 16 <= svc_param_len {
+                    let mut r: [u8; 16] = [0; 16];
+                    r.clone_from_slice(&rdata[offset + 4 + pos..offset + 4 + pos + 16]);
+                    let addr = Ipv6Addr::from(r);
+                    res += &format!("{},", addr);
+                    pos += 16;
+                }
+                res = String::from_str(res.trim_end_matches(','))?;
+                res += " ";
+            }
+            SVC_Param_Keys::no_default_alpn => {
+                res += "no-default-alpn";
+            }
+            SVC_Param_Keys::port => {
+                let port = dns_read_u16(rdata, offset + 4)?;
+                res += &format!("port={}", port);
+            }
+        }
+        offset += 4 + svc_param_len as usize;
+    }
+    return Ok(res);
 }
 
 fn dns_parse_rdata(
@@ -638,12 +778,6 @@ fn dns_parse_rdata(
         let Some(cert) = rdata.get(5..) else {
             return Err("Packet too small".into());
         };
-        /*  println!("{} {} {} {}",
-        cert_type,
-         (key_tag),
-         alg,
-         hex::encode(cert));*/
-
         return Ok(format!(
             "{} {} {} {}",
             cert_type_str(cert_type)?,
@@ -651,8 +785,8 @@ fn dns_parse_rdata(
             dnssec_algorithm(*alg)?,
             hex::encode(cert)
         ));
-
-        // todo
+    } else if rrtype == DNS_RR_type::HTTPS {
+        return parse_dns_https(rdata);
     } else if rrtype == DNS_RR_type::WKS {
         // todo
     } else if rrtype == DNS_RR_type::APL {
@@ -733,7 +867,7 @@ fn dns_parse_name_internal(
 ) -> Result<(String, usize), Box<dyn std::error::Error>> {
     let mut idx = offset_in;
     let mut name = String::new();
-//    println!("{} {:x?}", offset_in, &packet[offset_in.. offset_in+20]);
+    //    println!("{} {:x?}", offset_in, &packet[offset_in.. offset_in+20]);
     while packet[idx] != 0 {
         let Some(val) = packet.get(idx) else {
             return Err("Invalid index".into());
@@ -908,15 +1042,14 @@ fn parse_dns(
     }
     println!("Answers {} {} ", answers, offset);
     for _i in 0..answers {
-        println!("{} {:x?}", _i, &packet[0..offset+20]);
+        //println!("{} {:x?}", _i, &packet[0..offset+20]);
         offset += parse_answer(packet_info, packet, offset, stats)?;
-
     }
     println!("Authority {} {}", authority, offset);
     for _i in 0..authority {
         offset += parse_answer(packet_info, packet, offset, stats)?;
     }
-    println!("Additional {} {}", additional, offset) ;
+    println!("Additional {} {}", additional, offset);
     for _i in 0..additional {
         offset += parse_answer(packet_info, packet, offset, stats)?;
     }
@@ -938,8 +1071,7 @@ struct tcp_data {
 impl tcp_data {
     fn add_data(&mut self, seqnr: u32, data: &[u8]) {
         let pos = (seqnr - self.init_seqnr) as usize;
-        //println!("POS {} {} {} {}", pos, seqnr, self.init_seqnr, data.len());
-        let datasize = (pos + data.len());
+        let datasize = pos + data.len();
         self.data.resize(datasize, 0);
         for i in 0..data.len() {
             self.data[pos + i] = data[i];
@@ -978,7 +1110,7 @@ impl tcp_connection {
         seqnr: u32,
         timestamp: DateTime<Utc>,
     ) -> tcp_connection {
-        let mut t = tcp_connection {
+        let t = tcp_connection {
             in_data: tcp_data::init(sp, dp, src, dst, seqnr),
             ts: timestamp,
         };
@@ -990,30 +1122,27 @@ impl tcp_connection {
 }
 
 #[derive(Debug, Clone)]
-struct tcp_connections {
+struct TCP_Connections {
     connections: HashMap<(IpAddr, IpAddr, u16, u16), tcp_connection>,
     timelimit: i64,
 }
 
-impl tcp_connections {
-    fn new() -> tcp_connections {
-        let t = tcp_connections {
+impl TCP_Connections {
+    fn new() -> TCP_Connections {
+        let t = TCP_Connections {
             connections: HashMap::new(),
-            timelimit: 120,
+            timelimit: 20,
         };
         return t;
     }
 
-    fn add_data(
-        &mut self,
-        sp: u16,
-        dp: u16,
-        src: IpAddr,
-        dst: IpAddr,
-        seqnr: u32,
-        data: &[u8],
-        timestamp: DateTime<Utc>,
-    ) {
+    fn len(&self) -> usize {
+        println!("{}", self.connections.len());
+        return self.connections.len();
+    }
+
+    fn add_data(&mut self, sp: u16, dp: u16, src: IpAddr, dst: IpAddr, seqnr: u32, data: &[u8]) {
+        let timestamp = Utc::now();
         let c = self
             .connections
             .entry((src, dst, sp, dp))
@@ -1035,25 +1164,38 @@ impl tcp_connections {
         let Some(c) = self.connections.get(&(src, dst, sp, dp)) else {
             return Err("connection not found".into());
         };
-        return Ok(c.clone().get_data());
+        let p: tcp_data = c.clone().get_data();
+        return Ok(p);
     }
 
     fn remove(&mut self, sp: u16, dp: u16, src: IpAddr, dst: IpAddr) {
+        println!("Removing key {} {} {} {} ", src, dst, sp, dp);
         self.connections.remove(&(src, dst, sp, dp));
     }
 
-    fn check_timeout(&mut self) {
+    fn check_timeout(&mut self) -> u64 {
         let now = Utc::now().timestamp();
+        let mut m_ts = 1;
         let mut keys: Vec<(IpAddr, IpAddr, u16, u16)> = Vec::new();
         for (k, v) in &self.connections {
-            if v.ts.timestamp() > now + self.timelimit {
+            if v.ts.timestamp() + self.timelimit < now {
                 keys.push(*k);
+            }
+            if now - v.ts.timestamp() > m_ts {
+                m_ts = self.timelimit + v.ts.timestamp() - now;
             }
         }
         for k in keys {
             self.connections.remove(&k);
         }
+        println!("Timout: {m_ts}");
+        if m_ts > 0 {
+            return (m_ts) as u64;
+        } else {
+            return self.timelimit as u64;
+        }
     }
+
     fn process_data(
         &mut self,
         sp: u16,
@@ -1069,30 +1211,53 @@ impl tcp_connections {
             "flags {}   {} {} {} {} {} {:x?} ",
             flags, sp, dp, src, dst, seqnr, data
         );*/
-        if (flags & 1 == 1) || (flags & 4 == 4) {
+        if (flags & 1 != 0) || (flags & 4 != 0) {
             // FIN flag or reset
-            self.add_data(sp, dp, src, dst, seqnr, data, timestamp);
-            let r = &self.clone().get_data(sp, dp, src, dst);
-            match r {
+            self.add_data(sp, dp, src, dst, seqnr, data);
+            match self.clone().get_data(sp, dp, src, dst) {
                 Ok(x) => {
                     self.remove(sp, dp, src, dst);
-                    //println!("dta\n{:x?}\n\n=====", x);
-                    return Some(x.clone());
+                    return Some(x);
                 }
-                Err(e) => {
+                Err(_e) => {
+                    self.remove(sp, dp, src, dst);
                     return None;
                 }
             }
-        } else if (flags & 2 == 2) || (flags & 7 == 0) {
+        } else if (flags & 2 != 0) || (flags & 7 == 0) {
             // SYN flag or no flag
             let mut sn = seqnr;
             if flags & 2 == 2 {
                 sn += 1;
             }
-            self.add_data(sp, dp, src, dst, sn, data, timestamp);
+            self.add_data(sp, dp, src, dst, sn, data);
             return None;
         }
         return None;
+    }
+}
+
+fn clean_tcp_list(tcp_list: &Arc<Mutex<TCP_Connections>>, rx: mpsc::Receiver<String>) {
+    let timeout = time::Duration::from_secs(1);
+
+    loop {
+        println!("{}", "Looping.... ".green());
+        println!("{}", "Locking.... ".blue());
+        let dur = tcp_list.lock().unwrap().check_timeout();
+        println!("{}", "UnLocking.... ".red());
+        match rx.try_recv() {
+            Ok(e) => {
+                println!("{} {:?}", "Disconnect".yellow(), e);
+                return;
+            }
+            Err(TryRecvError::Disconnected) => {
+                println!("{}", "Lost connection".yellow());
+                return;
+            }
+            Err(TryRecvError::Empty) => {}
+        }
+        println!("{} {:?}", "sleeping".cyan(), dur);
+        sleep(std::cmp::max(timeout, time::Duration::from_secs(dur)));
     }
 }
 
@@ -1100,7 +1265,7 @@ fn parse_tcp(
     packet: &[u8],
     packet_info: &mut Packet_info,
     stats: &mut statistics,
-    tcp_list: &mut tcp_connections,
+    tcp_list: &Arc<Mutex<TCP_Connections>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < 20 {
         return Err("Invalid IP header".into());
@@ -1114,7 +1279,7 @@ fn parse_tcp(
     let hl: u8 = (packet[12] >> 4) * 4;
     let len: u32 = (packet.len() - hl as usize) as u32;
     let flags = packet[13];
-    let wsize = dns_read_u16(packet, 14)?;
+    let _wsize = dns_read_u16(packet, 14)?;
     let seqnr = dns_read_u32(packet, 4)?;
 
     packet_info.set_dest_port(dp);
@@ -1127,7 +1292,8 @@ fn parse_tcp(
         return Err("Parse Error TCP".into());
     };
     //println!("{:x?}", dnsdata);
-    let r = tcp_list.process_data(
+    println!("{}", "2 Locking.... ".blue());
+    let r = tcp_list.lock().unwrap().process_data(
         sp,
         dp,
         packet_info.s_addr,
@@ -1137,6 +1303,7 @@ fn parse_tcp(
         packet_info.timestamp,
         flags,
     );
+    println!("{}", "2 UnLocking.... ".red());
     match r {
         Some(d) => {
             //println!("Parsing TCP!!");
@@ -1175,7 +1342,7 @@ fn parse_ip_data(
     protocol: u8,
     packet_info: &mut Packet_info,
     stats: &mut statistics,
-    tcp_list: &mut tcp_connections,
+    tcp_list: &Arc<Mutex<TCP_Connections>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if protocol == 6 {
         packet_info.set_protocol(DNS_Protocol::TCP);
@@ -1193,7 +1360,7 @@ fn parse_ipv4(
     packet: &[u8],
     packet_info: &mut Packet_info,
     stats: &mut statistics,
-    tcp_list: &mut tcp_connections,
+    tcp_list: &Arc<Mutex<TCP_Connections>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < 20 {
         return Err("Invalid IPv6 packet".into());
@@ -1221,11 +1388,12 @@ fn parse_ipv4(
     )?;
     return Ok(());
 }
+
 fn parse_ipv6(
     packet: &[u8],
     packet_info: &mut Packet_info,
     stats: &mut statistics,
-    tcp_list: &mut tcp_connections,
+    tcp_list: &Arc<Mutex<TCP_Connections>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < 40 {
         return Err("Invalid IPv6 packet".into());
@@ -1249,7 +1417,7 @@ fn parse_eth(
     packet: &[u8],
     packet_info: &mut Packet_info,
     stats: &mut statistics,
-    tcp_list: &mut tcp_connections,
+    tcp_list: &Arc<Mutex<TCP_Connections>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     packet_info.frame_len = packet.len() as _;
     if packet[12..14] == [8, 0] {
@@ -1270,12 +1438,12 @@ struct Args {
 fn packet_loop<T: pcap::State>(
     mut cap: Capture<T>,
     packet_queue: &Arc<Mutex<VecDeque<Option<Packet_info>>>>,
-    tcp_list: &mut tcp_connections,
-) -> statistics
-where
+    tcp_list: &Arc<Mutex<TCP_Connections>>,
+    stats: &Arc<Mutex<statistics>>,
+) where
     T: pcap::Activated,
 {
-    let mut stats = statistics::origin();
+    // let mut stats = statistics::origin();
     while let Ok(packet) = cap.next_packet() {
         let mut packet_info: Packet_info = Default::default();
         packet_info.timestamp = DateTime::<Utc>::from_timestamp(
@@ -1283,7 +1451,12 @@ where
             packet.header.ts.tv_usec as u32 * 1000,
         )
         .unwrap();
-        let result = parse_eth(&packet.data, &mut packet_info, &mut stats, tcp_list);
+        let result = parse_eth(
+            &packet.data,
+            &mut packet_info,
+            &mut stats.lock().unwrap(),
+            tcp_list,
+        );
         match result {
             Ok(_c) => {
                 packet_queue.lock().unwrap().push_back(Some(packet_info));
@@ -1294,7 +1467,6 @@ where
         }
     }
     packet_queue.lock().unwrap().push_back(None);
-    return stats;
 }
 
 fn poll(packet_queue: &Arc<Mutex<VecDeque<Option<Packet_info>>>>, config: &Config) {
@@ -1340,10 +1512,11 @@ fn poll(packet_queue: &Arc<Mutex<VecDeque<Option<Packet_info>>>>, config: &Confi
                         None => {}
                     }
 
-                    println!("{}", format!("{:#?}", p1).green());
+                    //println!("{}", format!("{:#?}", p1).green());
                     timeout = time::Duration::from_millis(0);
                 }
                 None => {
+                    println!("Terminating poll()");
                     return;
                 }
             },
@@ -1383,14 +1556,33 @@ fn parse_rrtypes(config_str: &str) -> Vec<DNS_RR_type> {
     return rrtypes;
 }
 
+fn listen(address: String, port: u16) -> Option<TcpListener> {
+    if address == "" {
+        return None;
+    }
+    let addr = format!("{}:{}", address, port);
+    println!("{}", addr);
+    let x = TcpListener::bind(addr);
+    match x {
+        Ok(conn) => {
+            println!("{:?}", conn);
+            return Some(conn);
+        }
+        Err(_e) => {
+            println!("Cannot listen on {}:{}", address, port);
+            return None;
+        }
+    }
+}
+
 fn main() {
-    let mut tcp_list: tcp_connections = tcp_connections::new();
-    let mut stats = statistics::origin();
     let matches = Command::new("pdns")
         .version("1.0")
         .author("")
         .about("PassiveDNS")
         .arg(arg!(--path <VALUE>).required(false).short('p'))
+        .arg(arg!(--server <VALUE>).required(false).short('s'))
+        .arg(arg!(--port <VALUE>).required(false).short('P'))
         .arg(arg!(--rrtypes <VALUE>).required(false).short('r'))
         .arg(arg!(--interface <VALUE>).required(false).short('i'))
         .arg(arg!(--filter <VALUE>).required(false).short('f'))
@@ -1407,6 +1599,16 @@ fn main() {
     let empty_str = String::new();
     let mut config = Config::new();
 
+    config.server = matches
+        .get_one::<String>("server")
+        .unwrap_or(&empty_str)
+        .clone();
+    config.port = matches
+        .get_one::<String>("port")
+        .unwrap_or(&String::from_str("1066").unwrap())
+        .clone()
+        .parse::<u16>()
+        .unwrap();
     config.path = matches
         .get_one::<String>("path")
         .unwrap_or(&empty_str)
@@ -1435,19 +1637,32 @@ fn main() {
 
     println!("{:?}", config);
     let packet_queue = Arc::new(Mutex::new(VecDeque::new()));
+    let tcp_list = Arc::new(Mutex::new(TCP_Connections::new()));
+    let (tcp_tx, tcp_rx) = mpsc::channel();
+    let listener = listen(config.server.clone(), config.port.clone());
+    let stats = Arc::new(Mutex::new(statistics::origin()));
     thread::scope(|s| {
-        let handle = s.spawn(|| poll(&packet_queue, &config));
+        let handle = s.spawn(|| poll(&packet_queue.clone(), &config));
+        let handle2 = s.spawn(|| clean_tcp_list(&tcp_list.clone(), tcp_rx));
 
         if config.path != "" {
             let cap = Capture::from_file(&config.path);
             match cap {
                 Ok(mut c) => {
                     c.filter(config.filter.as_str().as_ref(), false).unwrap();
-                    let handle2 = s.spawn(|| {
-                        stats = packet_loop(c, &packet_queue, &mut tcp_list);
+                    let handle3 = s.spawn(|| {
+                        packet_loop(c, &packet_queue.clone(), &tcp_list.clone(), &stats.clone());
                     });
-                    handle2.join().unwrap();
+                    handle3.join().unwrap();
+                    // we wait for the main threat to terminate; then cancel the tcp cleanup threat
+                    println!("{}", "Sending end".bright_blue());
+                    let _ = tcp_tx.send(String::from_str("the end").unwrap());
+                    println!("3");
                     handle.join().unwrap();
+                    println!("2");
+                    handle2.join().unwrap();
+                    println!("1");
+                    println!("0");
                 }
                 Err(e) => {
                     println!("{}", format!("{:?}", e).red());
@@ -1455,6 +1670,15 @@ fn main() {
                 }
             }
         } else if config.interface != "" {
+            let handle4 = s.spawn(|| match listener {
+                Some(l) => {
+                    println!("Serving:");
+                    server(l, &stats.clone(), &tcp_list.clone())
+                }
+                None => {
+                    println!("No server");
+                }
+            });
             let mut cap = Capture::from_device(config.interface.as_str())
                 .unwrap()
                 .promisc(true)
@@ -1468,12 +1692,16 @@ fn main() {
                 panic!("Not ethernet");
             }
             let handle3 = s.spawn(|| {
-                stats = packet_loop(cap, &packet_queue, &mut tcp_list);
+                packet_loop(cap, &packet_queue, &tcp_list, &stats);
             });
             handle3.join().unwrap();
+            // we wait for the main threat to terminate; then cancel the tcp cleanup threat
+            let _ = tcp_tx.send(String::from_str("the end").unwrap());
+            handle4.join().unwrap();
+            handle2.join().unwrap();
             handle.join().unwrap();
         }
     });
 
-    println!("{:#?}", stats.to_str());
+    println!("{:#?}", stats.lock().unwrap().to_str());
 }
