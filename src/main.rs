@@ -48,8 +48,7 @@ fn handle_connection(
     mut stream: TcpStream,
     stats: &Arc<Mutex<statistics>>,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
-) 
- {
+) {
     let buf_reader = BufReader::new(&mut stream);
     let http_request: Vec<_> = buf_reader
         .lines()
@@ -57,17 +56,17 @@ fn handle_connection(
         .take_while(|line| !line.is_empty())
         .collect();
 
-    let  req: Vec<&str> = http_request[0].split(" ").collect();
+    let req: Vec<&str> = http_request[0].split(" ").collect();
     println!("{:?} {:?}", req, req[0]);
     if req[0] != ("GET") {
         println!("Not get {}", req[0]);
-        return ;
+        return;
     }
     println!("path {}", req[1]);
     let status_line = "HTTP/1.1 200 OK";
     if req[1] == ("/stats") {
-        let mut stats_data = stats.lock().unwrap().clone();
-        let mut stats_str = serde_json::to_string(&stats_data).unwrap();
+        let stats_data = stats.lock().unwrap().clone();
+        let stats_str = serde_json::to_string(&stats_data).unwrap();
         let len = stats_str.len() + 2;
         let response = format!("{status_line}\r\nContent-Length: {len}\r\n\r\n{stats_str}\r\n");
         stream.write_all(response.as_bytes()).unwrap();
@@ -77,9 +76,8 @@ fn handle_connection(
         let len = debug_str.len();
         let response = format!("{status_line}\r\nContent-Length: {len}\r\n\r\n{debug_str}");
         stream.write_all(response.as_bytes()).unwrap();
-
     }
-    return ;
+    return;
 }
 
 #[derive(Debug, Clone)]
@@ -554,7 +552,7 @@ fn dns_parse_rdata(
         let subtype = dns_read_u16(rdata, 0)?;
         let (hostname, _offset_out) = dns_parse_name(rdata, 2)?;
         return Ok(format!("{} {}", subtype, hostname));
-    } else if rrtype == DNS_RR_type::CDS || rrtype == DNS_RR_type::DS {
+    } else if rrtype == DNS_RR_type::CDS || rrtype == DNS_RR_type::DS || rrtype == DNS_RR_type::TA {
         if rdata.len() < 5 {
             return Err("Index error".into());
         }
@@ -785,12 +783,64 @@ fn dns_parse_rdata(
             dnssec_algorithm(*alg)?,
             hex::encode(cert)
         ));
-    } else if rrtype == DNS_RR_type::HTTPS {
+    } else if rrtype == DNS_RR_type::HTTPS || rrtype == DNS_RR_type::SVCB {
         return parse_dns_https(rdata);
     } else if rrtype == DNS_RR_type::WKS {
+        let Some(protocol) = rdata.get(4) else {
+            return Err("Parse error".into());
+        };
+        let Some(bitmap) = rdata.get(5..) else {
+            return Err("Parse error".into());
+        };
+
+        return Ok(format!(
+            "{}.{}.{}.{} {} {}",
+            rdata[0],
+            rdata[1],
+            rdata[2],
+            rdata[3],
+            parse_protocol(*protocol)?,
+            parse_bitmap(bitmap)?
+        ));
+    } else if rrtype == DNS_RR_type::TSIG {
         // todo
     } else if rrtype == DNS_RR_type::APL {
-        // todo
+        let mut pos = 0;
+        let mut res = String::new();
+        while pos < rdata.len() {
+            let af = dns_read_u16(rdata, pos)?;
+            let Some(pref_len) = rdata.get(pos + 2) else {
+                return Err("Parse error".into());
+            };
+            let Some(addr_len_) = rdata.get(pos + 3) else {
+                return Err("Parse error".into());
+            };
+            let flags = addr_len_ >> 7;
+            let mut neg_str = "";
+            if flags > 0 { neg_str = "!";}
+            let addr_len = (addr_len_ & 0x7f) as usize;
+            let Some(addr) = rdata.get(pos + 4..pos + 4 + addr_len) else {
+                return Err("Parse error".into());
+            };
+            let mut ip_addr = std::net::IpAddr::V4(Ipv4Addr::UNSPECIFIED);
+            if af == 1 { // ipv4
+                let mut ip: [u8; 4] = [0; 4];
+                for i in 0..addr_len {
+                    ip[i] = addr[i];
+                }
+                ip_addr = std::net::IpAddr::V4(Ipv4Addr::from(ip));
+            }
+            if af == 2 { // Ipv6
+                let mut ip: [u8; 16] = [0; 16];
+                for i in 0..addr_len {
+                    ip[i] = addr[i];
+                }
+                ip_addr = std::net::IpAddr::V6(Ipv6Addr::from(ip));
+            }
+            res += &format!("{}{}/{} ", neg_str, ip_addr, pref_len);
+            pos += 4 + addr_len
+        }
+        return Ok(res);
     } else if rrtype == DNS_RR_type::ATMA {
         let format = rdata[0];
         let address = &rdata[1..];
@@ -816,6 +866,10 @@ fn dns_parse_rdata(
             dnssec_digest(*digest_type)?,
             hex::encode(digest)
         ));
+    } else if rrtype == DNS_RR_type::TALINK {
+        let (name1, offset_out) = dns_parse_name(packet, offset_in)?;
+        let (name2, _) = dns_parse_name(packet, offset_out)?;
+        return Ok(format!("{} {}", name1, name2));
     } else if rrtype == DNS_RR_type::DHCID {
         return Ok(format!("{}", hex::encode(rdata)));
     } else if rrtype == DNS_RR_type::ZONEMD {
@@ -848,6 +902,35 @@ fn dns_parse_rdata(
         return Err(format!("RR type not supported {:?}", rrtype).into());
     }
     return Ok("".to_string());
+}
+
+fn parse_bitmap(bitmap: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let len = bitmap.len();
+    let mut res = String::new();
+    for i in 0..len {
+        let mut pos: u8 = 0x80;
+        for j in 0..8 {
+            if bitmap[i] & pos != 0 {
+                res += &format!("{} ", (8 * i) + j);
+            }
+            pos >>= 1;
+        }
+    }
+    return Ok(res);
+}
+
+fn parse_protocol(proto: u8) -> Result<String, Box<dyn std::error::Error>> {
+    match proto {
+        17 => {
+            return Ok("UDP".into());
+        }
+        6 => {
+            return Ok("TCP".into());
+        }
+        _ => {
+            return Err("Unknown protocol".into());
+        }
+    }
 }
 
 fn dns_parse_name(

@@ -11,6 +11,7 @@ pub enum DNS_Class {
     CS = 2,
     CH = 3,
     HS = 4,
+    ANY= 255,
 }
 
 impl DNS_Class {
