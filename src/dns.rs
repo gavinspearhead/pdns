@@ -1,5 +1,7 @@
 #![crate_name = "dns"]
 
+use std::fmt;
+
 use strum::IntoEnumIterator;
 use strum_macros::EnumString;
 //#[macro_use]
@@ -156,6 +158,14 @@ impl DNS_RR_type {
         return Err(format!("Invalid RR type  {:?}", val).into());
     }
 }
+impl fmt::Display for DNS_RR_type {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        return write!(f, "{}", self.to_str().expect("RRtype Not found"));
+    }
+
+}
+
+
 
 #[derive(Debug, Clone)]
 pub struct DNS_record {
@@ -304,6 +314,47 @@ pub fn tlsa_algorithm(u: u8) -> Result<&'static str, Box<dyn std::error::Error>>
         }
     };
 }
+pub fn key_protocol(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
+    match u {
+        1 => {
+            return Ok("TLS");
+        }
+        2 => {
+            return Ok("email");
+        }
+        3 => {
+            return Ok("dnssec");
+        }
+        4 => {
+            return Ok("ipsec");
+        }
+        255 => {
+            return Ok("all");
+        }
+        _ => {
+            return Err("Unkown algorithm".into());
+        }
+    }
+}
+
+
+pub fn key_algorithm(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
+    match u {
+        1 => {
+            return Ok("RSA/MD5");
+        }
+        2 => {
+            return Ok("DH");
+        }
+        3 => {
+            return Ok("DSA");
+        }
+        _ => {
+            return Err("Unkown algorithm".into());
+        }
+    }
+}
+
 
 pub fn sshfp_algorithm(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
     match u {
