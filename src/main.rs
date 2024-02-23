@@ -1,24 +1,31 @@
-#![allow(non_camel_case_types)]
+// TODO
+// - Look at timestamp utc vs local time?
+// parametrize Rank with IP address type
+// gpos decoding
 
+#![allow(non_camel_case_types)]
 pub mod dns;
 use base64::{engine::general_purpose, Engine as _};
 use byteorder::{BigEndian, ByteOrder};
 use chrono::{DateTime, NaiveDateTime, Utc};
-use clap::{arg, Command, Parser};
+use clap::{arg, ArgAction, Command, Parser};
 use colored::Colorize;
-use data_encoding::{BASE32, BASE32HEX, BASE32HEX_NOPAD};
+use core::fmt;
 use dns::{
     cert_type_str, dns_reply_type, dnssec_algorithm, dnssec_digest, sshfp_algorithm, sshfp_fp_type,
     tlsa_algorithm, tlsa_cert_usage, tlsa_selector, zonemd_digest, DNS_Class, DNS_RR_type,
     DNS_record, SVC_Param_Keys,
 };
+use dns::{key_algorithm, key_protocol};
 use futures::executor::block_on;
-use pcap::{Capture, Linktype};
+use pcap::{Active, Capture, Linktype};
+use regex::Regex;
+use serde::ser::SerializeSeq;
 use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlPoolOptions;
 use sqlx::{MySql, Pool};
+use std::cmp::min;
 use std::collections::{HashMap, VecDeque};
-use std::fmt::format;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -34,7 +41,50 @@ use std::{
 use std::{thread, time};
 use strum::{AsStaticRef, IntoEnumIterator};
 
-use crate::dns::{key_algorithm, key_protocol};
+#[derive(Debug, Clone)]
+struct DNS_Cache {
+    items: HashMap<(String, String, String), DNS_record>,
+    timeout: u64,
+}
+
+impl DNS_Cache {
+    fn new(time_out: u64) -> DNS_Cache {
+        return DNS_Cache {
+            items: HashMap::new(),
+            timeout: time_out
+
+        };
+    }
+
+    fn add(&mut self, record: &DNS_record) {
+        self.items
+            .entry((
+                record.rr_type.clone(),
+                record.name.clone(),
+                record.rdata.clone(),
+            ))
+            .and_modify(|f| f.count += 1)
+            .or_insert(record.clone());
+    }
+
+    fn push_all(&mut self) -> Vec<DNS_record> {
+        let mut res = Vec::new();
+        for (_k, v) in self.items.iter() {
+            res.push(v.clone());
+        }
+        self.items.clear();
+        return res;
+    }
+}
+
+impl fmt::Display for DNS_Cache {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for (_k, v) in self.items.iter() {
+            write!(f, "{}", v).expect("Cannot write output format ");
+        }
+        return write!(f, "");
+    }
+}
 
 fn server(
     listener: TcpListener,
@@ -61,18 +111,39 @@ fn handle_connection(
         .collect();
 
     let req: Vec<&str> = http_request[0].split(" ").collect();
-    println!("{:?} {:?}", req, req[0]);
     if req[0] != ("GET") {
-        println!("Not get {}", req[0]);
         return;
     }
-    println!("path {}", req[1]);
     let status_line = "HTTP/1.1 200 OK";
     if req[1] == ("/stats") {
         let stats_data = stats.lock().unwrap().clone();
         let stats_str = serde_json::to_string(&stats_data).unwrap();
         let len = stats_str.len() + 2;
         let response = format!("{status_line}\r\nContent-Length: {len}\r\n\r\n{stats_str}\r\n");
+        stream.write_all(response.as_bytes()).unwrap();
+    } else if req[1] == ("/topdomains") {
+        let top_domains = stats.lock().unwrap().topdomain.clone();
+        let td_str = serde_json::to_string(&top_domains).unwrap();
+        let len = td_str.len() + 2;
+        let response = format!("{status_line}\r\nContent-Length: {len}\r\n\r\n{td_str}\r\n");
+        stream.write_all(response.as_bytes()).unwrap();
+    } else if req[1] == ("/topnx") {
+        let top_nx = stats.lock().unwrap().topnx.clone();
+        let td_str = serde_json::to_string(&top_nx).unwrap();
+        let len = td_str.len() + 2;
+        let response = format!("{status_line}\r\nContent-Length: {len}\r\n\r\n{td_str}\r\n");
+        stream.write_all(response.as_bytes()).unwrap();
+    } else if req[1] == ("/destinations") {
+        let destinations = stats.lock().unwrap().destinations.clone();
+        let d_str = serde_json::to_string(&destinations).unwrap();
+        let len = d_str.len() + 2;
+        let response = format!("{status_line}\r\nContent-Length: {len}\r\n\r\n{d_str}\r\n");
+        stream.write_all(response.as_bytes()).unwrap();
+    } else if req[1] == ("/sources") {
+        let sources = stats.lock().unwrap().sources.clone();
+        let s_str = serde_json::to_string(&sources).unwrap();
+        let len = s_str.len() + 2;
+        let response = format!("{status_line}\r\nContent-Length: {len}\r\n\r\n{s_str}\r\n");
         stream.write_all(response.as_bytes()).unwrap();
     } else if req[1] == ("/debug") {
         let tcp_len = tcp_list.lock().unwrap().len();
@@ -84,10 +155,104 @@ fn handle_connection(
     return;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+struct Rank<
+    T: std::cmp::Eq + std::hash::Hash + std::fmt::Display + serde::Serialize + Default + Clone,
+> {
+    rank: HashMap<T, usize>,
+    size: usize,
+}
+
+impl<
+        T: std::cmp::Eq + std::hash::Hash + std::fmt::Display + serde::Serialize + Default + Clone,
+    > Rank<T>
+{
+    fn new(size_in: usize) -> Rank<T> {
+        let r = Rank {
+            size: size_in,
+            rank: HashMap::with_capacity(size_in),
+        };
+        return r;
+    }
+
+    fn remove_lowest(&mut self) -> usize {
+        let mut mink = &T::default();
+        let mut minv: usize = 0;
+        let mut maxv: usize = 0;
+
+        for (k, v) in self.rank.iter() {
+            if minv == 0 || *v < minv {
+                minv = *v;
+                mink = k;
+            }
+            if *v > maxv {
+                maxv = *v;
+            }
+        }
+        if minv > 0 {
+            //println!("Removinng {} {} {} ", mink, minv, maxv);
+            let Some((_k, _v)) = self.rank.remove_entry(&mink.clone()) else {
+                return 0;
+            };
+            //println!("Removed: {} {} ", k, v);
+        }
+        return (2 * minv + maxv) / 3;
+    }
+
+    fn add(&mut self, element: T) {
+        if self.rank.contains_key(&element) {
+            let _c = self.rank.entry(element).and_modify(|v| *v += 1);
+        } else {
+            let mut val = 1;
+            if self.rank.len() >= self.size {
+                val = min(self.remove_lowest(), 1);
+            }
+            self.rank.insert(element, val);
+        }
+    }
+}
+
+impl<
+        T: std::cmp::Eq + std::hash::Hash + std::fmt::Display + serde::Serialize + Default + Clone,
+    > fmt::Display for Rank<T>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut l = Vec::new();
+        for (k, v) in self.rank.iter() {
+            l.push((k, v));
+        }
+        l.sort_by(|a, b| (b.1).partial_cmp(a.1).unwrap());
+        for (k, v) in l.iter() {
+            write!(f, "{}: {}\n", k, v).expect("Cannot write output format ");
+        }
+        return write!(f, "");
+    }
+}
+
+impl<
+        T: std::cmp::Eq + std::hash::Hash + std::fmt::Display + serde::Serialize + Default + Clone,
+    > Serialize for Rank<T>
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut l = Vec::new();
+        for (k, v) in self.rank.iter() {
+            l.push((k, v));
+        }
+        l.sort_by(|a, b| (a.1).partial_cmp(b.1).unwrap());
+        let mut seq = serializer.serialize_seq(Some(l.len()))?;
+        for i in l {
+            seq.serialize_element(&i)?;
+        }
+        return seq.end();
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Config {
     rr_type: Vec<DNS_RR_type>,
-    path: String,
     interface: String,
     filter: String,
     output: String,
@@ -95,13 +260,24 @@ struct Config {
     database: String,
     server: String,
     port: u16,
+    daemon: bool,
+    promisc: bool,
+    config_file: String,
+    dbhostname: String,
+    dbusername: String,
+    dbport: String,
+    dbpassword: String,
+    toplistsize: usize,
+    skip_list_file: String,
+    pid_file: String,
+    uid: String,
+    gid: String,
 }
 
 impl Config {
     fn new() -> Config {
         let mut c = Config {
             rr_type: Vec::<DNS_RR_type>::new(),
-            path: String::new(),
             interface: String::new(),
             filter: String::new(),
             output: String::new(),
@@ -109,6 +285,18 @@ impl Config {
             database: String::new(),
             server: String::new(),
             port: 0,
+            daemon: false,
+            promisc: false,
+            config_file: String::new(),
+            dbhostname: String::new(),
+            dbpassword: String::new(),
+            dbport: String::new(),
+            dbusername: String::new(),
+            toplistsize: 20,
+            skip_list_file: String::new(),
+            pid_file: String::new(),
+            gid: String::new(),
+            uid: String::new(),
         };
         c.rr_type.extend(vec![
             DNS_RR_type::A,
@@ -124,48 +312,64 @@ impl Config {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct statistics {
     errors: HashMap<String, u128>,
-    types: HashMap<String, u128>,
+    qtypes: HashMap<String, u128>,
+    atypes: HashMap<String, u128>,
     queries: u128,
     answers: u128,
     additional: u128,
     authority: u128,
-    sources: HashMap<IpAddr, u128>,
-    destinations: HashMap<IpAddr, u128>,
+    sources: Rank<String>,
+    destinations: Rank<String>,
+    udp: u128,
+    tcp: u128,
+    topdomain: Rank<String>,
+    topnx: Rank<String>,
 }
 
 impl statistics {
-    fn origin() -> statistics {
+    fn origin(toplistsize: usize) -> statistics {
         statistics {
             errors: HashMap::new(),
-            types: HashMap::new(),
+            qtypes: HashMap::new(),
+            atypes: HashMap::new(),
             queries: 0,
             answers: 0,
             additional: 0,
             authority: 0,
-            sources: HashMap::new(),
-            destinations: HashMap::new(),
+            sources: Rank::new(toplistsize),
+            destinations: Rank::new(toplistsize),
+            udp: 0,
+            tcp: 0,
+            topdomain: Rank::new(toplistsize),
+            topnx: Rank::new(toplistsize),
         }
     }
 
     fn to_str(&self) -> String {
         return format!(
             "Statistics:
-        Types: {:#?}
+        Query types: {:#?}
+        Answer Types: {:#?}
         Errors: {:?}
         Sources: {:?}
         Destinations: {:?}
         Queries: {}
         Answers: {}
         Additional: {}
-        Authority: {}",
-            self.types,
+        Authority: {}
+        UDP: {}
+        TCP: {}",
+            self.qtypes,
+            self.atypes,
             self.errors,
             self.sources,
             self.destinations,
             self.queries,
             self.answers,
             self.additional,
-            self.authority
+            self.authority,
+            self.udp,
+            self.tcp
         );
     }
 }
@@ -292,48 +496,51 @@ struct Mysql_connection {
 }
 
 impl Mysql_connection {
-    async fn connect(host: &str, user: &str, pass: &str) -> Mysql_connection {
-        let database_url = format!("mysql://{}:{}@{}/pdns", user, pass, host);
+    async fn connect(host: &str, user: &str, pass: &str, port: &str) -> Mysql_connection {
+        let database_url = format!("mysql://{}:{}@{}:{}/pdns", user, pass, host, port);
         match MySqlPoolOptions::new()
             .max_connections(10)
             .connect(&database_url)
             .await
         {
             Ok(mysql_pool) => {
-                // println!("✅Connection to the database is successful!");
+                // println!("Connection to the database is successful!");
                 return Mysql_connection { pool: mysql_pool };
             }
             Err(err) => {
-                println!("Failed to connect to the database: {:?}", err);
+                eprintln!("Failed to connect to the database: {:?}", err);
                 std::process::exit(1);
             }
         };
     }
-    pub fn insert_or_update(&mut self, packet_info: &Packet_info) {
-        let ts = packet_info.timestamp.timestamp();
-        for i in &packet_info.dns_records {
-            let q_res = block_on(sqlx::query(r#"INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN) VALUES (
+    pub fn insert_or_update_record(&mut self, record: &DNS_record) {
+        let i = record;
+        let ts = i.timestamp.timestamp();
+        let q_res = block_on(sqlx::query(r#"INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN) VALUES (
                 ?, ?, ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?)) ON DUPLICATE KEY UPDATE
                 TTL = if (TTL < ?, ?, TTL), COUNT = COUNT + ?, LAST_SEEN = if (LAST_SEEN < FROM_UNIXTIME(?), FROM_UNIXTIME(?), LAST_SEEN),
                 FIRST_SEEN = if (FIRST_SEEN > FROM_UNIXTIME(?), FROM_UNIXTIME(?), FIRST_SEEN)"#)
             .bind(&i.name)
-            .bind(&i.class).bind(&i.rr_type).bind(&i.rdata).bind(i.ttl).bind(1).bind(ts).bind(ts)
-            .bind(i.ttl).bind(i.ttl).bind(1)
+            .bind(&i.class).bind(&i.rr_type)
+            .bind(&i.rdata).bind(i.ttl).bind(i.count)
+            .bind(ts).bind(ts)
+            .bind(i.ttl).bind(i.ttl).bind(i.count)
             .bind(ts).bind(ts)
             .bind(ts).bind(ts)
             .execute(&self.pool));
-            match q_res {
-                Ok(_) => {}
-                Err(e) => {
-                    println!("Error: {}", e);
-                }
+        match q_res {
+            Ok(_x) => {
+                //println!("{:?}", x);
+            }
+            Err(e) => {
+                eprintln!("Error: {}", e);
             }
         }
     }
 }
 
 fn dns_read_u64(packet: &[u8], offset: usize) -> Result<u64, Box<dyn std::error::Error>> {
-    let Some(r) = packet.get(offset..offset + 2) else {
+    let Some(r) = packet.get(offset..offset + 8) else {
         return Err("Invalid index !".into());
     };
     let val = BigEndian::read_u64(r);
@@ -343,7 +550,7 @@ fn dns_read_u16(packet: &[u8], offset: usize) -> Result<u16, Box<dyn std::error:
     let Some(r) = packet.get(offset..offset + 2) else {
         return Err("Invalid index !".into());
     };
-    let val= BigEndian::read_u16(r);
+    let val = BigEndian::read_u16(r);
     return Ok(val);
 }
 
@@ -353,15 +560,14 @@ fn dns_read_u8(packet: &[u8], offset: usize) -> Result<u8, Box<dyn std::error::E
     };
     return Ok(*r);
 }
-fn base32hex_encode(input : &[u8]) -> String
-{
-      static BASE32HEX_NOPAD: data_encoding::Encoding = data_encoding::BASE32HEX_NOPAD;
+fn base32hex_encode(input: &[u8]) -> String {
+    static BASE32HEX_NOPAD: data_encoding::Encoding = data_encoding::BASE32HEX_NOPAD;
 
-        let mut output = String::new();
-        let mut enc = BASE32HEX_NOPAD.new_encoder(&mut output);
-        enc.append(input);
-        enc.finalize();
-        return output
+    let mut output = String::new();
+    let mut enc = BASE32HEX_NOPAD.new_encoder(&mut output);
+    enc.append(input);
+    enc.finalize();
+    return output;
 }
 fn dns_read_u32(packet: &[u8], offset: usize) -> Result<u32, Box<dyn std::error::Error>> {
     let Some(r) = packet.get(offset..offset + 4) else {
@@ -441,9 +647,7 @@ fn parse_dns_https(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
                 res += "ipv6hint=";
                 let mut pos: usize = 0;
                 while pos + 16 <= svc_param_len {
-                    let mut r: [u8; 16] =
-                        rdata[offset + 4 + pos..offset + 4 + pos + 16].try_into()?;
-                    //r.clone_from_slice(&rdata[offset + 4 + pos..offset + 4 + pos + 16]);
+                    let r: [u8; 16] = rdata[offset + 4 + pos..offset + 4 + pos + 16].try_into()?;
                     let addr = Ipv6Addr::from(r);
                     res += &format!("{},", addr);
                     pos += 16;
@@ -471,7 +675,7 @@ fn dns_parse_rdata(
     offset_in: usize,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let mut outdata = String::new();
-    println!("{}", rrtype);
+    //println!("{}", rrtype);
     if rrtype == DNS_RR_type::A {
         if rdata.len() != 4 {
             return Err("Invalid record".into());
@@ -505,8 +709,8 @@ fn dns_parse_rdata(
         return Ok(format!("{} {} ({})", tag, value, flag));
     } else if rrtype == DNS_RR_type::SOA {
         let mut offset: usize = offset_in;
-        let mut ns: String = String::new();
-        let mut mb: String = String::new();
+        let ns: String;
+        let mb: String;
         (ns, offset) = dns_parse_name(packet, offset)?;
         (mb, offset) = dns_parse_name(packet, offset)?;
         let sn = dns_read_u32(packet, offset)?;
@@ -524,6 +728,7 @@ fn dns_parse_rdata(
     } else if rrtype == DNS_RR_type::TXT
         || rrtype == DNS_RR_type::NINF0
         || rrtype == DNS_RR_type::AVC
+        || rrtype == DNS_RR_type::SPF
     {
         let mut pos = 0;
         let mut res = String::new();
@@ -532,8 +737,8 @@ fn dns_parse_rdata(
             let Some(r) = rdata.get(1 + pos..pos + tlen + 1) else {
                 return Err("Index error".into());
             };
-            let s = std::str::from_utf8(r)?;
-            res += &format!("{} ", s);
+            //            let s = std::str::from_utf8(r)?;
+            res += &format!("{} ", std::str::from_utf8(r)?);
             pos += 1 + tlen;
         }
         return Ok(String::from(res));
@@ -545,10 +750,8 @@ fn dns_parse_rdata(
         let (mx, _offset_out) = dns_parse_name(packet, offset_in + 2)?;
         return Ok(mx);
     } else if rrtype == DNS_RR_type::HINFO {
-        let Some(cpu_len1) = rdata.get(0) else {
-            return Err("Index error".into());
-        };
-        let cpu_len: usize = *cpu_len1 as usize;
+        let cpu_len1 = dns_read_u8(rdata, 0)?;
+        let cpu_len: usize = cpu_len1 as usize;
         let mut offset: usize = 1;
         let Some(r) = rdata.get(offset..offset + cpu_len as usize) else {
             return Err("Index error".into());
@@ -558,7 +761,7 @@ fn dns_parse_rdata(
         let os_len = rdata[offset] as usize;
         offset += 1;
         s.push(' ');
-        let Some(r) = &rdata.get(offset..offset + os_len) else {
+        let Some(r) = rdata.get(offset..offset + os_len) else {
             return Err("Index error".into());
         };
         s += &String::from(std::str::from_utf8(r)?);
@@ -569,7 +772,7 @@ fn dns_parse_rdata(
         let port = dns_read_u16(rdata, 4)?;
         let (target, _offset_out) = dns_parse_name(rdata, 6)?;
         return Ok(format!("{} {} {} {}", prio, weight, port, target));
-    } else if rrtype == DNS_RR_type::TLSA {
+    } else if rrtype == DNS_RR_type::TLSA || rrtype == DNS_RR_type::SMIMEA {
         if rdata.len() < 4 {
             return Err("Rdata too small".into());
         }
@@ -613,18 +816,11 @@ fn dns_parse_rdata(
             hex::encode(pubkey)
         ));
     } else if rrtype == DNS_RR_type::LOC {
-        let Some(version) = rdata.get(0) else {
-            return Err("Index error".into());
-        };
-        let Some(size) = rdata.get(1) else {
-            return Err("Index error".into());
-        };
-        let Some(hor_prec) = rdata.get(2) else {
-            return Err("Index error".into());
-        };
-        let Some(ver_prec) = rdata.get(3) else {
-            return Err("Index error".into());
-        };
+        let version = dns_read_u8(rdata, 0)?;
+        let size = dns_read_u8(rdata, 1)?;
+        let hor_prec = dns_read_u8(rdata, 2)?;
+        let ver_prec = dns_read_u8(rdata, 3)?;
+
         // todo need to do coversion to degrees
         let lat = dns_read_u32(rdata, 4)?;
         let lon = dns_read_u32(rdata, 8)?;
@@ -636,16 +832,15 @@ fn dns_parse_rdata(
     } else if rrtype == DNS_RR_type::NAPTR {
         let order = dns_read_u16(rdata, 0)?;
         let pref = dns_read_u16(rdata, 2)?;
-        let flag_len = rdata[4];
+        let flag_len = dns_read_u8(rdata, 4)?;
         let mut offset: usize = 5;
         let flags = str::from_utf8(&rdata[offset..offset + flag_len as usize])?;
         offset += flag_len as usize;
-        //println!("{} {:x?}", flag_len, flags);
         let srv_len = rdata[offset as usize];
         offset += 1;
         let srv = str::from_utf8(&rdata[offset..offset + srv_len as usize])?;
         offset += srv_len as usize;
-        let re_len = rdata[offset];
+        let re_len = dns_read_u8(rdata, offset)?;
         offset += 1;
         let mut re = "";
         if re_len > 0 {
@@ -660,8 +855,8 @@ fn dns_parse_rdata(
     } else if rrtype == DNS_RR_type::RRSIG {
         let sig_rrtype = parse_rrtype(dns_read_u16(rdata, 0)?)?;
         let sig_rrtype_str = sig_rrtype.to_str()?;
-        let alg = dnssec_algorithm(rdata[2])?;
-        let labels = rdata[3];
+        let alg = dnssec_algorithm(dns_read_u8(rdata, 2)?)?;
+        let labels = dns_read_u8(rdata, 3)?;
         let ttl = dns_read_u32(rdata, 4)?;
         let sig_exp = timestame_to_str(dns_read_u32(rdata, 8)?)?;
         let sig_inc = timestame_to_str(dns_read_u32(rdata, 12)?)?;
@@ -776,7 +971,6 @@ fn dns_parse_rdata(
         let Some(alt) = rdata.get(idx..idx + alt_len) else {
             return Err("Parse Error".into());
         };
-        //idx += alt_len;
         return Ok(format!(
             "{} {} {}",
             str::from_utf8(lon)?,
@@ -802,11 +996,7 @@ fn dns_parse_rdata(
     } else if rrtype == DNS_RR_type::CERT {
         let cert_type = dns_read_u16(rdata, 0)?;
         let key_tag = dns_read_u16(rdata, 2)?;
-
-        let Some(alg) = rdata.get(4) else {
-            return Err("Packet too small".into());
-        };
-
+        let alg = dns_read_u8(rdata, 4)?;
         let Some(cert) = rdata.get(5..) else {
             return Err("Packet too small".into());
         };
@@ -814,15 +1004,13 @@ fn dns_parse_rdata(
             "{} {} {} {}",
             cert_type_str(cert_type)?,
             (key_tag),
-            dnssec_algorithm(*alg)?,
+            dnssec_algorithm(alg)?,
             hex::encode(cert)
         ));
     } else if rrtype == DNS_RR_type::HTTPS || rrtype == DNS_RR_type::SVCB {
         return parse_dns_https(rdata);
     } else if rrtype == DNS_RR_type::WKS {
-        let Some(protocol) = rdata.get(4) else {
-            return Err("Parse error".into());
-        };
+        let protocol = dns_read_u8(rdata, 4)?;
         let Some(bitmap) = rdata.get(5..) else {
             return Err("Parse error".into());
         };
@@ -833,7 +1021,7 @@ fn dns_parse_rdata(
             rdata[1],
             rdata[2],
             rdata[3],
-            parse_protocol(*protocol)?,
+            parse_protocol(protocol)?,
             parse_bitmap_str(bitmap)?
         ));
     } else if rrtype == DNS_RR_type::TSIG {
@@ -843,12 +1031,8 @@ fn dns_parse_rdata(
         let mut res = String::new();
         while pos < rdata.len() {
             let af = dns_read_u16(rdata, pos)?;
-            let Some(pref_len) = rdata.get(pos + 2) else {
-                return Err("Parse error".into());
-            };
-            let Some(addr_len_) = rdata.get(pos + 3) else {
-                return Err("Parse error".into());
-            };
+            let pref_len = dns_read_u8(rdata, pos + 2)?;
+            let addr_len_ = dns_read_u8(rdata, pos + 3)?;
             let flags = addr_len_ >> 7;
             let mut neg_str = "";
             if flags > 0 {
@@ -858,6 +1042,7 @@ fn dns_parse_rdata(
             let Some(addr) = rdata.get(pos + 4..pos + 4 + addr_len) else {
                 return Err("Parse error".into());
             };
+            //println!("{:?} {}", addr, addr_len);
             let mut ip_addr = std::net::IpAddr::V4(Ipv4Addr::UNSPECIFIED);
             if af == 1 {
                 // ipv4
@@ -869,15 +1054,14 @@ fn dns_parse_rdata(
             }
             if af == 2 {
                 // Ipv6
-                let ip: [u8; 16] = addr.try_into()?;
-                //[0; 16];
-                //for i in 0..addr_len {
-                //    ip[i] = addr[i];
-                // }
+                let mut ip: [u8; 16] = [0; 16];
+                for i in 0..addr_len {
+                    ip[i] = addr[i];
+                }
                 ip_addr = std::net::IpAddr::V6(Ipv6Addr::from(ip));
             }
             res += &format!("{}{}/{} ", neg_str, ip_addr, pref_len);
-            pos += 4 + addr_len
+            pos += 4 + addr_len;
         }
         return Ok(res);
     } else if rrtype == DNS_RR_type::ATMA {
@@ -889,20 +1073,16 @@ fn dns_parse_rdata(
             return Err("Packet too small".into());
         };
 
-        let Some(alg) = rdata.get(2) else {
-            return Err("Packet too small".into());
-        };
-        let Some(digest_type) = rdata.get(3) else {
-            return Err("Packet too small".into());
-        };
+        let alg = dns_read_u8(rdata, 2)?;
+        let digest_type = dns_read_u8(rdata, 3)?;
         let Some(digest) = rdata.get(4..) else {
             return Err("Packet too small".into());
         };
         return Ok(format!(
             "{} {} {} {}",
             hex::encode(key_id),
-            dnssec_algorithm(*alg)?,
-            dnssec_digest(*digest_type)?,
+            dnssec_algorithm(alg)?,
+            dnssec_digest(digest_type)?,
             hex::encode(digest)
         ));
     } else if rrtype == DNS_RR_type::TALINK {
@@ -913,12 +1093,8 @@ fn dns_parse_rdata(
         return Ok(format!("{}", hex::encode(rdata)));
     } else if rrtype == DNS_RR_type::ZONEMD {
         let serial = dns_read_u32(rdata, 0)?;
-        let Some(scheme) = rdata.get(4) else {
-            return Err("Packet too small".into());
-        };
-        let Some(alg) = rdata.get(5) else {
-            return Err("Packet too small".into());
-        };
+        let scheme = dns_read_u8(rdata, 4)?;
+        let alg = dns_read_u8(rdata, 5)?;
         let Some(digest) = rdata.get(6..) else {
             return Err("Packet too small".into());
         };
@@ -926,7 +1102,7 @@ fn dns_parse_rdata(
             "{} {} {} {}",
             serial,
             scheme,
-            zonemd_digest(*alg)?,
+            zonemd_digest(alg)?,
             hex::encode(digest)
         ));
     } else if rrtype == DNS_RR_type::URI {
@@ -940,8 +1116,7 @@ fn dns_parse_rdata(
     } else if rrtype == DNS_RR_type::CSYNC {
         let soa = dns_read_u32(rdata, 0)?;
         let flags = dns_read_u16(rdata, 4)?;
-        let type_bitmap = dns_read_u16(rdata, 6)?;
-        let bitmap = parse_bitmap_vec(&rdata[8..])?;
+        let bitmap = parse_nsec_bitmap_vec(&rdata[6..])?;
         let mut bitmap_str = String::new();
         for i in bitmap {
             bitmap_str += &format!("{} ", DNS_RR_type::find(i)?);
@@ -950,8 +1125,8 @@ fn dns_parse_rdata(
     } else if rrtype == DNS_RR_type::DOA {
         let doa_ent = dns_read_u32(rdata, 0)?;
         let doa_type = dns_read_u32(rdata, 4)?;
-        let doa_loc = rdata[8];
-        let doa_media_type_len = rdata[9] as usize;
+        let doa_loc = dns_read_u8(rdata, 8)?;
+        let doa_media_type_len = dns_read_u8(rdata, 9)? as usize;
         let Some(doa_media_type) = rdata.get(10..10 + doa_media_type_len) else {
             return Err("parse error".into());
         };
@@ -969,84 +1144,124 @@ fn dns_parse_rdata(
             doa_data_str
         ));
     } else if rrtype == DNS_RR_type::HIP {
-        let Some(hit_len) = rdata.get(0) else { return Err("parse error".into()); };
-        let Some(hit_alg)= rdata.get(1) else { return Err("parse error".into()); };
-        let pk_len = dns_read_u16(rdata, 2)?;
-        let Some (hit) = rdata.get(4..4+*hit_len as usize) else { return Err("parse error".into()); };
-        let Some (hip_pk) = rdata.get(4+*hit_len as usize .. 4+*hit_len as usize + pk_len as usize) else { return Err("parse error".into()); };
-        let (rendezvous, _) = dns_parse_name(rdata,4 + *hit_len as usize + pk_len as usize )?;
-        return Ok(format!("{} {:x?} {:x?} {}", hit_alg, hex::encode(hit), general_purpose::STANDARD_NO_PAD.encode(hip_pk), rendezvous));
-
+        let hit_len = dns_read_u8(rdata, 0)? as usize;
+        let hit_alg = dns_read_u8(rdata, 1)?;
+        let pk_len = dns_read_u16(rdata, 2)? as usize;
+        let Some(hit) = rdata.get(4..4 + hit_len as usize) else {
+            return Err("parse error".into());
+        };
+        let Some(hip_pk) = rdata.get(4 + hit_len..4 + hit_len + pk_len) else {
+            return Err("parse error".into());
+        };
+        let (rendezvous, _) = dns_parse_name(rdata, 4 + hit_len + pk_len)?;
+        return Ok(format!(
+            "{} {:x?} {:x?} {}",
+            hit_alg,
+            hex::encode(hit),
+            general_purpose::STANDARD_NO_PAD.encode(hip_pk),
+            rendezvous
+        ));
     } else if rrtype == DNS_RR_type::MD {
-        let (res_md, _) =  dns_parse_name(packet, offset_in)?; 
+        let (res_md, _) = dns_parse_name(packet, offset_in)?;
         return Ok(format!("{}", res_md));
     } else if rrtype == DNS_RR_type::MF {
-        let (res_mf, _) =  dns_parse_name(packet, offset_in)?; 
+        let (res_mf, _) = dns_parse_name(packet, offset_in)?;
         return Ok(format!("{}", res_mf));
     } else if rrtype == DNS_RR_type::MG {
-        let (res_mg, _) =  dns_parse_name(packet, offset_in)?; 
+        let (res_mg, _) = dns_parse_name(packet, offset_in)?;
         return Ok(format!("{}", res_mg));
     } else if rrtype == DNS_RR_type::MR {
-        let (res_mr, _) =  dns_parse_name(packet, offset_in)?; 
+        let (res_mr, _) = dns_parse_name(packet, offset_in)?;
         return Ok(format!("{}", res_mr));
     } else if rrtype == DNS_RR_type::NXT {
-        let (next, offset) = dns_parse_name(packet, offset_in)?;
-        println!("{:x?}", &rdata[next.len()+1..]);
-        let bm  = parse_bitmap_vec(&rdata[next.len()+1..])?;
+        let (next, _) = dns_parse_name(packet, offset_in)?;
+        let bm = parse_bitmap_vec(&rdata[next.len() + 1..])?;
         return Ok(format!("{} {}", next, map_bitmap_to_rr(&bm)?));
     } else if rrtype == DNS_RR_type::NSAP {
         return Ok(format!("0x{}", hex::encode(rdata)));
     } else if rrtype == DNS_RR_type::NSAP_PTR {
-        let (nsap_ptr, _) =  dns_parse_name(packet, offset_in)?; 
+        let (nsap_ptr, _) = dns_parse_name(packet, offset_in)?;
         return Ok(format!("{}", nsap_ptr));
     } else if rrtype == DNS_RR_type::MINFO {
-        let (res_mb, offset) =  dns_parse_name(packet, offset_in)?; 
-        let (err_mb, _) =  dns_parse_name(packet, offset)?;
+        let (res_mb, offset) = dns_parse_name(packet, offset_in)?;
+        let (err_mb, _) = dns_parse_name(packet, offset)?;
         return Ok(format!("{} {}", res_mb, err_mb));
     //} else if rrtype == DNS_RR_type::MAILA { // not an rr _type
-        // todo
+    // todo
     //} else if rrtype == DNS_RR_type::MAILB {
-        // todo
-    } else if rrtype == DNS_RR_type::IPSECKEY{
+    // todo
+    } else if rrtype == DNS_RR_type::IPSECKEY {
         let precedence = dns_read_u8(rdata, 0)?;
         let gw_type = dns_read_u8(rdata, 1)?;
         let alg = dns_read_u8(rdata, 2)?;
         let mut pk_offset = 3;
         let mut name = String::new();
-         match gw_type {
-            0 => { name.push('.'); } // No Gateway
-            1 => { pk_offset += 4; 
-                    let  r : [u8; 4] = rdata[3 .. 8].try_into()?;
-                    let addr = IpAddr::V4(Ipv4Addr::from(r));
-                    name = addr.to_string();
+        match gw_type {
+            0 => {
+                name.push('.');
+            } // No Gateway
+            1 => {
+                pk_offset += 4;
+                let r: [u8; 4] = rdata[3..8].try_into()?;
+                let addr = IpAddr::V4(Ipv4Addr::from(r));
+                name = addr.to_string();
             } // IPv4 address
-            2 => { pk_offset += 16; 
-                    let  r : [u8; 16] = rdata[3 .. 20].try_into()?;
-                    let addr = IpAddr::V6(Ipv6Addr::from(r));
-                    name = addr.to_string();
+            2 => {
+                pk_offset += 16;
+                let r: [u8; 16] = rdata[3..20].try_into()?;
+                let addr = IpAddr::V6(Ipv6Addr::from(r));
+                name = addr.to_string();
             } // IPv6 Address
-            3 => { (name, pk_offset) =  dns_parse_name(rdata, 3)?; } // a FQDN
-            _ => { return Err("Parse Error".into());}
-         }
-         let mut alg_name = "";
-         if alg == 1 { alg_name = "DSA"}
-         else if alg == 2 { alg_name = "RSA"}
-         else { return Err("Unknown algorithm".into());}
-        let Some(pk) = rdata.get(pk_offset..) else { return Err("Parse error".into());};
-        return Ok(format!("{} {} {} {} {}", precedence, gw_type, alg_name, name, hex::encode(pk))) ;
+            3 => {
+                (name, pk_offset) = dns_parse_name(rdata, 3)?;
+            } // a FQDN
+            _ => {
+                return Err("Parse Error".into());
+            }
+        }
+        let alg_name;
+        if alg == 1 {
+            alg_name = "DSA"
+        } else if alg == 2 {
+            alg_name = "RSA"
+        } else {
+            return Err("Unknown algorithm".into());
+        }
+        let Some(pk) = rdata.get(pk_offset..) else {
+            return Err("Parse error".into());
+        };
+        return Ok(format!(
+            "{} {} {} {} {}",
+            precedence,
+            gw_type,
+            alg_name,
+            name,
+            hex::encode(pk)
+        ));
     } else if rrtype == DNS_RR_type::ISDN {
         let addr_len = dns_read_u8(rdata, 0)?;
-        let Some(addr) = rdata.get(1.. 1+ addr_len as usize) else { return Err("Parse error".into());};
-        let subaddr_len = dns_read_u8(rdata, 1+addr_len as usize)?;
-        let Some(sub_addr) = rdata.get(1.. 1+ addr_len as usize + 1 + subaddr_len as usize) else { return Err("Parse error".into());};
-        return Ok(format!("{} {}", String::from_utf8_lossy(&addr), String::from_utf8_lossy(&sub_addr)));
+        let Some(addr) = rdata.get(1..1 + addr_len as usize) else {
+            return Err("Parse error".into());
+        };
+        let subaddr_len = dns_read_u8(rdata, 1 + addr_len as usize)?;
+        let Some(sub_addr) = rdata.get(1..1 + addr_len as usize + 1 + subaddr_len as usize) else {
+            return Err("Parse error".into());
+        };
+        return Ok(format!(
+            "{} {}",
+            String::from_utf8_lossy(&addr),
+            String::from_utf8_lossy(&sub_addr)
+        ));
     } else if rrtype == DNS_RR_type::NID {
         let prio = dns_read_u16(rdata, 0)?;
         let node_id1 = dns_read_u16(rdata, 2)?;
         let node_id2 = dns_read_u16(rdata, 4)?;
         let node_id3 = dns_read_u16(rdata, 6)?;
         let node_id4 = dns_read_u16(rdata, 7)?;
-        return Ok(format!("{} {:x}:{:x}:{:x}:{:x}", prio, node_id1, node_id2, node_id3, node_id4));
+        return Ok(format!(
+            "{} {:x}:{:x}:{:x}:{:x}",
+            prio, node_id1, node_id2, node_id3, node_id4
+        ));
     } else if rrtype == DNS_RR_type::L32 {
         let prio = dns_read_u16(rdata, 0)?;
         let r: [u8; 4] = rdata[2..].try_into()?;
@@ -1055,7 +1270,9 @@ fn dns_parse_rdata(
     } else if rrtype == DNS_RR_type::L64 {
         let prio = dns_read_u16(rdata, 0)?;
         let mut r: [u8; 16] = [0; 16];
-        for i in 0.. rdata[2..].len() { r[i] = rdata[2+i]; }
+        for i in 0..rdata[2..].len() {
+            r[i] = rdata[2 + i];
+        }
         let addr = Ipv6Addr::from(r).to_string();
         return Ok(format!("{} {}", prio, addr.trim_end_matches(':')));
     } else if rrtype == DNS_RR_type::LP {
@@ -1064,16 +1281,24 @@ fn dns_parse_rdata(
         return Ok(format!("{} {}", prio, fqdn));
     } else if rrtype == DNS_RR_type::KX {
         let pref = dns_read_u16(rdata, 0)?;
-        let (kx, _) =  dns_parse_name(packet, offset_in+ 2)?; 
+        let (kx, _) = dns_parse_name(packet, offset_in + 2)?;
         return Ok(format!("{} {}", pref, kx));
     } else if rrtype == DNS_RR_type::TKEY { // meta RR?
-        // todo /
+         // todo /
     } else if rrtype == DNS_RR_type::KEY {
         let flags = dns_read_u16(rdata, 0)?;
         let protocol = dns_read_u8(rdata, 2)?;
         let alg = dns_read_u8(rdata, 3)?;
-        let Some(key) = rdata.get(4..) else { return Err("Parse error".into());};
-        return Ok(format!("{} {} {} {}", flags, key_protocol(protocol)?, key_algorithm(alg)?, general_purpose::STANDARD.encode(key)));
+        let Some(key) = rdata.get(4..) else {
+            return Err("Parse error".into());
+        };
+        return Ok(format!(
+            "{} {} {} {}",
+            flags,
+            key_protocol(protocol)?,
+            key_algorithm(alg)?,
+            general_purpose::STANDARD.encode(key)
+        ));
     } else if rrtype == DNS_RR_type::PX {
         let pref = dns_read_u16(rdata, 0)?;
         let (map822, offset) = dns_parse_name(rdata, 2)?;
@@ -1084,18 +1309,21 @@ fn dns_parse_rdata(
     } else if rrtype == DNS_RR_type::SINK {
         let mut coding = dns_read_u8(rdata, 0)?;
         let mut offset = 1;
-        if coding == 0 { // weird bind thing
+        if coding == 0 {
+            // weird bind thing
             coding = dns_read_u8(rdata, 1)?;
             offset = 2;
         }
         let subcoding = dns_read_u8(rdata, offset)?;
-        let Some(data) = rdata.get(offset+1..) else { return Err("Parse error".into());};
-        return Ok(format!("{} {} {}", coding, subcoding, general_purpose::STANDARD.encode(data)));
-        // todo
-    } else if rrtype == DNS_RR_type::SMIMEA {
-        // todo
-    } else if rrtype == DNS_RR_type::SPF {
-        // todo
+        let Some(data) = rdata.get(offset + 1..) else {
+            return Err("Parse error".into());
+        };
+        return Ok(format!(
+            "{} {} {}",
+            coding,
+            subcoding,
+            general_purpose::STANDARD.encode(data)
+        ));
     } else if rrtype == DNS_RR_type::EID || rrtype == DNS_RR_type::NIMLOC {
         return Ok(hex::encode(rdata));
     } else if rrtype == DNS_RR_type::NSEC {
@@ -1107,35 +1335,25 @@ fn dns_parse_rdata(
         }
         return Ok(format!("{} {}", next_dom, bitmap_str));
     } else if rrtype == DNS_RR_type::NSEC3 {
-        let Some(hash_alg) = rdata.get(0) else {
-            return Err("parse error".into());
-        };
-        let Some(flags) = rdata.get(1) else {
-            return Err("parse error".into());
-        };
+        let hash_alg = dns_read_u8(rdata, 0)?;
+        let flags = dns_read_u8(rdata, 1)?;
         let iterations = dns_read_u16(rdata, 2)?;
-        let Some(salt_len) = rdata.get(4) else {
+        let salt_len = dns_read_u8(rdata, 4)? as usize;
+        let Some(salt) = rdata.get(5..5 + salt_len) else {
             return Err("parse error".into());
         };
-        let Some(salt) = rdata.get(5..5 + *salt_len as usize) else {
+        let hash_len = dns_read_u8(rdata, 5 + salt_len)? as usize;
+        let Some(next_owner) = rdata.get(6 + salt_len..6 + salt_len + hash_len) else {
             return Err("parse error".into());
         };
-        let Some(hash_len) = rdata.get(5 + *salt_len as usize) else {
-            return Err("parse error".into());
-        };
-        let Some(next_owner) =
-            rdata.get(6 + *salt_len as usize..6 + *salt_len as usize + *hash_len as usize)
-        else {
-            return Err("parse error".into());
-        };
-        let bitmap = parse_nsec_bitmap_vec(&rdata[6 + *salt_len as usize + *hash_len as usize..])?;
+        let bitmap = parse_nsec_bitmap_vec(&rdata[6 + salt_len + hash_len..])?;
         let mut bitmap_str = String::new();
         for i in bitmap {
             bitmap_str += &format!("{} ", DNS_RR_type::find(i)?);
         }
         return Ok(format!(
             "{} {} {} {} {} {}",
-            dnssec_digest(*hash_alg)?,
+            dnssec_digest(hash_alg)?,
             flags,
             iterations,
             hex::encode(salt),
@@ -1155,7 +1373,6 @@ fn parse_nsec_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, Box<dyn std::error::
     while offset < len {
         let high_byte = (bitmap[offset] as u16) << 8;
         let size = bitmap[offset + 1] as usize;
-        //  println!("YY {} {}", len, size);
         for i in 0..size {
             let mut pos: u8 = 0x80;
             for j in 0..8 {
@@ -1185,15 +1402,13 @@ fn parse_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, Box<dyn std::error::Error
     return Ok(res);
 }
 
-fn map_bitmap_to_rr(bitmap :&Vec<u16>) -> Result<String, Box<dyn std::error::Error>> 
-{
+fn map_bitmap_to_rr(bitmap: &Vec<u16>) -> Result<String, Box<dyn std::error::Error>> {
     let mut res = String::new();
     for i in bitmap {
         res += &format!("{} ", DNS_RR_type::find(*i)?);
     }
-    return Ok(res)
+    return Ok(res);
 }
-
 
 fn parse_bitmap_str(bitmap: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
     let bitmap = parse_bitmap_vec(bitmap)?;
@@ -1262,25 +1477,46 @@ fn parse_class(class: u16) -> Result<DNS_Class, Box<dyn std::error::Error>> {
     return DNS_Class::find(class);
 }
 
+fn match_skip_list(name: &String, skip_list: &Vec<Regex>) -> bool {
+    for i in skip_list {
+        let r = i;
+        if r.is_match(&name.trim_end_matches('.')) {
+            return true;
+        }
+    }
+    return false;
+}
+
 fn parse_question(
     _query: &[u8],
     _packet_info: &mut Packet_info,
     packet: &[u8],
     offset_in: usize,
-    _stats: &mut statistics,
+    stats: &mut statistics,
+    _config: &Config,
+    rcode: u16,
+    skip_list: &Vec<Regex>,
 ) -> Result<usize, Box<dyn std::error::Error>> {
-    let (_name, offset) = dns_parse_name(packet, offset_in)?;
+    let (name, offset) = dns_parse_name(packet, offset_in)?;
+    if match_skip_list(&name, skip_list) {
+        return Err("skipped".into());
+    }
     let rrtype_val = dns_read_u16(packet, offset)?;
+    let rrtype = parse_rrtype(rrtype_val)?;
     let class_val = dns_read_u16(packet, offset + 2)?;
     let _rrtype = parse_rrtype(rrtype_val).unwrap();
     let _class = parse_class(class_val).unwrap();
-    /*println!(
-        "Question: {} {} {} ",
-        name,
-        rrtype.to_str().unwrap(),
-        class.to_str().unwrap()
-    );*/
+    stats
+        .qtypes
+        .entry(rrtype.to_str()?)
+        .and_modify(|c| *c += 1)
+        .or_insert(1);
     let len = offset - offset_in;
+    if rcode == 3 {
+        stats.topnx.add(name);
+    } else if rcode == 0 {
+        stats.topdomain.add(name);
+    }
     return Ok(len + 4);
 }
 
@@ -1289,19 +1525,15 @@ fn parse_answer(
     packet: &[u8],
     offset_in: usize,
     stats: &mut statistics,
+    config: &Config,
 ) -> Result<usize, Box<dyn std::error::Error>> {
-    //let mut offset = offset_in;
-    //println!("aaaeE {} ", offset_in);
-    /*     println!(
-        "Parsing DNS : {} {:x?}",
-        offset_in,
-        &packet[offset_in..offset_in + 4]
-    );*/
     let (name, mut offset) = dns_parse_name(packet, offset_in)?;
-    println!("{:?}", name);
     let rrtype_val = BigEndian::read_u16(&packet[offset..offset + 2]);
     let rrtype = parse_rrtype(rrtype_val)?;
     if rrtype == DNS_RR_type::OPT {
+        return Ok(0);
+    }
+    if !config.rr_type.contains(&rrtype) {
         return Ok(0);
     }
     let class_val = dns_read_u16(packet, offset + 2)?;
@@ -1310,10 +1542,13 @@ fn parse_answer(
     let datalen: usize = dns_read_u16(packet, offset + 8)?.into();
     let data = &packet[offset + 10..offset + 10 + datalen];
     let rdata = dns_parse_rdata(data, rrtype, packet, offset + 10)?;
-    let c = stats.types.entry(rrtype.to_str()?).or_insert(0);
-    *c += 1;
+    stats
+        .atypes
+        .entry(rrtype.to_str()?)
+        .and_modify(|c| *c += 1)
+        .or_insert(1);
     offset += 11;
-    println!(
+    /*println!(
         "Answer N: {} L:{} RR:{} C:{} TTL:{} DL:{} D:{:x?} R: {} ",
         name,
         offset,
@@ -1323,14 +1558,15 @@ fn parse_answer(
         datalen,
         data,
         rdata
-    );
+    );*/
     let rec: DNS_record = DNS_record {
         rr_type: rrtype.to_str()?,
         ttl: ttl,
         class: class.to_str()?,
-        name: name,
-        rdata: rdata,
-        count: 0,
+        name: name.trim_end_matches('.').to_string(),
+        rdata: rdata.trim_end_matches('.').to_string(),
+        count: 1,
+        timestamp: packet_info.timestamp,
     };
     packet_info.add_dns_record(rec);
     offset += datalen as usize - 1;
@@ -1342,13 +1578,14 @@ fn parse_dns(
     packet_in: &[u8],
     packet_info: &mut Packet_info,
     stats: &mut statistics,
+    config: &Config,
+    skip_list: &Vec<Regex>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut offset = 0;
     let mut _len = 0;
     let mut packet = packet_in;
     if packet_info.protocol == DNS_Protocol::TCP {
         _len = dns_read_u16(packet, offset)?;
-        //offset += 2;
         packet = &packet_in[2..];
     }
     let _trans_id = dns_read_u16(packet, offset)?;
@@ -1357,12 +1594,22 @@ fn parse_dns(
     offset += 2;
     let qr = (flags & 0x8000) >> 15;
     let _opcode = (flags >> 11) & 0x000f;
-    let _tr = (flags >> 9) & 0x0001;
+    let tr = (flags >> 9) & 0x0001;
     let _rd = (flags >> 8) & 0x0001;
     let _ra = (flags >> 7) & 0x0001;
     let rcode = flags & 0x000f;
 
+    if tr != 0 {
+        // truncated DNS packets are skipped
+        return Ok(());
+    }
+
     let questions = dns_read_u16(packet, offset)?;
+    if questions == 0 {
+        // Empty questions section --> Skip it
+        return Ok(());
+    }
+
     offset += 2;
     let answers = dns_read_u16(packet, offset)?;
     offset += 2;
@@ -1374,51 +1621,47 @@ fn parse_dns(
     stats.authority += authority as u128;
     stats.answers += answers as u128;
     stats.queries += questions as u128;
-    /*println!(
-        "XXXX{} {:x} {} {} {} {} {} {} {}",
-        _trans_id, flags, qr, _opcode, rcode, questions, answers, additional, authority
-    );*/
 
     if qr != 1 {
         // we ignore questions
-        let mut c = stats.sources.entry(packet_info.s_addr).or_insert(0);
-        *c += 1;
-        c = stats.destinations.entry(packet_info.d_addr).or_insert(0);
-        *c += 1;
-
+        //stats.sources.add(&packet_info.s_addr.to_string());
+        //stats.destinations.add(&packet_info.d_addr.to_string());
+        stats.sources.add(packet_info.s_addr.to_string());
+        stats.destinations.add(packet_info.d_addr.to_string());
         return Ok(());
     }
 
-    let c = stats
+    stats
         .errors
         .entry(dns_reply_type(rcode)?.to_string())
-        .or_insert(0);
-    *c += 1;
-    // if rcode != 0 {
-    // errors
-    //   return Ok(());
-    // }
-    println!("Offest {}", offset);
-    //    let mut offset: usize = 12;
+        .and_modify(|c| *c += 1)
+        .or_insert(1);
+
     for _i in 0..questions {
         let query = &packet[offset..];
-        offset += parse_question(query, packet_info, packet, offset, stats)?;
+        offset += parse_question(
+            query,
+            packet_info,
+            packet,
+            offset,
+            stats,
+            config,
+            rcode,
+            skip_list,
+        )?;
     }
-    println!("Answers {} {} ", answers, offset);
+    //println!("Answers {} {} ", answers, offset);
     for _i in 0..answers {
-        //println!("{} {:x?}", _i, &packet[0..offset+20]);
-        offset += parse_answer(packet_info, packet, offset, stats)?;
+        offset += parse_answer(packet_info, packet, offset, stats, config)?;
     }
-    println!("Authority {} {}", authority, offset);
+    //println!("Authority {} {}", authority, offset);
     for _i in 0..authority {
-        offset += parse_answer(packet_info, packet, offset, stats)?;
+        offset += parse_answer(packet_info, packet, offset, stats, config)?;
     }
-    println!("Additional {} {}", additional, offset);
+    //println!("Additional {} {}", additional, offset);
     for _i in 0..additional {
-        offset += parse_answer(packet_info, packet, offset, stats)?;
+        offset += parse_answer(packet_info, packet, offset, stats, config)?;
     }
-    //println!("{}", packet_info.to_str()?);
-    //    println!("done");
     return Ok(());
 }
 
@@ -1501,7 +1744,7 @@ impl TCP_Connections {
     }
 
     fn len(&self) -> usize {
-        println!("{}", self.connections.len());
+        //println!("{}", self.connections.len());
         return self.connections.len();
     }
 
@@ -1533,7 +1776,7 @@ impl TCP_Connections {
     }
 
     fn remove(&mut self, sp: u16, dp: u16, src: IpAddr, dst: IpAddr) {
-        println!("Removing key {} {} {} {} ", src, dst, sp, dp);
+        //  println!("Removing key {} {} {} {} ", src, dst, sp, dp);
         self.connections.remove(&(src, dst, sp, dp));
     }
 
@@ -1552,7 +1795,6 @@ impl TCP_Connections {
         for k in keys {
             self.connections.remove(&k);
         }
-        println!("Timout: {m_ts}");
         if m_ts > 0 {
             return (m_ts) as u64;
         } else {
@@ -1568,13 +1810,9 @@ impl TCP_Connections {
         dst: IpAddr,
         seqnr: u32,
         data: &[u8],
-        timestamp: DateTime<Utc>,
+        _timestamp: DateTime<Utc>,
         flags: u8,
     ) -> Option<tcp_data> {
-        /*println!(
-            "flags {}   {} {} {} {} {} {:x?} ",
-            flags, sp, dp, src, dst, seqnr, data
-        );*/
         if (flags & 1 != 0) || (flags & 4 != 0) {
             // FIN flag or reset
             self.add_data(sp, dp, src, dst, seqnr, data);
@@ -1605,22 +1843,22 @@ fn clean_tcp_list(tcp_list: &Arc<Mutex<TCP_Connections>>, rx: mpsc::Receiver<Str
     let timeout = time::Duration::from_secs(1);
 
     loop {
-        println!("{}", "Looping.... ".green());
-        println!("{}", "Locking.... ".blue());
+        //    println!("{}", "Looping.... ".green());
+        //   println!("{}", "Locking.... ".blue());
         let dur = tcp_list.lock().unwrap().check_timeout();
-        println!("{}", "UnLocking.... ".red());
+        //  println!("{}", "UnLocking.... ".red());
         match rx.try_recv() {
-            Ok(e) => {
-                println!("{} {:?}", "Disconnect".yellow(), e);
+            Ok(_e) => {
+                //println!("{} {:?}", "Disconnect".yellow(), _e);
                 return;
             }
             Err(TryRecvError::Disconnected) => {
-                println!("{}", "Lost connection".yellow());
+                //println!("{}", "Lost connection".yellow());
                 return;
             }
             Err(TryRecvError::Empty) => {}
         }
-        println!("{} {:?}", "sleeping".cyan(), dur);
+        //        println!("{} {:?}", "sleeping".cyan(), dur);
         sleep(std::cmp::max(timeout, time::Duration::from_secs(dur)));
     }
 }
@@ -1630,6 +1868,8 @@ fn parse_tcp(
     packet_info: &mut Packet_info,
     stats: &mut statistics,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
+    config: &Config,
+    skip_list: &Vec<Regex>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < 20 {
         return Err("Invalid IP header".into());
@@ -1656,7 +1896,7 @@ fn parse_tcp(
         return Err("Parse Error TCP".into());
     };
     //println!("{:x?}", dnsdata);
-    println!("{}", "2 Locking.... ".blue());
+    //println!("{}", "2 Locking.... ".blue());
     let r = tcp_list.lock().unwrap().process_data(
         sp,
         dp,
@@ -1667,11 +1907,12 @@ fn parse_tcp(
         packet_info.timestamp,
         flags,
     );
-    println!("{}", "2 UnLocking.... ".red());
+    //println!("{}", "2 UnLocking.... ".red());
     match r {
         Some(d) => {
+            stats.tcp += 1;
             //println!("Parsing TCP!!");
-            return parse_dns(&d.data, packet_info, stats);
+            return parse_dns(&d.data, packet_info, stats, config, skip_list);
         }
         None => {}
     };
@@ -1683,6 +1924,8 @@ fn parse_udp(
     packet: &[u8],
     packet_info: &mut Packet_info,
     stats: &mut statistics,
+    config: &Config,
+    skip_list: &Vec<Regex>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < 8 {
         return Err("Invalid UDP header".into());
@@ -1695,7 +1938,8 @@ fn parse_udp(
     packet_info.set_data_len(len as u32 - 8);
 
     if dp == 53 || sp == 53 || dp == 5353 || sp == 5353 {
-        return parse_dns(&packet[8..], packet_info, stats);
+        stats.udp += 1;
+        return parse_dns(&packet[8..], packet_info, stats, config, skip_list);
     } else {
         return Err(format!("Not a dns packet {} {}", dp, sp).into());
     }
@@ -1707,15 +1951,17 @@ fn parse_ip_data(
     packet_info: &mut Packet_info,
     stats: &mut statistics,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
+    config: &Config,
+    skip_list: &Vec<Regex>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if protocol == 6 {
         packet_info.set_protocol(DNS_Protocol::TCP);
         // TCP
-        return parse_tcp(&packet, packet_info, stats, tcp_list);
+        return parse_tcp(&packet, packet_info, stats, tcp_list, config, skip_list);
     } else if protocol == 17 {
         packet_info.set_protocol(DNS_Protocol::UDP);
         //  UDP
-        return parse_udp(&packet, packet_info, stats);
+        return parse_udp(&packet, packet_info, stats, config, skip_list);
     }
     return Ok(());
 }
@@ -1725,6 +1971,8 @@ fn parse_ipv4(
     packet_info: &mut Packet_info,
     stats: &mut statistics,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
+    config: &Config,
+    skip_list: &Vec<Regex>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < 20 {
         return Err("Invalid IPv6 packet".into());
@@ -1749,6 +1997,8 @@ fn parse_ipv4(
         packet_info,
         stats,
         tcp_list,
+        config,
+        skip_list,
     )?;
     return Ok(());
 }
@@ -1758,6 +2008,8 @@ fn parse_ipv6(
     packet_info: &mut Packet_info,
     stats: &mut statistics,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
+    config: &Config,
+    skip_list: &Vec<Regex>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < 40 {
         return Err("Invalid IPv6 packet".into());
@@ -1773,7 +2025,15 @@ fn parse_ipv6(
     packet_info.set_dest_ip(std::net::IpAddr::V6(dst));
     packet_info.set_source_ip(std::net::IpAddr::V6(src));
     let next_header = packet[6];
-    parse_ip_data(&packet[40..], next_header, packet_info, stats, tcp_list)?;
+    parse_ip_data(
+        &packet[40..],
+        next_header,
+        packet_info,
+        stats,
+        tcp_list,
+        config,
+        skip_list,
+    )?;
     return Ok(());
 }
 
@@ -1782,12 +2042,28 @@ fn parse_eth(
     packet_info: &mut Packet_info,
     stats: &mut statistics,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
+    config: &Config,
+    skip_list: &Vec<Regex>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     packet_info.frame_len = packet.len() as _;
     if packet[12..14] == [8, 0] {
-        return parse_ipv4(&packet[14..], packet_info, stats, tcp_list);
+        return parse_ipv4(
+            &packet[14..],
+            packet_info,
+            stats,
+            tcp_list,
+            config,
+            skip_list,
+        );
     } else if packet[12..14] == [0x86, 0xdd] {
-        return parse_ipv6(&packet[14..], packet_info, stats, tcp_list);
+        return parse_ipv6(
+            &packet[14..],
+            packet_info,
+            stats,
+            tcp_list,
+            config,
+            skip_list,
+        );
     } else {
         return Err(format!("Unknown packet type {:x?}", &packet[12..14]).into());
     }
@@ -1804,11 +2080,15 @@ fn packet_loop<T: pcap::State>(
     packet_queue: &Arc<Mutex<VecDeque<Option<Packet_info>>>>,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
     stats: &Arc<Mutex<statistics>>,
+    config: &Config,
+    skip_list: &Vec<Regex>,
 ) where
     T: pcap::Activated,
 {
-    // let mut stats = statistics::origin();
+    //println!("Starting loop");
     while let Ok(packet) = cap.next_packet() {
+        //println!("Packet");
+        //        println!("{:?}", cap.stats().unwrap());
         let mut packet_info: Packet_info = Default::default();
         packet_info.timestamp = DateTime::<Utc>::from_timestamp(
             packet.header.ts.tv_sec,
@@ -1820,23 +2100,32 @@ fn packet_loop<T: pcap::State>(
             &mut packet_info,
             &mut stats.lock().unwrap(),
             tcp_list,
+            config,
+            skip_list,
         );
         match result {
             Ok(_c) => {
                 packet_queue.lock().unwrap().push_back(Some(packet_info));
             }
             Err(error) => {
-                println!("{}", format!("{:?}", error).red());
+                eprintln!("{}", format!("{:?}", error));
             }
         }
     }
     packet_queue.lock().unwrap().push_back(None);
 }
 
-fn poll(packet_queue: &Arc<Mutex<VecDeque<Option<Packet_info>>>>, config: &Config) {
+fn poll(
+    packet_queue: &Arc<Mutex<VecDeque<Option<Packet_info>>>>,
+    config: &Config,
+    rx: mpsc::Receiver<String>,
+) {
+    //println!("Polling....");
     let mut timeout = time::Duration::from_millis(0);
     let mut output_file: Option<File> = None;
     let mut database_conn: Option<Mysql_connection> = None;
+    let mut dns_cache: DNS_Cache = DNS_Cache::new(5);
+    let mut last_push = Utc::now().timestamp() as u64;
     if config.output != "" {
         let mut options = OpenOptions::new();
         output_file = Some(
@@ -1848,7 +2137,12 @@ fn poll(packet_queue: &Arc<Mutex<VecDeque<Option<Packet_info>>>>, config: &Confi
         );
     }
     if config.database != "" {
-        let x = block_on(Mysql_connection::connect("localhost", "pdns", "password"));
+        let x = block_on(Mysql_connection::connect(
+            &config.dbhostname,
+            &config.dbusername,
+            &config.dbpassword,
+            &config.dbport,
+        ));
         database_conn = Some(x);
     }
 
@@ -1870,17 +2164,18 @@ fn poll(packet_queue: &Arc<Mutex<VecDeque<Option<Packet_info>>>>, config: &Confi
                         None => {}
                     };
                     match database_conn {
-                        Some(ref mut db) => {
-                            db.insert_or_update(&p1);
+                        Some(ref _db) => {
+                            for i in p1.dns_records {
+                                dns_cache.add(&i);
+                            }
                         }
                         None => {}
                     }
 
-                    //println!("{}", format!("{:#?}", p1).green());
                     timeout = time::Duration::from_millis(0);
                 }
                 None => {
-                    println!("Terminating poll()");
+                    //println!("Terminating poll()");
                     return;
                 }
             },
@@ -1891,6 +2186,48 @@ fn poll(packet_queue: &Arc<Mutex<VecDeque<Option<Packet_info>>>>, config: &Confi
                 }
             }
         }
+        let ct = Utc::now().timestamp() as u64;
+        if ct > (last_push as u64) + dns_cache.timeout {
+            //println!("{} {}", dns_cache, last_push);
+            match database_conn {
+                Some(ref mut db) => {
+                    for i in dns_cache.push_all() {
+                        db.insert_or_update_record(&i);
+                    }
+                 last_push = Utc::now().timestamp() as u64;
+                }
+                None => {}
+            }
+        }
+        match rx.try_recv() {
+            Ok(_e) => {
+                match database_conn {
+                    Some(ref mut db) => {
+                        for i in dns_cache.push_all() {
+                            db.insert_or_update_record(&i);
+                        }
+                        return;
+                    }
+                    None => {}
+                }
+                //println!("{} {:?}", "Disconnect".yellow(), _e);
+                return;
+            }
+            Err(TryRecvError::Disconnected) => {
+                match database_conn {
+                    Some(ref mut db) => {
+                        for i in dns_cache.push_all() {
+                            db.insert_or_update_record(&i);
+                        }
+                        return;
+                    }
+                    None => {}
+                } //println!("{}", "Lost connection".yellow());
+                return;
+            }
+            Err(TryRecvError::Empty) => {}
+        }
+        //        println!("{} {:?}", "sleeping".cyan(), dur);
     }
 }
 
@@ -1899,6 +2236,8 @@ fn parse_rrtypes(config_str: &str) -> Vec<DNS_RR_type> {
     if config_str == "" {
         rrtypes.push(DNS_RR_type::A);
         rrtypes.push(DNS_RR_type::AAAA);
+        rrtypes.push(DNS_RR_type::NS);
+        rrtypes.push(DNS_RR_type::MX);
         return rrtypes;
     } else if config_str == "*" {
         rrtypes = DNS_RR_type::iter().collect::<Vec<_>>();
@@ -1913,7 +2252,7 @@ fn parse_rrtypes(config_str: &str) -> Vec<DNS_RR_type> {
                 rrtypes.push(p);
             }
             Err(_e) => {
-                println!("Invalid RR type: {}", i);
+                eprintln!("Invalid RR type: {}", i);
             }
         }
     }
@@ -1925,138 +2264,101 @@ fn listen(address: String, port: u16) -> Option<TcpListener> {
         return None;
     }
     let addr = format!("{}:{}", address, port);
-    println!("{}", addr);
+    //println!("{}", addr);
     let x = TcpListener::bind(addr);
     match x {
         Ok(conn) => {
-            println!("{:?}", conn);
+            //println!("{:?}", conn);
             return Some(conn);
         }
         Err(_e) => {
-            println!("Cannot listen on {}:{}", address, port);
-            return None;
+            panic!("Cannot listen on {}:{}", address, port);
         }
     }
 }
 
-fn main() {
-    let matches = Command::new("pdns")
-        .version("1.0")
-        .author("")
-        .about("PassiveDNS")
-        .arg(arg!(--path <VALUE>).required(false).short('p'))
-        .arg(arg!(--server <VALUE>).required(false).short('s'))
-        .arg(arg!(--port <VALUE>).required(false).short('P'))
-        .arg(arg!(--rrtypes <VALUE>).required(false).short('r'))
-        .arg(arg!(--interface <VALUE>).required(false).short('i'))
-        .arg(arg!(--filter <VALUE>).required(false).short('f'))
-        .arg(arg!(--output <VALUE>).required(false).short('o'))
-        .arg(arg!(--database <VALUE>).required(false).short('d'))
-        .arg(
-            arg!(--output_type <VALUE>)
-                .required(false)
-                .default_missing_value("csv")
-                .short('t'),
-        )
-        .get_matches();
-    //let mut cap;
-    let empty_str = String::new();
-    let mut config = Config::new();
+fn read_skip_list(filename: &String) -> Vec<Regex> {
+    let mut file = match File::open(filename) {
+        Ok(file) => file,
+        Err(_) => {
+            eprintln!("no such file");
+            return Vec::new();
+        }
+    };
+    let mut file_contents = String::new();
+    match file.read_to_string(&mut file_contents) {
+        //   .ok() {
+        Ok(_) => {
+            let lines: Vec<Regex> = file_contents
+                .split("\n")
+                .map(|s: &str| s.trim().to_string())
+                .filter(|s| s != "")
+                .map(|s| Regex::new(s.as_str()).unwrap())
+                .collect();
+            return lines;
+        }
+        Err(_) => {
+            eprintln!("File could not be read");
+            return Vec::new();
+        }
+    };
+}
 
-    config.server = matches
-        .get_one::<String>("server")
-        .unwrap_or(&empty_str)
-        .clone();
-    config.port = matches
-        .get_one::<String>("port")
-        .unwrap_or(&String::from_str("1066").unwrap())
-        .clone()
-        .parse::<u16>()
-        .unwrap();
-    config.path = matches
-        .get_one::<String>("path")
-        .unwrap_or(&empty_str)
-        .clone();
-    config.interface = matches
-        .get_one::<String>("interface")
-        .unwrap_or(&empty_str)
-        .clone();
-    config.filter = matches
-        .get_one::<String>("filter")
-        .unwrap_or(&empty_str)
-        .clone();
-    config.output = matches
-        .get_one::<String>("output")
-        .unwrap_or(&empty_str)
-        .clone();
-    config.output_type = matches
-        .get_one::<String>("output_type")
-        .unwrap_or(&empty_str)
-        .clone();
-    config.database = matches
-        .get_one::<String>("database")
-        .unwrap_or(&empty_str)
-        .clone();
-    config.rr_type = parse_rrtypes(&matches.get_one("rrtypes").unwrap_or(&empty_str).clone());
-
-    println!("{:?}", config);
+fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &String) {
+    // println!("{:?}", config);
     let packet_queue = Arc::new(Mutex::new(VecDeque::new()));
     let tcp_list = Arc::new(Mutex::new(TCP_Connections::new()));
+    let stats = Arc::new(Mutex::new(statistics::origin(config.toplistsize)));
     let (tcp_tx, tcp_rx) = mpsc::channel();
-    let listener = listen(config.server.clone(), config.port.clone());
-    let stats = Arc::new(Mutex::new(statistics::origin()));
+    let (_pq_tx, pq_rx) = mpsc::channel();
+    let skiplist = read_skip_list(&config.skip_list_file);
     thread::scope(|s| {
-        let handle = s.spawn(|| poll(&packet_queue.clone(), &config));
+        let handle = s.spawn(|| poll(&packet_queue.clone(), &config, pq_rx));
         let handle2 = s.spawn(|| clean_tcp_list(&tcp_list.clone(), tcp_rx));
 
-        if config.path != "" {
-            let cap = Capture::from_file(&config.path);
+        if pcap_path != "" {
+            let cap = Capture::from_file(&pcap_path);
             match cap {
                 Ok(mut c) => {
                     c.filter(config.filter.as_str().as_ref(), false).unwrap();
                     let handle3 = s.spawn(|| {
-                        packet_loop(c, &packet_queue.clone(), &tcp_list.clone(), &stats.clone());
+                        packet_loop(
+                            c,
+                            &packet_queue.clone(),
+                            &tcp_list.clone(),
+                            &stats.clone(),
+                            config,
+                            &skiplist,
+                        );
                     });
                     handle3.join().unwrap();
                     // we wait for the main threat to terminate; then cancel the tcp cleanup threat
-                    println!("{}", "Sending end".bright_blue());
                     let _ = tcp_tx.send(String::from_str("the end").unwrap());
-                    println!("3");
                     handle.join().unwrap();
-                    println!("2");
                     handle2.join().unwrap();
-                    println!("1");
-                    println!("0");
                 }
                 Err(e) => {
-                    println!("{}", format!("{:?}", e).red());
-                    exit(-1);
+                    panic!("{}", format!("{:?}", e).red());
                 }
             }
         } else if config.interface != "" {
+            let listener = listen(config.server.clone(), config.port.clone());
             let handle4 = s.spawn(|| match listener {
-                Some(l) => {
-                    println!("Serving:");
-                    server(l, &stats.clone(), &tcp_list.clone())
-                }
-                None => {
-                    println!("No server");
-                }
+                Some(l) => server(l, &stats.clone(), &tcp_list.clone()),
+                None => {}
             });
-            let mut cap = Capture::from_device(config.interface.as_str())
-                .unwrap()
-                .promisc(true)
-                .immediate_mode(true)
-                .open()
-                .unwrap();
+            let Some(mut cap) = capin else {
+                panic!("Something wrong with the capture");
+            };
+            //            println!("Filter: {}", config.filter);
             cap.filter(config.filter.as_str(), false).unwrap();
             let link_type = cap.get_datalink();
-            println!("link: {:?}", link_type);
+
             if link_type != Linktype::ETHERNET {
                 panic!("Not ethernet");
             }
             let handle3 = s.spawn(|| {
-                packet_loop(cap, &packet_queue, &tcp_list, &stats);
+                packet_loop(cap, &packet_queue, &tcp_list, &stats, config, &skiplist);
             });
             handle3.join().unwrap();
             // we wait for the main threat to terminate; then cancel the tcp cleanup threat
@@ -2066,6 +2368,187 @@ fn main() {
             handle.join().unwrap();
         }
     });
+    //println!("{:#?}", stats.lock().unwrap().to_str());
+}
 
-    println!("{:#?}", stats.lock().unwrap().to_str());
+fn main() {
+    let matches = Command::new("pdns")
+        .version("1.0")
+        .author("Gavin Spearhead")
+        .about("PassiveDNS")
+        .arg(arg!(-c --config <VALUE>).required(false))
+        .arg(arg!(-H --dbhostname <VALUE>).required(false))
+        .arg(arg!(-T --dbport <VALUE>).required(false))
+        .arg(arg!(-u --dbusername <VALUE>).required(false))
+        .arg(arg!(-w --dbpassword <VALUE>).required(false))
+        .arg(arg!(-p --path <VALUE>).required(false))
+        .arg(arg!(-S --skip_list_file <VALUE>).required(false))
+        .arg(arg!(-l --listen <VALUE>).required(false))
+        .arg(arg!(-P --port <VALUE>).required(false))
+        .arg(arg!(-r --rrtypes <VALUE>).required(false))
+        .arg(arg!(-i --interface <VALUE>).required(false))
+        .arg(arg!(-f --filter <VALUE>).required(false))
+        .arg(arg!(-o --output <VALUE>).required(false))
+        .arg(arg!(-d --database <VALUE>).required(false))
+        .arg(arg!(-L --toplistsize <VALUE>).required(false))
+        .arg(arg!(-U --uid <VALUE>).required(false))
+        .arg(arg!(-g --gid <VALUE>).required(false))
+        .arg(
+            arg!(-C --promisc <VALUE>)
+                .required(false)
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            arg!(-D - -daemon)
+                .required(false)
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            arg!(-I --pid_file <VALUE>)
+                .required(false)
+                .default_missing_value("/var/run/pdns.pid"),
+        )
+        .arg(
+            arg!(-t --output_type <VALUE>)
+                .required(false)
+                .default_missing_value("csv"),
+        )
+        .get_matches();
+    let empty_str = String::new();
+    let mut config = Config::new();
+    //const DEFAULT_CONFIG_FILE: &str = "pdns.cfg";
+    config.config_file = matches
+        .get_one::<String>("config")
+        .unwrap_or(&String::from_str(&empty_str).unwrap())
+        .clone();
+
+    if config.config_file != "" {
+        let config_str = std::fs::read_to_string(&config.config_file).unwrap_or(String::new());
+        if !config_str.is_empty() {
+            match serde_json::from_str(&config_str) {
+                Ok(x) => {
+                    //                    println!("{:#?}", x);
+                    config = x;
+                }
+                Err(_e) => {
+                    let err_msg = format!("Failed to parse config file: {}", (config.config_file));
+                    panic!("{}", err_msg);
+                }
+            }
+        }
+    }
+    //  println!("config: {:#?}", config);
+    config.server = matches
+        .get_one::<String>("listen")
+        .unwrap_or(&config.server)
+        .clone();
+    config.port = matches
+        .get_one::<String>("port")
+        .unwrap_or(&format!("{}", config.port))
+        .clone()
+        .parse::<u16>()
+        .unwrap();
+    let pcap_path = matches
+        .get_one::<String>("path")
+        .unwrap_or(&empty_str)
+        .clone();
+    config.interface = matches
+        .get_one::<String>("interface")
+        .unwrap_or(&config.interface)
+        .clone();
+    config.filter = matches
+        .get_one::<String>("filter")
+        .unwrap_or(&config.filter)
+        .clone();
+    config.skip_list_file = matches
+        .get_one::<String>("skip_list_file")
+        .unwrap_or(&config.skip_list_file)
+        .clone();
+    config.output = matches
+        .get_one::<String>("output")
+        .unwrap_or(&config.output)
+        .clone();
+    config.output_type = matches
+        .get_one::<String>("output_type")
+        .unwrap_or(&config.output_type)
+        .clone();
+    config.database = matches
+        .get_one::<String>("database")
+        .unwrap_or(&config.database)
+        .clone();
+    config.daemon = matches
+        .get_one::<bool>("daemon")
+        .unwrap_or(&config.daemon)
+        .clone();
+    config.promisc = matches
+        .get_one::<bool>("promisc")
+        .unwrap_or(&config.promisc)
+        .clone();
+    config.toplistsize = matches
+        .get_one::<usize>("toplistsize")
+        .unwrap_or(&config.toplistsize)
+        .clone();
+    config.pid_file = matches
+        .get_one::<String>("pid_file")
+        .unwrap_or(&config.pid_file)
+        .clone();
+    config.gid = matches
+        .get_one::<String>("gid")
+        .unwrap_or(&config.gid)
+        .clone();
+    config.uid = matches
+        .get_one::<String>("uid")
+        .unwrap_or(&config.uid)
+        .clone();
+
+    let rr_types = parse_rrtypes(&matches.get_one("rrtypes").unwrap_or(&empty_str).clone());
+    if !rr_types.is_empty() {
+        config.rr_type = rr_types;
+    }
+    let stdout = File::open("/dev/null").unwrap();
+    let stderr = File::open("/dev/null").unwrap();
+    let daemonize = daemonize::Daemonize::new()
+        .pid_file("/var/run/pdns.pid") // Every method except `new` and `start`
+        .chown_pid_file(true) // is optional, see `Daemonize` documentation
+        .working_directory("/tmp") // for default behaviour.
+        .user(config.uid.as_str())
+        .group(config.gid.as_str()) // Group name
+        .umask(0o777) // Set umask, `0o027` by default.
+        .stdout(stdout) // Redirect stdout to `/tmp/daemon.out`.
+        .stderr(stderr) // Redirect stderr to `/tmp/daemon.err`.
+        //.privileged_action(|| "Executed before drop privileges")
+        ;
+    let mut cap = None;
+    if config.interface != "" {
+        // do it here otherwise PCAP hangs on open if we do it after daemonizing
+        cap = Some(
+            Capture::from_device(config.interface.as_str())
+                .unwrap()
+                .timeout(1000)
+                .promisc(true) // todo make a paramater
+                //                .immediate_mode(true) //seems to brak on ubuntu?
+                .open()
+                .unwrap(),
+        );
+    }
+    /*let mut options = OpenOptions::new();
+    std::fs::write(
+        "config.json",
+        serde_json::to_string_pretty(&config).unwrap(),
+    );*/
+
+    if config.daemon {
+        match daemonize.start() {
+            Ok(_) => {
+                //                println!("Daemonizing");
+                run(&config, cap, &pcap_path);
+            }
+            Err(_e) => {
+                //              println!("Error daemonizing {}", e);
+                exit(-1);
+            }
+        }
+    } else {
+        run(&config, cap, &pcap_path);
+    }
 }

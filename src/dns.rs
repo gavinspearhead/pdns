@@ -1,10 +1,8 @@
-#![crate_name = "dns"]
-
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::fmt;
-
 use strum::IntoEnumIterator;
 use strum_macros::EnumString;
-//#[macro_use]
 use strum_macros::{AsStaticStr, EnumIter};
 
 #[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq)]
@@ -13,7 +11,7 @@ pub enum DNS_Class {
     CS = 2,
     CH = 3,
     HS = 4,
-    ANY= 255,
+    ANY = 255,
 }
 
 impl DNS_Class {
@@ -40,14 +38,7 @@ impl DNS_Class {
     }
 }
 
-/*
-impl PartialEq for DNS_Class {
-    fn eq(&self, other: &Self) -> bool {
-        return *self as u16 == *other as u16;
-    }
-}*/
-
-#[derive(Debug, EnumIter, Copy, Clone, AsStaticStr, EnumString, PartialEq, Eq)]
+#[derive(Debug, EnumIter, Copy, Clone, AsStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DNS_RR_type {
     A = 1,
     A6 = 38,
@@ -142,7 +133,6 @@ pub enum DNS_RR_type {
     ZONEMD = 63,
 }
 
-
 impl DNS_RR_type {
     pub fn to_str(self) -> Result<String, Box<dyn std::error::Error>> {
         let x = self;
@@ -158,14 +148,12 @@ impl DNS_RR_type {
         return Err(format!("Invalid RR type  {:?}", val).into());
     }
 }
+
 impl fmt::Display for DNS_RR_type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         return write!(f, "{}", self.to_str().expect("RRtype Not found"));
     }
-
 }
-
-
 
 #[derive(Debug, Clone)]
 pub struct DNS_record {
@@ -175,6 +163,7 @@ pub struct DNS_record {
     pub(crate) name: String,
     pub(crate) rdata: String,
     pub(crate) count: u64,
+    pub(crate) timestamp: DateTime<Utc>,
 }
 
 impl DNS_record {
@@ -183,6 +172,21 @@ impl DNS_record {
             "{} {} {} {} {}",
             self.name, self.rr_type, self.class, self.ttl, self.rdata
         ));
+    }
+}
+
+impl std::fmt::Display for DNS_record {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        return write!(
+            f,
+            "Name: {} 
+            RData: {}  
+            RR Type: {}
+            Class:{}
+            Count: {}
+            Time: {}",
+            self.name, self.rdata, self.rr_type, self.class, self.count, self.timestamp
+        );
     }
 }
 
@@ -195,6 +199,7 @@ impl Default for DNS_record {
             name: String::new(),
             rdata: String::new(),
             count: 0,
+            timestamp: Utc::now(),
         }
     }
 }
@@ -212,6 +217,9 @@ pub fn dns_reply_type(u: u16) -> Result<&'static str, Box<dyn std::error::Error>
         }
         3 => {
             return Ok("NXDOMAIN");
+        }
+        4 => {
+            return Ok("NOTIMP");
         }
         5 => {
             return Ok("REFUSED");
@@ -337,7 +345,6 @@ pub fn key_protocol(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
     }
 }
 
-
 pub fn key_algorithm(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
     match u {
         1 => {
@@ -354,7 +361,6 @@ pub fn key_algorithm(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> 
         }
     }
 }
-
 
 pub fn sshfp_algorithm(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
     match u {
@@ -395,7 +401,7 @@ pub fn sshfp_fp_type(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> 
 
 pub fn dnssec_algorithm(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
     match u {
-        0=> {
+        0 => {
             return Ok("Reserved");
         }
         1 => {
@@ -443,8 +449,7 @@ pub fn dnssec_algorithm(u: u8) -> Result<&'static str, Box<dyn std::error::Error
 pub fn dnssec_digest(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
     print!("Digist {:x}", u);
     match u {
-    
-        0=> {
+        0 => {
             return Ok("Reserved");
         }
         1 => {
@@ -527,7 +532,6 @@ pub enum SVC_Param_Keys {
     ech = 5,
     ipv6hint = 6,
 }
-
 
 impl SVC_Param_Keys {
     pub fn find(val: u16) -> Result<Self, Box<dyn std::error::Error>> {
