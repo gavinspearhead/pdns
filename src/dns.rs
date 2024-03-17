@@ -164,13 +164,14 @@ pub struct DNS_record {
     pub(crate) rdata: String,
     pub(crate) count: u64,
     pub(crate) timestamp: DateTime<Utc>,
+    pub(crate) domain: String,
 }
 
 impl DNS_record {
     pub fn to_str(&self) -> Result<String, Box<dyn std::error::Error>> {
         return Ok(format!(
-            "{} {} {} {} {}",
-            self.name, self.rr_type, self.class, self.ttl, self.rdata
+            "{} {} {} {} {} {}",
+            self.name, self.rr_type, self.class, self.ttl, self.rdata, self.domain
         ));
     }
 }
@@ -184,8 +185,9 @@ impl std::fmt::Display for DNS_record {
             RR Type: {}
             Class:{}
             Count: {}
-            Time: {}",
-            self.name, self.rdata, self.rr_type, self.class, self.count, self.timestamp
+            Time: {},
+            Domain: {}",
+            self.name, self.rdata, self.rr_type, self.class, self.count, self.timestamp, self.domain
         );
     }
 }
@@ -200,6 +202,7 @@ impl Default for DNS_record {
             rdata: String::new(),
             count: 0,
             timestamp: Utc::now(),
+            domain: String::new(),
         }
     }
 }

@@ -10,6 +10,7 @@ use byteorder::{BigEndian, ByteOrder};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use clap::{arg, ArgAction, Command, Parser};
 use colored::Colorize;
+use openssl::conf;
 use core::fmt;
 use dns::{
     cert_type_str, dns_reply_type, dnssec_algorithm, dnssec_digest, sshfp_algorithm, sshfp_fp_type,
@@ -19,6 +20,7 @@ use dns::{
 use dns::{key_algorithm, key_protocol};
 use futures::executor::block_on;
 use pcap::{Active, Capture, Linktype};
+use publicsuffix::{List, Psl};
 use regex::Regex;
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Serialize};
@@ -26,7 +28,7 @@ use sqlx::mysql::MySqlPoolOptions;
 use sqlx::{MySql, Pool};
 use std::cmp::min;
 use std::collections::{HashMap, VecDeque};
-use std::fs::{File, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::process::exit;
@@ -41,6 +43,10 @@ use std::{
 use std::{thread, time};
 use strum::{AsStaticRef, IntoEnumIterator};
 
+//lazy_static::lazy_static! {
+// static ref PUBLICSUFFIXLIST: publicsuffix::List = include_str!("../data/public_suffix_list.dat").parse().unwrap();
+//}
+
 #[derive(Debug, Clone)]
 struct DNS_Cache {
     items: HashMap<(String, String, String), DNS_record>,
@@ -51,8 +57,7 @@ impl DNS_Cache {
     fn new(time_out: u64) -> DNS_Cache {
         return DNS_Cache {
             items: HashMap::new(),
-            timeout: time_out
-
+            timeout: time_out,
         };
     }
 
@@ -90,11 +95,12 @@ fn server(
     listener: TcpListener,
     stats: &Arc<Mutex<statistics>>,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
+    config: &Config
 ) {
     for stream in listener.incoming() {
         let stream = stream.unwrap();
 
-        handle_connection(stream, stats, tcp_list);
+        handle_connection(stream, stats, tcp_list, config);
     }
 }
 
@@ -102,6 +108,7 @@ fn handle_connection(
     mut stream: TcpStream,
     stats: &Arc<Mutex<statistics>>,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
+    config: &Config
 ) {
     let buf_reader = BufReader::new(&mut stream);
     let http_request: Vec<_> = buf_reader
@@ -114,6 +121,7 @@ fn handle_connection(
     if req[0] != ("GET") {
         return;
     }
+    
     let status_line = "HTTP/1.1 200 OK";
     if req[1] == ("/stats") {
         let stats_data = stats.lock().unwrap().clone();
@@ -151,21 +159,37 @@ fn handle_connection(
         let len = debug_str.len();
         let response = format!("{status_line}\r\nContent-Length: {len}\r\n\r\n{debug_str}");
         stream.write_all(response.as_bytes()).unwrap();
+    } else if req[1] == ("/config") {
+        let mut config_copy = config.clone();
+        if config_copy.dbpassword != "" {
+            config_copy.dbpassword = "****".to_string();
+        }
+        let s_str = serde_json::to_string(&config_copy).unwrap();
+        let len = s_str.len() + 2;
+        let response = format!("{status_line}\r\nContent-Length: {len}\r\n\r\n{s_str}\r\n");
+        stream.write_all(response.as_bytes()).unwrap();
+    } else {
+        let status_line = "HTTP/1.1 404 Not found";
+        let s = "Page not found";
+        let len = s.len() + 2;
+        let response = format!("{status_line}\r\nContent-Length: {len}\r\n\r\n{s}\r\n");
+        stream.write_all(response.as_bytes()).unwrap();
     }
     return;
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-struct Rank<
+struct Rank<T>
+where
     T: std::cmp::Eq + std::hash::Hash + std::fmt::Display + serde::Serialize + Default + Clone,
-> {
+{
     rank: HashMap<T, usize>,
     size: usize,
 }
 
-impl<
-        T: std::cmp::Eq + std::hash::Hash + std::fmt::Display + serde::Serialize + Default + Clone,
-    > Rank<T>
+impl<T> Rank<T>
+where
+    T: std::cmp::Eq + std::hash::Hash + std::fmt::Display + serde::Serialize + Default + Clone,
 {
     fn new(size_in: usize) -> Rank<T> {
         let r = Rank {
@@ -212,9 +236,9 @@ impl<
     }
 }
 
-impl<
-        T: std::cmp::Eq + std::hash::Hash + std::fmt::Display + serde::Serialize + Default + Clone,
-    > fmt::Display for Rank<T>
+impl<T> fmt::Display for Rank<T>
+where
+    T: std::cmp::Eq + std::hash::Hash + std::fmt::Display + serde::Serialize + Default + Clone,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut l = Vec::new();
@@ -229,9 +253,9 @@ impl<
     }
 }
 
-impl<
-        T: std::cmp::Eq + std::hash::Hash + std::fmt::Display + serde::Serialize + Default + Clone,
-    > Serialize for Rank<T>
+impl<T> Serialize for Rank<T>
+where
+    T: std::cmp::Eq + std::hash::Hash + std::fmt::Display + serde::Serialize + Default + Clone,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -267,11 +291,13 @@ struct Config {
     dbusername: String,
     dbport: String,
     dbpassword: String,
+    dbname: String,
     toplistsize: usize,
     skip_list_file: String,
     pid_file: String,
     uid: String,
     gid: String,
+    public_suffix_file: String,
 }
 
 impl Config {
@@ -292,11 +318,13 @@ impl Config {
             dbpassword: String::new(),
             dbport: String::new(),
             dbusername: String::new(),
+            dbname: String::new(),
             toplistsize: 20,
             skip_list_file: String::new(),
             pid_file: String::new(),
             gid: String::new(),
             uid: String::new(),
+            public_suffix_file: String::new(),
         };
         c.rr_type.extend(vec![
             DNS_RR_type::A,
@@ -496,8 +524,14 @@ struct Mysql_connection {
 }
 
 impl Mysql_connection {
-    async fn connect(host: &str, user: &str, pass: &str, port: &str) -> Mysql_connection {
-        let database_url = format!("mysql://{}:{}@{}:{}/pdns", user, pass, host, port);
+    async fn connect(
+        host: &str,
+        user: &str,
+        pass: &str,
+        port: &str,
+        dbname: &str,
+    ) -> Mysql_connection {
+        let database_url = format!("mysql://{}:{}@{}:{}/{}", user, pass, host, port, dbname);
         match MySqlPoolOptions::new()
             .max_connections(10)
             .connect(&database_url)
@@ -516,24 +550,74 @@ impl Mysql_connection {
     pub fn insert_or_update_record(&mut self, record: &DNS_record) {
         let i = record;
         let ts = i.timestamp.timestamp();
-        let q_res = block_on(sqlx::query(r#"INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN) VALUES (
-                ?, ?, ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?)) ON DUPLICATE KEY UPDATE
+
+        let q = r#"INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN, DOMAIN) VALUES (
+                ?, ?, ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?), ?) ON DUPLICATE KEY UPDATE
                 TTL = if (TTL < ?, ?, TTL), COUNT = COUNT + ?, LAST_SEEN = if (LAST_SEEN < FROM_UNIXTIME(?), FROM_UNIXTIME(?), LAST_SEEN),
-                FIRST_SEEN = if (FIRST_SEEN > FROM_UNIXTIME(?), FROM_UNIXTIME(?), FIRST_SEEN)"#)
-            .bind(&i.name)
-            .bind(&i.class).bind(&i.rr_type)
-            .bind(&i.rdata).bind(i.ttl).bind(i.count)
-            .bind(ts).bind(ts)
-            .bind(i.ttl).bind(i.ttl).bind(i.count)
-            .bind(ts).bind(ts)
-            .bind(ts).bind(ts)
-            .execute(&self.pool));
+                FIRST_SEEN = if (FIRST_SEEN > FROM_UNIXTIME(?), FROM_UNIXTIME(?), FIRST_SEEN)"#;
+        let q_res = block_on(
+            sqlx::query(q)
+                .bind(&i.name)
+                .bind(&i.class)
+                .bind(&i.rr_type)
+                .bind(&i.rdata)
+                .bind(i.ttl)
+                .bind(i.count)
+                .bind(ts)
+                .bind(ts)
+                .bind(&i.domain)
+                .bind(i.ttl)
+                .bind(i.ttl)
+                .bind(i.count)
+                .bind(ts)
+                .bind(ts)
+                .bind(ts)
+                .bind(ts)
+                .execute(&self.pool),
+        );
         match q_res {
             Ok(_x) => {
                 //println!("{:?}", x);
             }
             Err(e) => {
                 eprintln!("Error: {}", e);
+            }
+        }
+    }
+    pub fn create_database(&mut self) {
+        let create_cmd = "CREATE TABLE `pdns` (
+        `ID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+        `QUERY` varchar(255) NOT NULL DEFAULT '',
+        `MAPTYPE` varchar(16) NOT NULL DEFAULT '',
+        `RR` varchar(10) NOT NULL DEFAULT '',
+        `ANSWER` varchar(255) NOT NULL DEFAULT '',
+        `TTL` bigint(10) unsigned NOT NULL DEFAULT 0,
+        `COUNT` bigint(20) unsigned NOT NULL DEFAULT 1,
+        `FIRST_SEEN` datetime NOT NULL,
+        `LAST_SEEN` datetime NOT NULL,
+        `asn` int(8) DEFAULT NULL,
+        `asn_owner` varchar(256) DEFAULT NULL,
+        `prefix` varchar(128) DEFAULT NULL,
+        `domain` varchar(255) DEFAULT NULL,
+        `zone` int(8) DEFAULT 0,
+        PRIMARY KEY (`ID`),
+        UNIQUE KEY `MARQ` (`MAPTYPE`,`ANSWER`,`RR`,`QUERY`),
+        KEY `query_idx` (`QUERY`),
+        KEY `answer_idx` (`ANSWER`),
+        KEY `LAST_SEEN` (`LAST_SEEN`),
+        KEY `FIRSTSEEN` (`FIRST_SEEN`),
+        KEY `domain_idx` (`domain`),
+        KEY `asn` (`asn`)
+      ) ENGINE=MyISAM  DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+      ";
+        let q_res = block_on(sqlx::query(create_cmd).execute(&self.pool));
+        match q_res {
+            Ok(_x) => {
+                //println!("{:?}", _x);
+            }
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                exit(-1);
             }
         }
     }
@@ -668,6 +752,18 @@ fn parse_dns_https(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
     return Ok(res);
 }
 
+fn decode_gpos_size(val: u8) -> String {
+    let mut base = ((val & 0xf0) >> 4) as u64;
+    let exp = (val & 0x0f) as u64;
+    if exp < 2 {
+        if exp == 1 {
+            base *= 10;
+        }
+        return format!("0.{}", base);
+    }
+    return format!("{}{}", base, "0".repeat(exp as usize - 2));
+}
+
 fn dns_parse_rdata(
     rdata: &[u8],
     rrtype: DNS_RR_type,
@@ -675,7 +771,6 @@ fn dns_parse_rdata(
     offset_in: usize,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let mut outdata = String::new();
-    //println!("{}", rrtype);
     if rrtype == DNS_RR_type::A {
         if rdata.len() != 4 {
             return Err("Invalid record".into());
@@ -693,7 +788,9 @@ fn dns_parse_rdata(
         let addr = Ipv6Addr::from(r);
         return Ok(addr.to_string());
     } else if rrtype == DNS_RR_type::CNAME || rrtype == DNS_RR_type::DNAME {
+        //nprintln!("!!!CNAME");
         let (s, _offset) = dns_parse_name(packet, offset_in)?;
+
         return Ok(s);
     } else if rrtype == DNS_RR_type::CAA {
         let flag = rdata[0];
@@ -817,17 +914,75 @@ fn dns_parse_rdata(
         ));
     } else if rrtype == DNS_RR_type::LOC {
         let version = dns_read_u8(rdata, 0)?;
+        if version != 0 { 
+            return Err("Unknown GPOS version".into());
+        }
         let size = dns_read_u8(rdata, 1)?;
         let hor_prec = dns_read_u8(rdata, 2)?;
         let ver_prec = dns_read_u8(rdata, 3)?;
+        let mut lat = dns_read_u32(rdata, 4)? as i64;
+        let mut lon = dns_read_u32(rdata, 8)? as i64;
+        let alt = dns_read_u32(rdata, 12)? as i64;
+        let mut north: char = ' ';
+        let mut east: char = ' ';
+        let equator: i64 = 1 << 31;
+        if lat > equator {
+            north = 'N';
+            lat -= equator;
+        } else {
+            north = 'S';
+            lat = equator - lon;
+        }
+        if lon > equator {
+            east = 'E';
+            lon -= equator;
+        } else {
+            east = 'W';
+            lon = equator - lon;
+        }
+        let ho = lon / (1000 * 60 * 60);
+        lon %= 1000 * 60 * 60;
+        let mo = lon / (1000 * 60);
+        lon %= 1000 * 60;
+        let so = lon as f64 / 1000.0;
+        let ha = lat / (1000 * 60 * 60);
+        lat %= 1000 * 60 * 60;
+        let ma = lat / (1000 * 60);
+        lat %= 1000 * 60;
+        let sa = lat as f64 / 1000.0;
 
-        // todo need to do coversion to degrees
-        let lat = dns_read_u32(rdata, 4)?;
-        let lon = dns_read_u32(rdata, 8)?;
-        let alt = dns_read_u32(rdata, 10)?;
+        let a = (alt as f64 / 100.0) - 100000.0;
+
+        /*println!(
+            "{} {} {} {} {} {} {} {} {}m {}m {}m {}m ",
+            ha,
+            ma,
+            sa,
+            north,
+            ho,
+            mo,
+            so,
+            east,
+            a,
+            decode_gpos_size(size),
+            decode_gpos_size(hor_prec),
+            decode_gpos_size(ver_prec)
+        );*/
+
         return Ok(format!(
-            "{} {} {} {} {} {} {}",
-            version, size, hor_prec, ver_prec, lat, lon, alt
+            "{} {} {} {} {} {} {} {} {}m {}m {}m {}m ",
+            ha,
+            ma,
+            sa,
+            north,
+            ho,
+            mo,
+            so,
+            east,
+            a,
+            decode_gpos_size(size),
+            decode_gpos_size(hor_prec),
+            decode_gpos_size(ver_prec)
         ));
     } else if rrtype == DNS_RR_type::NAPTR {
         let order = dns_read_u16(rdata, 0)?;
@@ -1499,7 +1654,7 @@ fn parse_question(
 ) -> Result<usize, Box<dyn std::error::Error>> {
     let (name, offset) = dns_parse_name(packet, offset_in)?;
     if match_skip_list(&name, skip_list) {
-        return Err("skipped".into());
+        return Err(format!("skipped: {}", name).into());
     }
     let rrtype_val = dns_read_u16(packet, offset)?;
     let rrtype = parse_rrtype(rrtype_val)?;
@@ -1526,29 +1681,34 @@ fn parse_answer(
     offset_in: usize,
     stats: &mut statistics,
     config: &Config,
+    publicsuffixlist: &publicsuffix::List,
 ) -> Result<usize, Box<dyn std::error::Error>> {
     let (name, mut offset) = dns_parse_name(packet, offset_in)?;
     let rrtype_val = BigEndian::read_u16(&packet[offset..offset + 2]);
     let rrtype = parse_rrtype(rrtype_val)?;
+    //println!("{}", rrtype);
     if rrtype == DNS_RR_type::OPT {
         return Ok(0);
     }
     if !config.rr_type.contains(&rrtype) {
+        //println!("zz {}", rrtype);
         return Ok(0);
     }
     let class_val = dns_read_u16(packet, offset + 2)?;
+    //println!("YY {}", class_val);
     let class = parse_class(class_val)?;
     let ttl = dns_read_u32(packet, offset + 4)?;
     let datalen: usize = dns_read_u16(packet, offset + 8)?.into();
     let data = &packet[offset + 10..offset + 10 + datalen];
     let rdata = dns_parse_rdata(data, rrtype, packet, offset + 10)?;
+    //println!("YY {}", rdata);
     stats
         .atypes
         .entry(rrtype.to_str()?)
         .and_modify(|c| *c += 1)
         .or_insert(1);
     offset += 11;
-    /*println!(
+    /*     println!(
         "Answer N: {} L:{} RR:{} C:{} TTL:{} DL:{} D:{:x?} R: {} ",
         name,
         offset,
@@ -1559,6 +1719,23 @@ fn parse_answer(
         data,
         rdata
     );*/
+    // println!("XX {}", name);
+
+    let domain = publicsuffixlist.domain(name.as_bytes());
+    let mut domain_str = String::new();
+    //println!("{:?} == {:?}", domain, domain_str);
+    match domain {
+        Some(d) => {
+            let x = d.trim().as_bytes().to_vec();
+            domain_str = String::from_utf8(x).unwrap_or(String::new());
+            //            domain_str = String::from_str(str::from_utf8(d.as_bytes()).or(Ok(""))?)?;
+            //println!("{:?}", domain_str);
+        }
+        None => {
+            eprint!("Not found {}", name);
+        }
+    }
+
     let rec: DNS_record = DNS_record {
         rr_type: rrtype.to_str()?,
         ttl: ttl,
@@ -1567,6 +1744,7 @@ fn parse_answer(
         rdata: rdata.trim_end_matches('.').to_string(),
         count: 1,
         timestamp: packet_info.timestamp,
+        domain: domain_str,
     };
     packet_info.add_dns_record(rec);
     offset += datalen as usize - 1;
@@ -1580,6 +1758,7 @@ fn parse_dns(
     stats: &mut statistics,
     config: &Config,
     skip_list: &Vec<Regex>,
+    publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut offset = 0;
     let mut _len = 0;
@@ -1652,15 +1831,15 @@ fn parse_dns(
     }
     //println!("Answers {} {} ", answers, offset);
     for _i in 0..answers {
-        offset += parse_answer(packet_info, packet, offset, stats, config)?;
+        offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist)?;
     }
     //println!("Authority {} {}", authority, offset);
     for _i in 0..authority {
-        offset += parse_answer(packet_info, packet, offset, stats, config)?;
+        offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist)?;
     }
     //println!("Additional {} {}", additional, offset);
     for _i in 0..additional {
-        offset += parse_answer(packet_info, packet, offset, stats, config)?;
+        offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist)?;
     }
     return Ok(());
 }
@@ -1870,6 +2049,7 @@ fn parse_tcp(
     tcp_list: &Arc<Mutex<TCP_Connections>>,
     config: &Config,
     skip_list: &Vec<Regex>,
+    publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < 20 {
         return Err("Invalid IP header".into());
@@ -1912,7 +2092,14 @@ fn parse_tcp(
         Some(d) => {
             stats.tcp += 1;
             //println!("Parsing TCP!!");
-            return parse_dns(&d.data, packet_info, stats, config, skip_list);
+            return parse_dns(
+                &d.data,
+                packet_info,
+                stats,
+                config,
+                skip_list,
+                publicsuffixlist,
+            );
         }
         None => {}
     };
@@ -1926,6 +2113,7 @@ fn parse_udp(
     stats: &mut statistics,
     config: &Config,
     skip_list: &Vec<Regex>,
+    publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < 8 {
         return Err("Invalid UDP header".into());
@@ -1939,7 +2127,14 @@ fn parse_udp(
 
     if dp == 53 || sp == 53 || dp == 5353 || sp == 5353 {
         stats.udp += 1;
-        return parse_dns(&packet[8..], packet_info, stats, config, skip_list);
+        return parse_dns(
+            &packet[8..],
+            packet_info,
+            stats,
+            config,
+            skip_list,
+            publicsuffixlist,
+        );
     } else {
         return Err(format!("Not a dns packet {} {}", dp, sp).into());
     }
@@ -1953,15 +2148,31 @@ fn parse_ip_data(
     tcp_list: &Arc<Mutex<TCP_Connections>>,
     config: &Config,
     skip_list: &Vec<Regex>,
+    publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if protocol == 6 {
         packet_info.set_protocol(DNS_Protocol::TCP);
         // TCP
-        return parse_tcp(&packet, packet_info, stats, tcp_list, config, skip_list);
+        return parse_tcp(
+            &packet,
+            packet_info,
+            stats,
+            tcp_list,
+            config,
+            skip_list,
+            publicsuffixlist,
+        );
     } else if protocol == 17 {
         packet_info.set_protocol(DNS_Protocol::UDP);
         //  UDP
-        return parse_udp(&packet, packet_info, stats, config, skip_list);
+        return parse_udp(
+            &packet,
+            packet_info,
+            stats,
+            config,
+            skip_list,
+            publicsuffixlist,
+        );
     }
     return Ok(());
 }
@@ -1973,6 +2184,7 @@ fn parse_ipv4(
     tcp_list: &Arc<Mutex<TCP_Connections>>,
     config: &Config,
     skip_list: &Vec<Regex>,
+    publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < 20 {
         return Err("Invalid IPv6 packet".into());
@@ -1999,6 +2211,7 @@ fn parse_ipv4(
         tcp_list,
         config,
         skip_list,
+        publicsuffixlist,
     )?;
     return Ok(());
 }
@@ -2010,6 +2223,7 @@ fn parse_ipv6(
     tcp_list: &Arc<Mutex<TCP_Connections>>,
     config: &Config,
     skip_list: &Vec<Regex>,
+    publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < 40 {
         return Err("Invalid IPv6 packet".into());
@@ -2033,6 +2247,7 @@ fn parse_ipv6(
         tcp_list,
         config,
         skip_list,
+        publicsuffixlist,
     )?;
     return Ok(());
 }
@@ -2044,6 +2259,7 @@ fn parse_eth(
     tcp_list: &Arc<Mutex<TCP_Connections>>,
     config: &Config,
     skip_list: &Vec<Regex>,
+    publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
     packet_info.frame_len = packet.len() as _;
     if packet[12..14] == [8, 0] {
@@ -2054,6 +2270,7 @@ fn parse_eth(
             tcp_list,
             config,
             skip_list,
+            publicsuffixlist,
         );
     } else if packet[12..14] == [0x86, 0xdd] {
         return parse_ipv6(
@@ -2063,6 +2280,7 @@ fn parse_eth(
             tcp_list,
             config,
             skip_list,
+            publicsuffixlist,
         );
     } else {
         return Err(format!("Unknown packet type {:x?}", &packet[12..14]).into());
@@ -2085,6 +2303,21 @@ fn packet_loop<T: pcap::State>(
 ) where
     T: pcap::Activated,
 {
+    let publicsuffixlist: publicsuffix::List = match fs::read_to_string(&config.public_suffix_file)
+    {
+        Ok(c) => match c.as_str().parse() {
+            Ok(d) => d,
+            Err(_) => {
+                panic!(
+                    "Cannot parse public suffic file: {}",
+                    config.public_suffix_file
+                );
+            }
+        },
+        Err(_) => {
+            panic!("Cannot read file {}", config.public_suffix_file);
+        }
+    };
     //println!("Starting loop");
     while let Ok(packet) = cap.next_packet() {
         //println!("Packet");
@@ -2102,6 +2335,7 @@ fn packet_loop<T: pcap::State>(
             tcp_list,
             config,
             skip_list,
+            &publicsuffixlist,
         );
         match result {
             Ok(_c) => {
@@ -2142,6 +2376,7 @@ fn poll(
             &config.dbusername,
             &config.dbpassword,
             &config.dbport,
+            &config.dbname,
         ));
         database_conn = Some(x);
     }
@@ -2194,7 +2429,7 @@ fn poll(
                     for i in dns_cache.push_all() {
                         db.insert_or_update_record(&i);
                     }
-                 last_push = Utc::now().timestamp() as u64;
+                    last_push = Utc::now().timestamp() as u64;
                 }
                 None => {}
             }
@@ -2232,12 +2467,9 @@ fn poll(
 }
 
 fn parse_rrtypes(config_str: &str) -> Vec<DNS_RR_type> {
+    println!("{}", config_str);
     let mut rrtypes: Vec<DNS_RR_type> = Vec::new();
     if config_str == "" {
-        rrtypes.push(DNS_RR_type::A);
-        rrtypes.push(DNS_RR_type::AAAA);
-        rrtypes.push(DNS_RR_type::NS);
-        rrtypes.push(DNS_RR_type::MX);
         return rrtypes;
     } else if config_str == "*" {
         rrtypes = DNS_RR_type::iter().collect::<Vec<_>>();
@@ -2344,7 +2576,7 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &String) {
         } else if config.interface != "" {
             let listener = listen(config.server.clone(), config.port.clone());
             let handle4 = s.spawn(|| match listener {
-                Some(l) => server(l, &stats.clone(), &tcp_list.clone()),
+                Some(l) => server(l, &stats.clone(), &tcp_list.clone(), &config.clone()),
                 None => {}
             });
             let Some(mut cap) = capin else {
@@ -2371,6 +2603,28 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &String) {
     //println!("{:#?}", stats.lock().unwrap().to_str());
 }
 
+fn create_database(config: &Config) {
+    if config.database != "" {
+        let x = block_on(Mysql_connection::connect(
+            &config.dbhostname,
+            &config.dbusername,
+            &config.dbpassword,
+            &config.dbport,
+            &config.dbname,
+        ));
+        let mut database_conn = Some(x);
+        match database_conn {
+            Some(ref mut _db) => {
+                _db.create_database();
+                eprintln!("Database created");
+            }
+            None => {
+                panic!("No database configured");
+            }
+        }
+    }
+}
+
 fn main() {
     let matches = Command::new("pdns")
         .version("1.0")
@@ -2392,7 +2646,13 @@ fn main() {
         .arg(arg!(-d --database <VALUE>).required(false))
         .arg(arg!(-L --toplistsize <VALUE>).required(false))
         .arg(arg!(-U --uid <VALUE>).required(false))
+        .arg(arg!(-F --public_suffix_file <VALUE>).required(false))
         .arg(arg!(-g --gid <VALUE>).required(false))
+        .arg(
+            arg!(--create_database)
+                .required(false)
+                .action(ArgAction::SetTrue),
+        )
         .arg(
             arg!(-C --promisc <VALUE>)
                 .required(false)
@@ -2427,7 +2687,6 @@ fn main() {
         if !config_str.is_empty() {
             match serde_json::from_str(&config_str) {
                 Ok(x) => {
-                    //                    println!("{:#?}", x);
                     config = x;
                 }
                 Err(_e) => {
@@ -2438,6 +2697,10 @@ fn main() {
         }
     }
     //  println!("config: {:#?}", config);
+    let create_db = matches
+        .get_one::<bool>("create_database")
+        .unwrap_or(&false)
+        .clone();
     config.server = matches
         .get_one::<String>("listen")
         .unwrap_or(&config.server)
@@ -2500,11 +2763,23 @@ fn main() {
         .get_one::<String>("uid")
         .unwrap_or(&config.uid)
         .clone();
+    config.public_suffix_file = matches
+        .get_one::<String>("public_suffix_file")
+        .unwrap_or(&config.public_suffix_file)
+        .clone();
 
     let rr_types = parse_rrtypes(&matches.get_one("rrtypes").unwrap_or(&empty_str).clone());
     if !rr_types.is_empty() {
         config.rr_type = rr_types;
     }
+
+//    println!("{:#?}", config);
+
+    if create_db {
+        create_database(&config);
+        exit(0);
+    }
+
     let stdout = File::open("/dev/null").unwrap();
     let stderr = File::open("/dev/null").unwrap();
     let daemonize = daemonize::Daemonize::new()
