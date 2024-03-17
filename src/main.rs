@@ -10,7 +10,7 @@ use byteorder::{BigEndian, ByteOrder};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use clap::{arg, ArgAction, Command, Parser};
 use colored::Colorize;
-use openssl::conf;
+use syslog::{Facility, Error};
 use core::fmt;
 use dns::{
     cert_type_str, dns_reply_type, dnssec_algorithm, dnssec_digest, sshfp_algorithm, sshfp_fp_type,
@@ -20,7 +20,7 @@ use dns::{
 use dns::{key_algorithm, key_protocol};
 use futures::executor::block_on;
 use pcap::{Active, Capture, Linktype};
-use publicsuffix::{List, Psl};
+use publicsuffix::Psl;
 use regex::Regex;
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Serialize};
@@ -42,6 +42,7 @@ use std::{
 };
 use std::{thread, time};
 use strum::{AsStaticRef, IntoEnumIterator};
+use log::*;
 
 //lazy_static::lazy_static! {
 // static ref PUBLICSUFFIXLIST: publicsuffix::List = include_str!("../data/public_suffix_list.dat").parse().unwrap();
@@ -95,7 +96,7 @@ fn server(
     listener: TcpListener,
     stats: &Arc<Mutex<statistics>>,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
-    config: &Config
+    config: &Config,
 ) {
     for stream in listener.incoming() {
         let stream = stream.unwrap();
@@ -108,7 +109,7 @@ fn handle_connection(
     mut stream: TcpStream,
     stats: &Arc<Mutex<statistics>>,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
-    config: &Config
+    config: &Config,
 ) {
     let buf_reader = BufReader::new(&mut stream);
     let http_request: Vec<_> = buf_reader
@@ -121,7 +122,7 @@ fn handle_connection(
     if req[0] != ("GET") {
         return;
     }
-    
+
     let status_line = "HTTP/1.1 200 OK";
     if req[1] == ("/stats") {
         let stats_data = stats.lock().unwrap().clone();
@@ -542,7 +543,7 @@ impl Mysql_connection {
                 return Mysql_connection { pool: mysql_pool };
             }
             Err(err) => {
-                eprintln!("Failed to connect to the database: {:?}", err);
+                log::error!("Failed to connect to the database: {:?}", err);
                 std::process::exit(1);
             }
         };
@@ -577,10 +578,10 @@ impl Mysql_connection {
         );
         match q_res {
             Ok(_x) => {
-                //println!("{:?}", x);
+                //    println!("{:?}", _x);
             }
             Err(e) => {
-                eprintln!("Error: {}", e);
+                log::error!("Error: {}", e);
             }
         }
     }
@@ -616,7 +617,7 @@ impl Mysql_connection {
                 //println!("{:?}", _x);
             }
             Err(e) => {
-                eprintln!("Error: {}", e);
+                log::error!("Error: {}", e);
                 exit(-1);
             }
         }
@@ -914,7 +915,7 @@ fn dns_parse_rdata(
         ));
     } else if rrtype == DNS_RR_type::LOC {
         let version = dns_read_u8(rdata, 0)?;
-        if version != 0 { 
+        if version != 0 {
             return Err("Unknown GPOS version".into());
         }
         let size = dns_read_u8(rdata, 1)?;
@@ -1732,7 +1733,7 @@ fn parse_answer(
             //println!("{:?}", domain_str);
         }
         None => {
-            eprint!("Not found {}", name);
+            log::debug!("Not found {}", name);
         }
     }
 
@@ -2303,25 +2304,28 @@ fn packet_loop<T: pcap::State>(
 ) where
     T: pcap::Activated,
 {
+    log::debug!("Reading pubsuf list {}", config.public_suffix_file);
     let publicsuffixlist: publicsuffix::List = match fs::read_to_string(&config.public_suffix_file)
     {
         Ok(c) => match c.as_str().parse() {
             Ok(d) => d,
             Err(_) => {
-                panic!(
+                log::error!(
                     "Cannot parse public suffic file: {}",
                     config.public_suffix_file
                 );
+                exit(-1);
             }
         },
         Err(_) => {
-            panic!("Cannot read file {}", config.public_suffix_file);
+            log::error!("Cannot read file {}", config.public_suffix_file);
+            exit(-1);
         }
     };
-    //println!("Starting loop");
+    log::debug!("Starting loop");
     while let Ok(packet) = cap.next_packet() {
-        //println!("Packet");
-        //        println!("{:?}", cap.stats().unwrap());
+        log::debug!("Packet");
+        //        eprintln!("{:?}", cap.stats().unwrap());
         let mut packet_info: Packet_info = Default::default();
         packet_info.timestamp = DateTime::<Utc>::from_timestamp(
             packet.header.ts.tv_sec,
@@ -2342,7 +2346,7 @@ fn packet_loop<T: pcap::State>(
                 packet_queue.lock().unwrap().push_back(Some(packet_info));
             }
             Err(error) => {
-                eprintln!("{}", format!("{:?}", error));
+                log::debug!("{}", format!("{:?}", error));
             }
         }
     }
@@ -2484,7 +2488,7 @@ fn parse_rrtypes(config_str: &str) -> Vec<DNS_RR_type> {
                 rrtypes.push(p);
             }
             Err(_e) => {
-                eprintln!("Invalid RR type: {}", i);
+                log::debug!("Invalid RR type: {}", i);
             }
         }
     }
@@ -2513,7 +2517,7 @@ fn read_skip_list(filename: &String) -> Vec<Regex> {
     let mut file = match File::open(filename) {
         Ok(file) => file,
         Err(_) => {
-            eprintln!("no such file");
+            log::error!("Skip file not found: {}", filename);
             return Vec::new();
         }
     };
@@ -2530,7 +2534,7 @@ fn read_skip_list(filename: &String) -> Vec<Regex> {
             return lines;
         }
         Err(_) => {
-            eprintln!("File could not be read");
+            log::error!("File could not be read {}", filename);
             return Vec::new();
         }
     };
@@ -2574,21 +2578,25 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &String) {
                 }
             }
         } else if config.interface != "" {
+            log::debug!("Listening on interface {}", config.interface);
             let listener = listen(config.server.clone(), config.port.clone());
             let handle4 = s.spawn(|| match listener {
                 Some(l) => server(l, &stats.clone(), &tcp_list.clone(), &config.clone()),
                 None => {}
             });
             let Some(mut cap) = capin else {
+                log::error!("Something wrong with the capture");
                 panic!("Something wrong with the capture");
             };
-            //            println!("Filter: {}", config.filter);
+            log::debug!("Filter: {}", config.filter);
             cap.filter(config.filter.as_str(), false).unwrap();
             let link_type = cap.get_datalink();
 
             if link_type != Linktype::ETHERNET {
+                log::error!("Not ethernet");
                 panic!("Not ethernet");
             }
+            log::debug!("Ready to start packet loop");
             let handle3 = s.spawn(|| {
                 packet_loop(cap, &packet_queue, &tcp_list, &stats, config, &skiplist);
             });
@@ -2619,17 +2627,27 @@ fn create_database(config: &Config) {
                 eprintln!("Database created");
             }
             None => {
+                log::error!("No database configured");
                 panic!("No database configured");
             }
         }
     }
 }
 
+const AUTHOR: &str = "Gavin Spearhead";
+const PROGNAME: &str = "PassiveDNS";
+const VERSION: &str = "1.0";
+
+
+
 fn main() {
+    syslog::init(Facility::LOG_USER,
+        log::LevelFilter::Info,
+        Some(PROGNAME)).expect("Logging failed");
     let matches = Command::new("pdns")
-        .version("1.0")
-        .author("Gavin Spearhead")
-        .about("PassiveDNS")
+        .version(VERSION)
+        .author(AUTHOR)
+        .about(PROGNAME)
         .arg(arg!(-c --config <VALUE>).required(false))
         .arg(arg!(-H --dbhostname <VALUE>).required(false))
         .arg(arg!(-T --dbport <VALUE>).required(false))
@@ -2676,7 +2694,6 @@ fn main() {
         .get_matches();
     let empty_str = String::new();
     let mut config = Config::new();
-    //const DEFAULT_CONFIG_FILE: &str = "pdns.cfg";
     config.config_file = matches
         .get_one::<String>("config")
         .unwrap_or(&String::from_str(&empty_str).unwrap())
@@ -2773,8 +2790,6 @@ fn main() {
         config.rr_type = rr_types;
     }
 
-//    println!("{:#?}", config);
-
     if create_db {
         create_database(&config);
         exit(0);
@@ -2782,6 +2797,8 @@ fn main() {
 
     let stdout = File::open("/dev/null").unwrap();
     let stderr = File::open("/dev/null").unwrap();
+    //let stdout = File::open("/tmp/pdns.out").unwrap();
+    //let stderr = File::open("/tmp/pdns.err").unwrap();
     let daemonize = daemonize::Daemonize::new()
         .pid_file("/var/run/pdns.pid") // Every method except `new` and `start`
         .chown_pid_file(true) // is optional, see `Daemonize` documentation
@@ -2811,19 +2828,20 @@ fn main() {
         "config.json",
         serde_json::to_string_pretty(&config).unwrap(),
     );*/
-
     if config.daemon {
+        log::debug!("Daemonising");
         match daemonize.start() {
             Ok(_) => {
-                //                println!("Daemonizing");
+                log::debug!("Daemonising2");
                 run(&config, cap, &pcap_path);
             }
             Err(_e) => {
-                //              println!("Error daemonizing {}", e);
+                log::error!("Error daemonizing {}", _e);
                 exit(-1);
             }
         }
     } else {
+        log::debug!("NOT Daemonising");
         run(&config, cap, &pcap_path);
     }
 }
