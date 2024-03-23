@@ -4,6 +4,9 @@ use std::fmt;
 use strum::IntoEnumIterator;
 use strum_macros::EnumString;
 use strum_macros::{AsStaticStr, EnumIter};
+use std::str::FromStr;
+
+
 
 #[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq)]
 pub enum DNS_Class {
@@ -132,7 +135,6 @@ pub enum DNS_RR_type {
     X25 = 19,
     ZONEMD = 63,
 }
-
 impl DNS_RR_type {
     pub fn to_str(self) -> Result<String, Box<dyn std::error::Error>> {
         let x = self;
@@ -146,6 +148,14 @@ impl DNS_RR_type {
             }
         }
         return Err(format!("Invalid RR type  {:?}", val).into());
+    }
+    pub fn to_vec() -> Vec<DNS_RR_type> 
+    {
+     return DNS_RR_type::iter().collect::<Vec<_>>();
+    }
+    pub fn from_string(s: &str) ->Result<DNS_RR_type, strum::ParseError>
+    {
+        return DNS_RR_type::from_str(s);
     }
 }
 
@@ -165,6 +175,9 @@ pub struct DNS_record {
     pub(crate) count: u64,
     pub(crate) timestamp: DateTime<Utc>,
     pub(crate) domain: String,
+    pub(crate) asn: String,
+    pub(crate) asn_owner: String,
+    pub(crate) prefix: String,
 }
 
 impl DNS_record {
@@ -186,8 +199,11 @@ impl std::fmt::Display for DNS_record {
             Class:{}
             Count: {}
             Time: {},
-            Domain: {}",
-            self.name, self.rdata, self.rr_type, self.class, self.count, self.timestamp, self.domain
+            Domain: {}
+            ASN: {}
+            ASN Owner: {}
+            Prefix: {}",
+            self.name, self.rdata, self.rr_type, self.class, self.count, self.timestamp, self.domain, self.asn, self.asn_owner, self.prefix
         );
     }
 }
@@ -203,6 +219,10 @@ impl Default for DNS_record {
             count: 0,
             timestamp: Utc::now(),
             domain: String::new(),
+            asn: String::new(),
+            asn_owner: String::new(),
+            prefix: String::new(),
+
         }
     }
 }
