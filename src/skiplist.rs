@@ -4,6 +4,9 @@ use regex::Regex;
 
 
 pub fn read_skip_list(filename: &str) -> Vec<Regex> {
+    if filename.is_empty() {
+            return Vec::new();
+    }
     let mut file = match File::open(filename) {
         Ok(file) => file,
         Err(_) => {
@@ -13,7 +16,6 @@ pub fn read_skip_list(filename: &str) -> Vec<Regex> {
     };
     let mut file_contents = String::new();
     match file.read_to_string(&mut file_contents) {
-        //   .ok() {
         Ok(_) => {
             let lines: Vec<Regex> = file_contents
                 .split("\n")

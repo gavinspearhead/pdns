@@ -1,9 +1,11 @@
-use std::{io::{BufRead, BufReader, Write}, net::{TcpListener, TcpStream}, sync::{Arc, Mutex}};
+use std::{
+    io::{BufRead, BufReader, Write}, net::{TcpListener, TcpStream}, process::exit, sync::{Arc, Mutex}
+};
 
-use crate::statistics::Statistics;
+
 use crate::config::Config;
+use crate::statistics::Statistics;
 use crate::tcp_connection::TCP_Connections;
-
 
 pub fn listen(address: &str, port: u16) -> Option<TcpListener> {
     if address == "" {
@@ -30,9 +32,15 @@ pub(crate) fn server(
     config: &Config,
 ) {
     for stream in listener.incoming() {
-        let stream = stream.unwrap();
-
-        handle_connection(stream, stats, tcp_list, config);
+        match stream {
+            Ok(stream) => {
+                handle_connection(stream, stats, tcp_list, config);
+            }
+            Err(e) => {
+                log::error!("Cannot open stream {}", e);
+                exit(-1);
+            }
+        }
     }
 }
 

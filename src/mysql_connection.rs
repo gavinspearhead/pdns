@@ -36,7 +36,7 @@ impl Mysql_connection {
     pub fn insert_or_update_record(&mut self, record: &DNS_record) {
         let i = record;
         let ts = i.timestamp.timestamp();
-        println!("QQQQ  {:?}", record);
+        //println!("QQQQ  {:?}", record);
         let q = r#"INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN, DOMAIN, asn, asn_owner, prefix) VALUES (
                 ?, ?, ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?), ?, ?,?,?) ON DUPLICATE KEY UPDATE
                 TTL = if (TTL < ?, ?, TTL), COUNT = COUNT + ?, 
@@ -73,11 +73,10 @@ impl Mysql_connection {
                 .execute(&self.pool),
         );
         match q_res {
-            Ok(_x) => {
-                    println!("{:?}", _x);
+            Ok(x) => {
+                log::debug!("Success {:?}", x)
             }
             Err(e) => {
-                    println!("{:?}", e);
                 log::error!("Error: {}", e);
             }
         }
@@ -110,8 +109,8 @@ impl Mysql_connection {
       ";
         let q_res = block_on(sqlx::query(create_cmd).execute(&self.pool));
         match q_res {
-            Ok(_x) => {
-                //println!("{:?}", _x);
+            Ok(x) => {
+                log::debug!("Success {:?}", x)
             }
             Err(e) => {
                 log::error!("Error: {}", e);
@@ -134,7 +133,7 @@ pub(crate) fn create_database(config: &Config) {
         match database_conn {
             Some(ref mut _db) => {
                 _db.create_database();
-                eprintln!("Database created");
+                //eprintln!("Database created");
             }
             None => {
                 log::error!("No database configured");

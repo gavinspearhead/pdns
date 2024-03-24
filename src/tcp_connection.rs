@@ -1,5 +1,4 @@
 use std::{collections::HashMap, net::IpAddr, sync::{mpsc::{self, TryRecvError}, Arc, Mutex}, thread::sleep, time};
-
 use chrono::{DateTime, Utc};
 
 use crate::tcp_data::Tcp_data;
@@ -20,13 +19,13 @@ impl Tcp_connection {
         timestamp: DateTime<Utc>,
     ) -> Tcp_connection {
         let t = Tcp_connection {
-            in_data: Tcp_data::init(sp, dp, src, dst, seqnr),
+            in_data: Tcp_data::new(sp, dp, src, dst, seqnr),
             ts: timestamp,
         };
         return t;
     }
-    pub fn get_data(self) -> Tcp_data {
-        return self.in_data;
+    pub fn get_data(&self) -> &Tcp_data {
+        return &self.in_data;
     }
 }
 
@@ -72,17 +71,16 @@ impl TCP_Connections {
     }
 
     pub fn get_data(
-        self,
+        &self,
         sp: u16,
         dp: u16,
         src: IpAddr,
         dst: IpAddr,
-    ) -> Result<Tcp_data, Box<dyn std::error::Error>> {
+    ) -> Result<&Tcp_data, Box<dyn std::error::Error>> {
         let Some(c) = self.connections.get(&(src, dst, sp, dp)) else {
             return Err("connection not found".into());
         };
-        let p: Tcp_data = c.clone().get_data();
-        return Ok(p);
+        return Ok(c.get_data());
     }
 
     pub fn remove(&mut self, sp: u16, dp: u16, src: IpAddr, dst: IpAddr) {
@@ -106,7 +104,7 @@ impl TCP_Connections {
             self.connections.remove(&k);
         }
         if m_ts > 0 {
-            return (m_ts) as u64;
+            return m_ts as u64;
         } else {
             return self.timelimit as u64;
         }
@@ -126,10 +124,11 @@ impl TCP_Connections {
         if (flags & 1 != 0) || (flags & 4 != 0) {
             // FIN flag or reset
             self.add_data(sp, dp, src, dst, seqnr, data);
-            match self.clone().get_data(sp, dp, src, dst) {
+            match self.get_data(sp, dp, src, dst) {
                 Ok(x) => {
+                    let y = x.clone();
                     self.remove(sp, dp, src, dst);
-                    return Some(x);
+                    return Some(y);
                 }
                 Err(_e) => {
                     self.remove(sp, dp, src, dst);

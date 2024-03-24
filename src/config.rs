@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, str::FromStr};
+use std::str::FromStr;
 
 use clap::{arg, ArgAction, Command};
 use serde::{Deserialize, Serialize};
@@ -78,15 +78,15 @@ impl Config {
 
 pub fn parse_rrtypes(config_str: &str) -> Vec<DNS_RR_type> {
     let mut rrtypes: Vec<DNS_RR_type> = Vec::new();
+    //println!("{:?} ", config_str);
     if config_str == "" {
         return rrtypes;
     } else if config_str == "*" {
         rrtypes = DNS_RR_type::to_vec();
-
         return rrtypes;
     }
 
-    let elems = config_str.split(',');
+    let elems = config_str.split(',').map(|x| x.trim());
     for i in elems {
         let a = DNS_RR_type::from_string(i);
         match a {
@@ -94,61 +94,95 @@ pub fn parse_rrtypes(config_str: &str) -> Vec<DNS_RR_type> {
                 rrtypes.push(p);
             }
             Err(_e) => {
-                log::debug!("Invalid RR type: {}", i);
+                log::error!("Invalid RR type: {}", i);
             }
         }
     }
     return rrtypes;
 }
 
-pub fn parse_config(mut config: &mut Config, mut pcap_path: &mut String, mut create_db: &mut bool) {
+#[cfg(test)]
+mod tests {
+    use crate::{config::{parse_config, parse_rrtypes}, dns::DNS_RR_type};
+    #[test]
+    fn test_parse_rrtypes1() {
+        assert_eq!(
+            parse_rrtypes("A,    AAAA,   A6,HTTPS"),
+            vec![
+                DNS_RR_type::A,
+                DNS_RR_type::AAAA,
+                DNS_RR_type::A6,
+                DNS_RR_type::HTTPS
+            ]
+        );
+    }
+    #[test]
+    fn test_parse_rrtypes2() {
+        assert_eq!(
+            parse_rrtypes("A,AAAA,A6,HTTPS, NS"),
+            vec![
+                DNS_RR_type::A,
+                DNS_RR_type::AAAA,
+                DNS_RR_type::A6,
+                DNS_RR_type::HTTPS,
+                DNS_RR_type::NS
+            ]
+        );
+    }
+
+    
+
+}
+
+pub(crate) fn parse_config(config: &mut Config, mut pcap_path: &mut String, create_db: &mut bool) {
     let matches = Command::new("pdns")
         .version(VERSION)
         .author(AUTHOR)
         .about(PROGNAME)
-        .arg(arg!(-c --config <VALUE>).required(false))
-        .arg(arg!(-H --dbhostname <VALUE>).required(false))
-        .arg(arg!(-T --dbport <VALUE>).required(false))
-        .arg(arg!(-u --dbusername <VALUE>).required(false))
-        .arg(arg!(-w --dbpassword <VALUE>).required(false))
-        .arg(arg!(-p --path <VALUE>).required(false))
-        .arg(arg!(-S --skip_list_file <VALUE>).required(false))
-        .arg(arg!(-l --listen <VALUE>).required(false))
-        .arg(arg!(-P --port <VALUE>).required(false))
-        .arg(arg!(-r --rrtypes <VALUE>).required(false))
-        .arg(arg!(-i --interface <VALUE>).required(false))
-        .arg(arg!(-f --filter <VALUE>).required(false))
-        .arg(arg!(-o --output <VALUE>).required(false))
-        .arg(arg!(-d --database <VALUE>).required(false))
-        .arg(arg!(-L --toplistsize <VALUE>).required(false))
-        .arg(arg!(-U --uid <VALUE>).required(false))
-        .arg(arg!(-F --public_suffix_file <VALUE>).required(false))
-        .arg(arg!(-A --asn_database_file <VALUE>).required(false))
-        .arg(arg!(-g --gid <VALUE>).required(false))
+        .arg(arg!(-c --config <VALUE>).required(false).long_help("location of the config file"))
+        .arg(arg!(-H --dbhostname <VALUE>).required(false).long_help("hostname of the database"))
+        .arg(arg!(-T --dbport <VALUE>).required(false).long_help("port number of the database"))
+        .arg(arg!(-u --dbusername <VALUE>).required(false).long_help("username for the database"))
+        .arg(arg!(-w --dbpassword <VALUE>).required(false).long_help("password for the database"))
+        .arg(arg!(-p --path <VALUE>).required(false).long_help("Location of a pcap file to parse"))
+        .arg(arg!(-S --skip_list_file <VALUE>).required(false).long_help("location of the file, containing regular expressions with domains to ignore"))
+        .arg(arg!(-l --listen <VALUE>).required(false).long_help("Hostname or IP address for the internal web server to liste no"))
+        .arg(arg!(-P --port <VALUE>).required(false).long_help("Port number for the internal web server to listen on"))
+        .arg(arg!(-r --rrtypes <VALUE>).required(false).long_help("Comma-separated list of RR types to record"))
+        .arg(arg!(-i --interface <VALUE>).required(false).long_help("Interface to listen on for packet capture"))
+        .arg(arg!(-f --filter <VALUE>).required(false).long_help("BPF filter definition (port 53)"))
+        .arg(arg!(-o --output <VALUE>).required(false).long_help("Write output to a file; - for standard out"))
+        .arg(arg!(-d --database <VALUE>).required(false).long_help("Write output to a database (mysql)"))
+        .arg(arg!(-L --toplistsize <VALUE>).required(false).long_help("Number of entries in the statistics"))
+        .arg(arg!(-U --uid <VALUE>).required(false).long_help("UID to change to after dropping privileges"))
+        .arg(arg!(-F --public_suffix_file <VALUE>).required(false).long_help("Location of the public suffix file"))
+        .arg(arg!(-A --asn_database_file <VALUE>).required(false).long_help("Location of the ASN database (ip2asn-combined.tsv)"))
+        .arg(arg!(-g --gid <VALUE>).required(false).long_help("GID to change to after dropping privileges"))
         .arg(
             arg!(--create_database)
                 .required(false)
-                .action(ArgAction::SetTrue),
+                .action(ArgAction::SetTrue)
+                .long_help("Create a database"),
         )
         .arg(
             arg!(-C --promisc <VALUE>)
                 .required(false)
-                .action(ArgAction::SetTrue),
+                .action(ArgAction::SetTrue).long_help("Put the interface is promiscuous mode when capturing"),
         )
         .arg(
             arg!(-D - -daemon)
                 .required(false)
-                .action(ArgAction::SetTrue),
+                .action(ArgAction::SetTrue).long_help("Start as a background process (daemon)"),
         )
         .arg(
             arg!(-I --pid_file <VALUE>)
                 .required(false)
-                .default_missing_value("/var/run/pdns.pid"),
+                .default_missing_value("/var/run/pdns.pid").long_help("Location of the PID file"),
         )
         .arg(
             arg!(-t --output_type <VALUE>)
                 .required(false)
-                .default_missing_value("csv"),
+                .default_missing_value("csv").long_help("Output format (CSV or JSON"),
         )
         .get_matches();
     let empty_str = String::new();
@@ -161,11 +195,11 @@ pub fn parse_config(mut config: &mut Config, mut pcap_path: &mut String, mut cre
         let config_str = std::fs::read_to_string(&config.config_file).unwrap_or(String::new());
         if !config_str.is_empty() {
             match Config::from_str(&config_str) {
-                Ok(mut x) => {
+                Ok(x) => {
                     x.clone_into(config);
                 }
-                Err(_e) => {
-                    let err_msg = format!("Failed to parse config file: {}", (config.config_file));
+                Err(e) => {
+                    let err_msg = format!("Failed to parse config file: {} {}", (config.config_file), e);
                     panic!("{}", err_msg);
                 }
             }
@@ -173,7 +207,7 @@ pub fn parse_config(mut config: &mut Config, mut pcap_path: &mut String, mut cre
     }
 
     //  println!("config: {:#?}", config);
-    *create_db = *matches.get_one::<bool>("create_database").unwrap_or(&false) ;
+    *create_db = *matches.get_one::<bool>("create_database").unwrap_or(&false);
 
     config.server = matches
         .get_one::<String>("listen")

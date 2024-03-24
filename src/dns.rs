@@ -1,14 +1,12 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::str::FromStr;
 use strum::IntoEnumIterator;
 use strum_macros::EnumString;
 use strum_macros::{AsStaticStr, EnumIter};
-use std::str::FromStr;
 
-
-
-#[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq, EnumString, AsStaticStr)]
 pub enum DNS_Class {
     IN = 1,
     CS = 2,
@@ -19,18 +17,10 @@ pub enum DNS_Class {
 
 impl DNS_Class {
     pub fn to_str(self) -> Result<String, Box<dyn std::error::Error>> {
-        if self == DNS_Class::IN {
-            return Ok("IN".parse().unwrap());
-        } else if self == DNS_Class::CS {
-            return Ok(("CS").parse().unwrap());
-        } else if self == DNS_Class::CH {
-            return Ok(("CH").parse().unwrap());
-        } else if self == DNS_Class::HS {
-            return Ok(("HS").parse().unwrap());
-        } else {
-            return Err(format!("Invalid Class {:?}", self).into());
-        }
+        let x = self;
+        return Ok(String::from(strum::AsStaticRef::as_static(&x)));
     }
+
     pub fn find(val: u16) -> Result<Self, Box<dyn std::error::Error>> {
         for cl in DNS_Class::iter() {
             if (cl as u16) == val {
@@ -41,7 +31,23 @@ impl DNS_Class {
     }
 }
 
-#[derive(Debug, EnumIter, Copy, Clone, AsStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg(test)]
+mod tests {
+    use crate::dns::DNS_Class;
+
+    #[test]
+    fn test_dns_class2() {
+        assert_eq!(DNS_Class::IN.to_str().unwrap(), "IN");
+    }
+    #[test]
+    fn test_dns_class1() {
+        assert_eq!(DNS_Class::find(4).unwrap(), DNS_Class::HS);
+    }
+}
+
+#[derive(
+    Debug, EnumIter, Copy, Clone, AsStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize,
+)]
 pub enum DNS_RR_type {
     A = 1,
     A6 = 38,
@@ -149,23 +155,40 @@ impl DNS_RR_type {
         }
         return Err(format!("Invalid RR type  {:?}", val).into());
     }
-    pub fn to_vec() -> Vec<DNS_RR_type> 
-    {
-     return DNS_RR_type::iter().collect::<Vec<_>>();
+    pub fn to_vec() -> Vec<DNS_RR_type> {
+        return DNS_RR_type::iter().collect::<Vec<_>>();
     }
-    pub fn from_string(s: &str) ->Result<DNS_RR_type, strum::ParseError>
-    {
+    pub fn from_string(s: &str) -> Result<DNS_RR_type, strum::ParseError> {
         return DNS_RR_type::from_str(s);
     }
 }
 
 impl fmt::Display for DNS_RR_type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        return write!(f, "{}", self.to_str().expect("RRtype Not found"));
+        return write!(f, "{}", self.to_str().unwrap_or("RRtype Not found".into()));
+    }
+}
+
+#[cfg(test)]
+mod tests1 {
+    use std::str::FromStr;
+
+    use crate::dns::DNS_RR_type;
+
+    #[test]
+    fn test_dns_rr() {
+        assert_eq!(DNS_RR_type::HTTPS.to_str().unwrap(), "HTTPS");
+        assert_eq!(DNS_RR_type::AAAA.to_str().unwrap(), "AAAA");
+    }
+    #[test]
+    fn test_dns_rr1() {
+        assert_eq!(DNS_RR_type::from_str("HTTPS").unwrap(), DNS_RR_type::HTTPS);
+        assert_eq!(DNS_RR_type::from_str("AAAA").unwrap(), DNS_RR_type::AAAA);
     }
 }
 
 #[derive(Debug, Clone)]
+
 pub struct DNS_record {
     pub(crate) rr_type: String,
     pub(crate) ttl: u32,
@@ -183,8 +206,8 @@ pub struct DNS_record {
 impl DNS_record {
     pub fn to_str(&self) -> Result<String, Box<dyn std::error::Error>> {
         return Ok(format!(
-            "{} {} {} {} {} {}",
-            self.name, self.rr_type, self.class, self.ttl, self.rdata, self.domain
+            "{} {} {} {} {} {} {} {} {}",
+            self.name, self.rr_type, self.class, self.ttl, self.rdata, self.domain, self.asn, self.asn_owner, self.prefix
         ));
     }
 }
@@ -203,7 +226,16 @@ impl std::fmt::Display for DNS_record {
             ASN: {}
             ASN Owner: {}
             Prefix: {}",
-            self.name, self.rdata, self.rr_type, self.class, self.count, self.timestamp, self.domain, self.asn, self.asn_owner, self.prefix
+            self.name,
+            self.rdata,
+            self.rr_type,
+            self.class,
+            self.count,
+            self.timestamp,
+            self.domain,
+            self.asn,
+            self.asn_owner,
+            self.prefix
         );
     }
 }
@@ -222,7 +254,6 @@ impl Default for DNS_record {
             asn: String::new(),
             asn_owner: String::new(),
             prefix: String::new(),
-
         }
     }
 }
@@ -470,7 +501,6 @@ pub fn dnssec_algorithm(u: u8) -> Result<&'static str, Box<dyn std::error::Error
 }
 
 pub fn dnssec_digest(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
-    print!("Digist {:x}", u);
     match u {
         0 => {
             return Ok("Reserved");
@@ -505,6 +535,16 @@ pub fn zonemd_digest(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> 
             return Err("Unkown digest".into());
         }
     };
+}
+
+pub fn ipsec_alg(alg: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
+    if alg == 1 {
+        return Ok("DSA");
+    } else if alg == 2 {
+        return Ok("RSA");
+    } else {
+        return Err("Unknown algorithm".into());
+    }
 }
 
 pub fn cert_type_str(t: u16) -> Result<&'static str, Box<dyn std::error::Error>> {

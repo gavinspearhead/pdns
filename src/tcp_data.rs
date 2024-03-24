@@ -24,7 +24,7 @@ impl Tcp_data {
         return self.data.len() > Tcp_data::MAX_TCP_LEN;
     }
 
-    pub fn init(sp: u16, dp: u16, src: IpAddr, dst: IpAddr, seqnr: u32) -> Tcp_data {
+    pub fn new(sp: u16, dp: u16, src: IpAddr, dst: IpAddr, seqnr: u32) -> Tcp_data {
         let t = Tcp_data {
             sp: sp,
             dp: dp,

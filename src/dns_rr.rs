@@ -6,18 +6,24 @@ use base64::Engine;
 use byteorder::{BigEndian, ByteOrder};
 use strum::AsStaticRef;
 
-use crate::dns::{cert_type_str, dnssec_algorithm, dnssec_digest, key_algorithm, key_protocol, sshfp_algorithm, sshfp_fp_type, tlsa_algorithm, tlsa_cert_usage, tlsa_selector, zonemd_digest, DNS_RR_type, SVC_Param_Keys};
-use crate::dns_helper::{base32hex_encode, dns_read_u16, dns_read_u32, dns_read_u8, parse_protocol, parse_rrtype, timestame_to_str};
+use crate::dns::{
+    cert_type_str, dnssec_algorithm, dnssec_digest, ipsec_alg, key_algorithm, key_protocol,
+    sshfp_algorithm, sshfp_fp_type, tlsa_algorithm, tlsa_cert_usage, tlsa_selector, zonemd_digest,
+    DNS_RR_type, SVC_Param_Keys,
+};
+use crate::dns_helper::{
+    base32hex_encode, dns_read_u16, dns_read_u32, dns_read_u8, parse_protocol, parse_rrtype,
+    timestame_to_str,
+};
 
-
-pub fn dns_parse_name(
+pub(crate) fn dns_parse_name(
     packet: &[u8],
     offset: usize,
 ) -> Result<(String, usize), Box<dyn std::error::Error>> {
     let (mut name, offset_out) = dns_parse_name_internal(packet, offset)?;
     if name.len() == 0 {
         name = String::from(".");
-    } else  {
+    } else {
         name = name.trim_end_matches('.').to_string();
     }
     return Ok((name, offset_out));
@@ -31,15 +37,13 @@ fn dns_parse_name_internal(
     let mut name = String::new();
     //    println!("{} {:x?}", offset_in, &packet[offset_in.. offset_in+20]);
     while packet[idx] != 0 {
-        let Some(val) = packet.get(idx) else {
-            return Err("Invalid index".into());
-        };
-        if *val > 63 {
+        let val = dns_read_u8(packet, idx)?;
+        if val > 63 {
             let pos = (dns_read_u16(packet, idx)? & 0x3fff) as usize;
             let (name1, _len) = dns_parse_name(&packet, pos)?;
             return Ok((name + &name1, idx + 2));
         } else {
-            let label_len: usize = *packet.get(idx).unwrap() as usize;
+            let label_len: usize = dns_read_u8(packet, idx)? as usize;
             idx += 1;
             let Some(label) = packet.get(idx..(idx + (label_len))) else {
                 return Err("Invalid index !!".into());
@@ -52,7 +56,7 @@ fn dns_parse_name_internal(
     return Ok((name, idx + 1));
 }
 
-fn parse_dns_https(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+fn parse_rr_https(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
     let svc_prio = dns_read_u16(rdata, 0)?;
     let (target, mut offset) = dns_parse_name(rdata, 2)?;
     let mut res = String::new();
@@ -147,78 +151,713 @@ fn decode_gpos_size(val: u8) -> String {
     return format!("{}{}", base, "0".repeat(exp as usize - 2));
 }
 
+fn parse_rr_a(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    if rdata.len() != 4 {
+        return Err("Invalid record".into());
+    }
+    /*outdata.push_str(&format!(
+        "{}.{}.{}.{}",
+        rdata[0], rdata[1], rdata[2], rdata[3]
+    ));*/
+    let r: [u8; 4] = rdata.try_into()?;
+    let addr = Ipv4Addr::from(r);
+    return Ok(addr.to_string());
+}
+
+fn parse_rr_aaaa(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    if rdata.len() != 16 {
+        return Err("Invalid record".into());
+    }
+    /*outdata.push_str(&format!(
+        "{}.{}.{}.{}",
+        rdata[0], rdata[1], rdata[2], rdata[3]
+    ));*/
+    let r: [u8; 16] = rdata.try_into()?;
+    let addr = Ipv6Addr::from(r);
+    return Ok(addr.to_string());
+}
+
+fn parse_rr_caa(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let flag = dns_read_u8(rdata, 0)?;
+    let tag_len = dns_read_u8(rdata, 1)?;
+    let Some(r) = rdata.get(2..2 + tag_len as usize) else {
+        return Err("Index error".into());
+    };
+    let tag = std::str::from_utf8(r)?;
+    let Some(r) = rdata.get(2 + tag_len as usize..) else {
+        return Err("Index error".into());
+    };
+    let value = std::str::from_utf8(r)?;
+    return Ok(format!("{} {} ({})", tag, value, flag));
+}
+
+fn parse_rr_soa(packet: &[u8], offset_in: usize) -> Result<String, Box<dyn std::error::Error>> {
+    let mut offset: usize = offset_in;
+    let ns: String;
+    let mb: String;
+    (ns, offset) = dns_parse_name(packet, offset)?;
+    (mb, offset) = dns_parse_name(packet, offset)?;
+    let sn = dns_read_u32(packet, offset)?;
+    let refr = dns_read_u32(packet, offset + 4)?;
+    let ret = dns_read_u32(packet, offset + 8)?;
+    let exp = dns_read_u32(packet, offset + 16)?;
+    let ttl = dns_read_u32(packet, offset + 16)?;
+    return Ok(format!(
+        "{} {} {} {} {} {} {}",
+        ns, mb, sn, refr, ret, exp, ttl
+    ));
+}
+
+fn parse_rr_txt(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let mut pos = 0;
+    let mut res = String::new();
+    while pos < rdata.len() {
+        let tlen: usize = rdata[pos].into();
+        let Some(r) = rdata.get(1 + pos..pos + tlen + 1) else {
+            return Err("Index error".into());
+        };
+        res += &format!("{} ", std::str::from_utf8(r)?);
+        pos += 1 + tlen;
+    }
+    return Ok(String::from(res));
+}
+
+fn parse_rr_hinfo(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let cpu_len1 = dns_read_u8(rdata, 0)?;
+    let cpu_len: usize = cpu_len1 as usize;
+    let mut offset: usize = 1;
+    let Some(r) = rdata.get(offset..offset + cpu_len as usize) else {
+        return Err("Index error".into());
+    };
+    let mut s = String::from(std::str::from_utf8(r)?);
+    offset += cpu_len as usize;
+    let os_len = dns_read_u8(rdata, offset)? as usize;
+    offset += 1;
+    s.push(' ');
+    let Some(r) = rdata.get(offset..offset + os_len) else {
+        return Err("Index error".into());
+    };
+    s += &String::from(std::str::from_utf8(r)?);
+    return Ok(s);
+}
+
+fn parse_rr_loc(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let version = dns_read_u8(rdata, 0)?;
+    if version != 0 {
+        return Err("Unknown GPOS version".into());
+    }
+    let size = dns_read_u8(rdata, 1)?;
+    let hor_prec = dns_read_u8(rdata, 2)?;
+    let ver_prec = dns_read_u8(rdata, 3)?;
+    let mut lat = dns_read_u32(rdata, 4)? as i64;
+    let mut lon = dns_read_u32(rdata, 8)? as i64;
+    let alt = dns_read_u32(rdata, 12)? as i64;
+    let north: char;
+    let east: char;
+    let equator: i64 = 1 << 31;
+    if lat > equator {
+        north = 'N';
+        lat -= equator;
+    } else {
+        north = 'S';
+        lat = equator - lon;
+    }
+    if lon > equator {
+        east = 'E';
+        lon -= equator;
+    } else {
+        east = 'W';
+        lon = equator - lon;
+    }
+    let ho = lon / (1000 * 60 * 60);
+    lon %= 1000 * 60 * 60;
+    let mo = lon / (1000 * 60);
+    lon %= 1000 * 60;
+    let so = lon as f64 / 1000.0;
+    let ha = lat / (1000 * 60 * 60);
+    lat %= 1000 * 60 * 60;
+    let ma = lat / (1000 * 60);
+    lat %= 1000 * 60;
+    let sa = lat as f64 / 1000.0;
+    let a = (alt as f64 / 100.0) - 100000.0;
+
+    return Ok(format!(
+        "{} {} {} {} {} {} {} {} {}m {}m {}m {}m ",
+        ha,
+        ma,
+        sa,
+        north,
+        ho,
+        mo,
+        so,
+        east,
+        a,
+        decode_gpos_size(size),
+        decode_gpos_size(hor_prec),
+        decode_gpos_size(ver_prec)
+    ));
+}
+
+fn parse_rr_nsec3(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let hash_alg = dns_read_u8(rdata, 0)?;
+    let flags = dns_read_u8(rdata, 1)?;
+    let iterations = dns_read_u16(rdata, 2)?;
+    let salt_len = dns_read_u8(rdata, 4)? as usize;
+    let Some(salt) = rdata.get(5..5 + salt_len) else {
+        return Err("parse error".into());
+    };
+    let hash_len = dns_read_u8(rdata, 5 + salt_len)? as usize;
+    let Some(next_owner) = rdata.get(6 + salt_len..6 + salt_len + hash_len) else {
+        return Err("parse error".into());
+    };
+    let bitmap = parse_nsec_bitmap_vec(&rdata[6 + salt_len + hash_len..])?;
+    let mut bitmap_str = String::new();
+    for i in bitmap {
+        bitmap_str += &format!("{} ", DNS_RR_type::find(i)?);
+    }
+    return Ok(format!(
+        "{} {} {} {} {} {}",
+        dnssec_digest(hash_alg)?,
+        flags,
+        iterations,
+        hex::encode(salt),
+        base32hex_encode(next_owner),
+        bitmap_str
+    ));
+}
+fn parse_rr_dnskey(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    if rdata.len() < 5 {
+        return Err("Index error".into());
+    }
+    let flag = dns_read_u16(rdata, 0)?;
+    let protocol = dnssec_algorithm(rdata[2])?;
+    let alg = dnssec_algorithm(rdata[3])?;
+    let pubkey = &rdata[4..];
+    return Ok(format!(
+        "{} {} {} {}",
+        flag,
+        protocol,
+        alg,
+        hex::encode(pubkey)
+    ));
+}
+
+fn parse_rr_tlsa(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    if rdata.len() < 4 {
+        return Err("Rdata too small".into());
+    }
+    let cert_usage = tlsa_cert_usage(rdata[0])?;
+    let selector = tlsa_selector(rdata[1])?;
+    let alg_type = tlsa_algorithm(rdata[2])?;
+    let cad = &rdata[3..];
+    return Ok(format!(
+        "{} {} {} {}",
+        cert_usage,
+        selector,
+        alg_type,
+        hex::encode(cad)
+    ));
+}
+
+fn parse_rr_cds(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    if rdata.len() < 5 {
+        return Err("Index error".into());
+    }
+    let keyid = dns_read_u16(rdata, 0)?;
+    let alg = dnssec_algorithm(rdata[2])?;
+    let dig_t = dnssec_digest(rdata[3])?;
+    let dig = &rdata[4..];
+    return Ok(format!("{} {} {} {}", keyid, alg, dig_t, hex::encode(dig)));
+}
+
+fn parse_rr_ipseckey(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let precedence = dns_read_u8(rdata, 0)?;
+    let gw_type = dns_read_u8(rdata, 1)?;
+    let alg = dns_read_u8(rdata, 2)?;
+    let mut pk_offset = 3;
+    let mut name = String::new();
+    match gw_type {
+        0 => {
+            name.push('.');
+        } // No Gateway
+        1 => {
+            pk_offset += 4;
+            let r: [u8; 4] = rdata[3..8].try_into()?;
+            let addr = IpAddr::V4(Ipv4Addr::from(r));
+            name = addr.to_string();
+        } // IPv4 address
+        2 => {
+            pk_offset += 16;
+            let r: [u8; 16] = rdata[3..20].try_into()?;
+            let addr = IpAddr::V6(Ipv6Addr::from(r));
+            name = addr.to_string();
+        } // IPv6 Address
+        3 => {
+            (name, pk_offset) = dns_parse_name(rdata, 3)?;
+        } // a FQDN
+        _ => {
+            return Err("Parse Error".into());
+        }
+    }
+    let alg_name = ipsec_alg(alg)?;
+    let Some(pk) = rdata.get(pk_offset..) else {
+        return Err("Parse error".into());
+    };
+    return Ok(format!(
+        "{} {} {} {} {}",
+        precedence,
+        gw_type,
+        alg_name,
+        name,
+        hex::encode(pk)
+    ));
+}
+
+fn parse_rr_apl(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let mut pos = 0;
+    let mut res = String::new();
+    while pos < rdata.len() {
+        let af = dns_read_u16(rdata, pos)?;
+        let pref_len = dns_read_u8(rdata, pos + 2)?;
+        let addr_len_ = dns_read_u8(rdata, pos + 3)?;
+        let flags = addr_len_ >> 7;
+        let mut neg_str = "";
+        if flags > 0 {
+            neg_str = "!";
+        }
+        let addr_len = (addr_len_ & 0x7f) as usize;
+        let Some(addr) = rdata.get(pos + 4..pos + 4 + addr_len) else {
+            return Err("Parse error".into());
+        };
+        //println!("{:?} {}", addr, addr_len);
+        let mut ip_addr = std::net::IpAddr::V4(Ipv4Addr::UNSPECIFIED);
+        if af == 1 {
+            // ipv4
+            let ip: [u8; 4] = addr.try_into()?;
+            ip_addr = std::net::IpAddr::V4(Ipv4Addr::from(ip));
+        } else if af == 2 {
+            // Ipv6
+            let ip: [u8; 16] = addr.try_into()?;
+            ip_addr = std::net::IpAddr::V6(Ipv6Addr::from(ip));
+        } else {
+            return Err("Unknown address family".into());
+        }
+        res += &format!("{}{}/{} ", neg_str, ip_addr, pref_len);
+        pos += 4 + addr_len;
+    }
+    return Ok(res);
+}
+
+fn parse_rr_gpos(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let mut idx = 0;
+    let lon_len = dns_read_u8(rdata, idx)? as usize;
+    idx += 1;
+    let Some(lon) = rdata.get(idx..idx + lon_len) else {
+        return Err("Parse Error".into());
+    };
+    idx += lon_len;
+    let lat_len = dns_read_u8(rdata, idx)? as usize;
+    idx += 1;
+    let Some(lat) = rdata.get(idx..idx + lat_len) else {
+        return Err("Parse Error".into());
+    };
+    idx += lat_len;
+    let alt_len = dns_read_u8(rdata, idx)? as usize;
+    idx += 1;
+    let Some(alt) = rdata.get(idx..idx + alt_len) else {
+        return Err("Parse Error".into());
+    };
+    return Ok(format!(
+        "{} {} {}",
+        std::str::from_utf8(lon)?,
+        std::str::from_utf8(lat)?,
+        std::str::from_utf8(alt)?
+    ));
+}
+
+fn parse_rr_nsec3param(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let hash = dns_read_u8(rdata, 0)?;
+    let flags = dns_read_u8(rdata, 1)?;
+    let iterations = dns_read_u16(rdata, 2)?;
+    let salt_len = dns_read_u8(rdata, 4)? as usize;
+    if salt_len + 5 > rdata.len() {
+        return Err("Invalid NSEC3PARAM format".into());
+    }
+    let Some(salt) = rdata.get(5..5 + salt_len) else {
+        return Err("Parse Error".into());
+    };
+    return Ok(format!(
+        "{} {} {} {}",
+        hash,
+        flags,
+        iterations,
+        hex::encode(salt)
+    ));
+}
+
+fn parse_rr_x25(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let len: usize = dns_read_u8(rdata, 0)? as usize;
+    if len + 1 != rdata.len() {
+        return Err("Ivalid X25 format".into());
+    }
+    let Some(addr) = rdata.get(1..1 + len) else {
+        return Err("Parse Error".into());
+    };
+    let addr1 = std::str::from_utf8(addr)?;
+    return Ok(String::from_str(addr1)?);
+}
+fn parse_rr_naptr(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let order = dns_read_u16(rdata, 0)?;
+    let pref = dns_read_u16(rdata, 2)?;
+    let flag_len = dns_read_u8(rdata, 4)? as usize;
+    let mut offset: usize = 5;
+    let flags = std::str::from_utf8(&rdata[offset..offset + flag_len])?;
+    offset += flag_len as usize;
+    let srv_len = rdata[offset] as usize;
+    offset += 1;
+    let srv = std::str::from_utf8(&rdata[offset..offset + srv_len])?;
+    offset += srv_len;
+    let re_len = dns_read_u8(rdata, offset)? as usize;
+    offset += 1;
+    let mut re = "";
+    if re_len > 0 {
+        re = std::str::from_utf8(&rdata[offset..offset + re_len])?;
+    }
+    offset += re_len;
+    let (repl, _) = dns_parse_name(rdata, offset)?;
+    return Ok(format!(
+        "{} {} {} {} {} {}",
+        order, pref, flags, srv, re, repl
+    ));
+}
+fn parse_rr_srv(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let prio = dns_read_u16(rdata, 0)?;
+    let weight = dns_read_u16(rdata, 2)?;
+    let port = dns_read_u16(rdata, 4)?;
+    let (target, _offset_out) = dns_parse_name(rdata, 6)?;
+    return Ok(format!("{} {} {} {}", prio, weight, port, target));
+}
+fn parse_rr_sshfp(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    if rdata.len() < 3 {
+        return Err("Invalid packet".into());
+    }
+    let alg = sshfp_algorithm(rdata[0])?;
+    let fp_type = sshfp_fp_type(rdata[1])?;
+    let fingerprint = &rdata[2..];
+    return Ok(format!("{} {} {}", alg, fp_type, hex::encode(&fingerprint)));
+}
+
+fn parse_rr_cert(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let cert_type = dns_read_u16(rdata, 0)?;
+    let key_tag = dns_read_u16(rdata, 2)?;
+    let alg = dns_read_u8(rdata, 4)?;
+    let Some(cert) = rdata.get(5..) else {
+        return Err("Packet too small".into());
+    };
+    return Ok(format!(
+        "{} {} {} {}",
+        cert_type_str(cert_type)?,
+        key_tag,
+        dnssec_algorithm(alg)?,
+        hex::encode(cert)
+    ));
+}
+
+fn parse_rr_wks(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let protocol = dns_read_u8(rdata, 4)?;
+    let Some(bitmap) = rdata.get(5..) else {
+        return Err("Parse error".into());
+    };
+
+    return Ok(format!(
+        "{}.{}.{}.{} {} {}",
+        rdata[0],
+        rdata[1],
+        rdata[2],
+        rdata[3],
+        parse_protocol(protocol)?,
+        parse_bitmap_str(bitmap)?
+    ));
+}
+fn parse_rr_dlv(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let Some(key_id) = rdata.get(0..2) else {
+        return Err("Packet too small".into());
+    };
+
+    let alg = dns_read_u8(rdata, 2)?;
+    let digest_type = dns_read_u8(rdata, 3)?;
+    let Some(digest) = rdata.get(4..) else {
+        return Err("Packet too small".into());
+    };
+    return Ok(format!(
+        "{} {} {} {}",
+        hex::encode(key_id),
+        dnssec_algorithm(alg)?,
+        dnssec_digest(digest_type)?,
+        hex::encode(digest)
+    ));
+}
+
+fn parse_rr_zonemd(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let serial = dns_read_u32(rdata, 0)?;
+    let scheme = dns_read_u8(rdata, 4)?;
+    let alg = dns_read_u8(rdata, 5)?;
+    let Some(digest) = rdata.get(6..) else {
+        return Err("Packet too small".into());
+    };
+    return Ok(format!(
+        "{} {} {} {}",
+        serial,
+        scheme,
+        zonemd_digest(alg)?,
+        hex::encode(digest)
+    ));
+}
+
+fn parse_rr_uri(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let prio = dns_read_u16(rdata, 0)?;
+    let weight = dns_read_u16(rdata, 2)?;
+    let Some(target_data) = rdata.get(4..) else {
+        return Err("Packet too small".into());
+    };
+    let target = std::str::from_utf8(target_data)?;
+    return Ok(format!("{} {} {}", prio, weight, target));
+}
+
+fn parse_rr_csync(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let soa = dns_read_u32(rdata, 0)?;
+    let flags = dns_read_u16(rdata, 4)?;
+    let bitmap = parse_nsec_bitmap_vec(&rdata[6..])?;
+    let mut bitmap_str = String::new();
+    for i in bitmap {
+        bitmap_str += &format!("{} ", DNS_RR_type::find(i)?);
+    }
+    return Ok(format!("{} {} {}", soa, flags, bitmap_str));
+}
+
+fn parse_rr_doa(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let doa_ent = dns_read_u32(rdata, 0)?;
+    let doa_type = dns_read_u32(rdata, 4)?;
+    let doa_loc = dns_read_u8(rdata, 8)?;
+    let doa_media_type_len = dns_read_u8(rdata, 9)? as usize;
+    let Some(doa_media_type) = rdata.get(10..10 + doa_media_type_len) else {
+        return Err("parse error".into());
+    };
+    let Some(doa_data) = rdata.get(10 + doa_media_type_len..) else {
+        return Err("parse error".into());
+    };
+
+    let doa_data_str = general_purpose::STANDARD.encode(doa_data);
+    return Ok(format!(
+        "{} {} {} {:?} {} ",
+        doa_ent,
+        doa_type,
+        doa_loc,
+        String::from_utf8_lossy(doa_media_type),
+        doa_data_str
+    ));
+}
+
+fn parse_rr_nsec(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let (next_dom, offset) = dns_parse_name(rdata, 0)?;
+    let mut bitmap_str = String::new();
+    let bitmap = parse_nsec_bitmap_vec(&rdata[offset..])?;
+    for i in bitmap {
+        bitmap_str += &format!("{} ", DNS_RR_type::find(i)?);
+    }
+    return Ok(format!("{} {}", next_dom, bitmap_str));
+}
+fn parse_rr_sink(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let mut coding = dns_read_u8(rdata, 0)?;
+    let mut offset = 1;
+    if coding == 0 {
+        // weird bind thing
+        coding = dns_read_u8(rdata, 1)?;
+        offset = 2;
+    }
+    let subcoding = dns_read_u8(rdata, offset)?;
+    let Some(data) = rdata.get(offset + 1..) else {
+        return Err("Parse error".into());
+    };
+    return Ok(format!(
+        "{} {} {}",
+        coding,
+        subcoding,
+        general_purpose::STANDARD.encode(data)
+    ));
+}
+fn parse_rr_key(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let flags = dns_read_u16(rdata, 0)?;
+    let protocol = dns_read_u8(rdata, 2)?;
+    let alg = dns_read_u8(rdata, 3)?;
+    let Some(key) = rdata.get(4..) else {
+        return Err("Parse error".into());
+    };
+    return Ok(format!(
+        "{} {} {} {}",
+        flags,
+        key_protocol(protocol)?,
+        key_algorithm(alg)?,
+        general_purpose::STANDARD.encode(key)
+    ));
+}
+
+fn parse_rr_hip(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let hit_len = dns_read_u8(rdata, 0)? as usize;
+    let hit_alg = dns_read_u8(rdata, 1)?;
+    let pk_len = dns_read_u16(rdata, 2)? as usize;
+    let Some(hit) = rdata.get(4..4 + hit_len as usize) else {
+        return Err("parse error".into());
+    };
+    let Some(hip_pk) = rdata.get(4 + hit_len..4 + hit_len + pk_len) else {
+        return Err("parse error".into());
+    };
+    let (rendezvous, _) = dns_parse_name(rdata, 4 + hit_len + pk_len)?;
+    return Ok(format!(
+        "{} {:x?} {:x?} {}",
+        hit_alg,
+        hex::encode(hit),
+        general_purpose::STANDARD_NO_PAD.encode(hip_pk),
+        rendezvous
+    ));
+}
+
+fn parse_rr_l32(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let prio = dns_read_u16(rdata, 0)?;
+    let r: [u8; 4] = rdata[2..].try_into()?;
+    let addr = Ipv4Addr::from(r);
+    return Ok(format!("{} {}", prio, addr));
+}
+fn parse_rr_l64(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let prio = dns_read_u16(rdata, 0)?;
+    let mut r: [u8; 16] = rdata[2..].try_into()?;
+    let addr = Ipv6Addr::from(r).to_string();
+    return Ok(format!("{} {}", prio, addr.trim_end_matches(':')));
+}
+
+fn parse_rr_nid(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let prio = dns_read_u16(rdata, 0)?;
+    let node_id1 = dns_read_u16(rdata, 2)?;
+    let node_id2 = dns_read_u16(rdata, 4)?;
+    let node_id3 = dns_read_u16(rdata, 6)?;
+    let node_id4 = dns_read_u16(rdata, 7)?;
+    return Ok(format!(
+        "{} {:x}:{:x}:{:x}:{:x}",
+        prio, node_id1, node_id2, node_id3, node_id4
+    ));
+}
+
+fn parse_rr_isdn(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let addr_len = dns_read_u8(rdata, 0)? as usize;
+    let Some(addr) = rdata.get(1..1 + addr_len) else {
+        return Err("Parse error".into());
+    };
+    let subaddr_len = dns_read_u8(rdata, 1 + addr_len)? as usize;
+    let Some(sub_addr) = rdata.get(1..1 + addr_len + 1 + subaddr_len) else {
+        return Err("Parse error".into());
+    };
+    return Ok(format!(
+        "{} {}",
+        String::from_utf8_lossy(&addr),
+        String::from_utf8_lossy(&sub_addr)
+    ));
+}
+
+fn parse_rr_amtrelay(
+    packet: &[u8],
+    rdata: &[u8],
+    offset_in: usize,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let precedence = dns_read_u8(rdata, 0)?;
+    let mut rtype = dns_read_u8(rdata, 1)?;
+    let dbit = rtype >> 7;
+    rtype = rtype & 0x7f;
+    let mut relay: String = String::new();
+    if rtype == 3 {
+        (relay, _) = dns_parse_name(packet, offset_in + 2)?;
+    } else if rtype == 2 {
+        let r: [u8; 16] = rdata[2..18].try_into()?;
+        let addr = Ipv6Addr::from(r);
+        relay = format!("{}", addr);
+    } else if rtype == 1 {
+        let r: [u8; 4] = rdata[2..6].try_into()?;
+        let addr = Ipv4Addr::from(r);
+        relay = format!("{}", addr);
+    }
+    return Ok(format!("{} {} {} {}", precedence, dbit, rtype, relay));
+}
+
+fn parse_rr_a6(
+    packet: &[u8],
+    rdata: &[u8],
+    offset_in: usize,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let prefix_len = dns_read_u8(rdata, 0)? as usize;
+    let len: usize = (128 - prefix_len) / 8;
+    let mut r: [u8; 16] = [0; 16];
+    for i in 0..len {
+        r[15 - i] = rdata[len - i]
+    }
+    let addr_suffix = Ipv6Addr::from(r);
+    let mut prefix_name = String::new();
+    if prefix_len != 0 {
+        (prefix_name, _) = dns_parse_name(packet, offset_in + 1 + len)?;
+    }
+    return Ok(format!("{} {} {}", prefix_len, addr_suffix, prefix_name));
+}
+
+fn parse_rr_rrsig(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let sig_rrtype = parse_rrtype(dns_read_u16(rdata, 0)?)?;
+    let sig_rrtype_str = sig_rrtype.to_str()?;
+    let alg = dnssec_algorithm(dns_read_u8(rdata, 2)?)?;
+    let labels = dns_read_u8(rdata, 3)?;
+    let ttl = dns_read_u32(rdata, 4)?;
+    let sig_exp = timestame_to_str(dns_read_u32(rdata, 8)?)?;
+    let sig_inc = timestame_to_str(dns_read_u32(rdata, 12)?)?;
+    let key_tag = dns_read_u16(rdata, 16)?;
+    let (signer, offset_out) = dns_parse_name(rdata, 18)?;
+    let signature = &rdata[offset_out..];
+    return Ok(format!(
+        "{} {} {} {} {} {} {} {} {}",
+        sig_rrtype_str,
+        alg,
+        labels,
+        ttl,
+        sig_exp,
+        sig_inc,
+        key_tag,
+        signer,
+        hex::encode(&signature)
+    ));
+}
+
 pub fn dns_parse_rdata(
     rdata: &[u8],
     rrtype: DNS_RR_type,
     packet: &[u8],
     offset_in: usize,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let mut outdata = String::new();
+    //let mut outdata = String::new();
     if rrtype == DNS_RR_type::A {
-        if rdata.len() != 4 {
-            return Err("Invalid record".into());
-        }
-        outdata.push_str(&format!(
-            "{}.{}.{}.{}",
-            rdata[0], rdata[1], rdata[2], rdata[3]
-        ));
-        return Ok(outdata);
+        return parse_rr_a(rdata);
     } else if rrtype == DNS_RR_type::AAAA {
-        if rdata.len() != 16 {
-            return Err("Invalid record".into());
-        }
-        let r: [u8; 16] = rdata.try_into()?;
-        let addr = Ipv6Addr::from(r);
-        return Ok(addr.to_string());
-    } else if rrtype == DNS_RR_type::CNAME || rrtype == DNS_RR_type::DNAME {
+        return parse_rr_aaaa(rdata);
+    } else if rrtype == DNS_RR_type::CNAME
+        || rrtype == DNS_RR_type::DNAME
+        || rrtype == DNS_RR_type::NS
+    {
         let (s, _offset) = dns_parse_name(packet, offset_in)?;
         return Ok(s);
     } else if rrtype == DNS_RR_type::CAA {
-        let flag = rdata[0];
-        let tag_len = rdata[1];
-        let Some(r) = rdata.get(2..2 + tag_len as usize) else {
-            return Err("Index error".into());
-        };
-        let tag = std::str::from_utf8(r)?;
-        let Some(r) = rdata.get(2 + tag_len as usize..) else {
-            return Err("Index error".into());
-        };
-        let value = std::str::from_utf8(r)?;
-        return Ok(format!("{} {} ({})", tag, value, flag));
+        return parse_rr_caa(rdata);
     } else if rrtype == DNS_RR_type::SOA {
-        let mut offset: usize = offset_in;
-        let ns: String;
-        let mb: String;
-        (ns, offset) = dns_parse_name(packet, offset)?;
-        (mb, offset) = dns_parse_name(packet, offset)?;
-        let sn = dns_read_u32(packet, offset)?;
-        let refr = dns_read_u32(packet, offset + 4)?;
-        let ret = dns_read_u32(packet, offset + 8)?;
-        let exp = dns_read_u32(packet, offset + 16)?;
-        let ttl = dns_read_u32(packet, offset + 16)?;
-        return Ok(format!(
-            "{} {} {} {} {} {} {}",
-            ns, mb, sn, refr, ret, exp, ttl
-        ));
-    } else if rrtype == DNS_RR_type::NS {
-        let (ns, _offset_out) = dns_parse_name(packet, offset_in)?;
-        return Ok(ns);
+        return parse_rr_soa(packet, offset_in);
     } else if rrtype == DNS_RR_type::TXT
         || rrtype == DNS_RR_type::NINF0
         || rrtype == DNS_RR_type::AVC
         || rrtype == DNS_RR_type::SPF
     {
-        let mut pos = 0;
-        let mut res = String::new();
-        while pos < rdata.len() {
-            let tlen: usize = rdata[pos].into();
-            let Some(r) = rdata.get(1 + pos..pos + tlen + 1) else {
-                return Err("Index error".into());
-            };
-            res += &format!("{} ", std::str::from_utf8(r)?);
-            pos += 1 + tlen;
-        }
-        return Ok(String::from(res));
+        return parse_rr_txt(rdata);
     } else if rrtype == DNS_RR_type::PTR {
         let (ptr, _offset_out) = dns_parse_name(packet, offset_in)?;
         return Ok(ptr);
@@ -227,181 +866,27 @@ pub fn dns_parse_rdata(
         let (mx, _offset_out) = dns_parse_name(packet, offset_in + 2)?;
         return Ok(mx);
     } else if rrtype == DNS_RR_type::HINFO {
-        let cpu_len1 = dns_read_u8(rdata, 0)?;
-        let cpu_len: usize = cpu_len1 as usize;
-        let mut offset: usize = 1;
-        let Some(r) = rdata.get(offset..offset + cpu_len as usize) else {
-            return Err("Index error".into());
-        };
-        let mut s = String::from(std::str::from_utf8(r)?);
-        offset += cpu_len as usize;
-        let os_len = rdata[offset] as usize;
-        offset += 1;
-        s.push(' ');
-        let Some(r) = rdata.get(offset..offset + os_len) else {
-            return Err("Index error".into());
-        };
-        s += &String::from(std::str::from_utf8(r)?);
-        return Ok(s);
+        return parse_rr_hinfo(rdata);
     } else if rrtype == DNS_RR_type::SRV {
-        let prio = dns_read_u16(rdata, 0)?;
-        let weight = dns_read_u16(rdata, 2)?;
-        let port = dns_read_u16(rdata, 4)?;
-        let (target, _offset_out) = dns_parse_name(rdata, 6)?;
-        return Ok(format!("{} {} {} {}", prio, weight, port, target));
+        return parse_rr_srv(rdata);
     } else if rrtype == DNS_RR_type::TLSA || rrtype == DNS_RR_type::SMIMEA {
-        if rdata.len() < 4 {
-            return Err("Rdata too small".into());
-        }
-        let cert_usage = tlsa_cert_usage(rdata[0])?;
-        let selector = tlsa_selector(rdata[1])?;
-        let alg_type = tlsa_algorithm(rdata[2])?;
-        let cad = &rdata[3..];
-        return Ok(format!(
-            "{} {} {} {}",
-            cert_usage,
-            selector,
-            alg_type,
-            hex::encode(cad)
-        ));
+        return parse_rr_tlsa(rdata);
     } else if rrtype == DNS_RR_type::AFSDB {
         let subtype = dns_read_u16(rdata, 0)?;
         let (hostname, _offset_out) = dns_parse_name(rdata, 2)?;
         return Ok(format!("{} {}", subtype, hostname));
     } else if rrtype == DNS_RR_type::CDS || rrtype == DNS_RR_type::DS || rrtype == DNS_RR_type::TA {
-        if rdata.len() < 5 {
-            return Err("Index error".into());
-        }
-        let keyid = dns_read_u16(rdata, 0)?;
-        let alg = dnssec_algorithm(rdata[2])?;
-        let dig_t = dnssec_digest(rdata[3])?;
-        let dig = &rdata[4..];
-        return Ok(format!("{} {} {} {}", keyid, alg, dig_t, hex::encode(dig)));
+        return parse_rr_cds(rdata);
     } else if rrtype == DNS_RR_type::DNSKEY || rrtype == DNS_RR_type::CDNSKEY {
-        if rdata.len() < 5 {
-            return Err("Index error".into());
-        }
-        let flag = dns_read_u16(rdata, 0)?;
-        let protocol = dnssec_algorithm(rdata[2])?;
-        let alg = dnssec_algorithm(rdata[3])?;
-        let pubkey = &rdata[4..];
-        return Ok(format!(
-            "{} {} {} {}",
-            flag,
-            protocol,
-            alg,
-            hex::encode(pubkey)
-        ));
+        return parse_rr_dnskey(rdata);
     } else if rrtype == DNS_RR_type::LOC {
-        let version = dns_read_u8(rdata, 0)?;
-        if version != 0 {
-            return Err("Unknown GPOS version".into());
-        }
-        let size = dns_read_u8(rdata, 1)?;
-        let hor_prec = dns_read_u8(rdata, 2)?;
-        let ver_prec = dns_read_u8(rdata, 3)?;
-        let mut lat = dns_read_u32(rdata, 4)? as i64;
-        let mut lon = dns_read_u32(rdata, 8)? as i64;
-        let alt = dns_read_u32(rdata, 12)? as i64;
-        let north: char;
-        let east: char;
-        let equator: i64 = 1 << 31;
-        if lat > equator {
-            north = 'N';
-            lat -= equator;
-        } else {
-            north = 'S';
-            lat = equator - lon;
-        }
-        if lon > equator {
-            east = 'E';
-            lon -= equator;
-        } else {
-            east = 'W';
-            lon = equator - lon;
-        }
-        let ho = lon / (1000 * 60 * 60);
-        lon %= 1000 * 60 * 60;
-        let mo = lon / (1000 * 60);
-        lon %= 1000 * 60;
-        let so = lon as f64 / 1000.0;
-        let ha = lat / (1000 * 60 * 60);
-        lat %= 1000 * 60 * 60;
-        let ma = lat / (1000 * 60);
-        lat %= 1000 * 60;
-        let sa = lat as f64 / 1000.0;
-
-        let a = (alt as f64 / 100.0) - 100000.0;
-
-        return Ok(format!(
-            "{} {} {} {} {} {} {} {} {}m {}m {}m {}m ",
-            ha,
-            ma,
-            sa,
-            north,
-            ho,
-            mo,
-            so,
-            east,
-            a,
-            decode_gpos_size(size),
-            decode_gpos_size(hor_prec),
-            decode_gpos_size(ver_prec)
-        ));
+        return parse_rr_loc(rdata);
     } else if rrtype == DNS_RR_type::NAPTR {
-        let order = dns_read_u16(rdata, 0)?;
-        let pref = dns_read_u16(rdata, 2)?;
-        let flag_len = dns_read_u8(rdata, 4)?;
-        let mut offset: usize = 5;
-        let flags = std::str::from_utf8(&rdata[offset..offset + flag_len as usize])?;
-        offset += flag_len as usize;
-        let srv_len = rdata[offset as usize];
-        offset += 1;
-        let srv = std::str::from_utf8(&rdata[offset..offset + srv_len as usize])?;
-        offset += srv_len as usize;
-        let re_len = dns_read_u8(rdata, offset)?;
-        offset += 1;
-        let mut re = "";
-        if re_len > 0 {
-            re = std::str::from_utf8(&rdata[offset..offset + re_len as usize])?;
-        }
-        offset += re_len as usize;
-        let (repl, _) = dns_parse_name(rdata, offset)?;
-        return Ok(format!(
-            "{} {} {} {} {} {}",
-            order, pref, flags, srv, re, repl
-        ));
+        return parse_rr_naptr(rdata);
     } else if rrtype == DNS_RR_type::RRSIG {
-        let sig_rrtype = parse_rrtype(dns_read_u16(rdata, 0)?)?;
-        let sig_rrtype_str = sig_rrtype.to_str()?;
-        let alg = dnssec_algorithm(dns_read_u8(rdata, 2)?)?;
-        let labels = dns_read_u8(rdata, 3)?;
-        let ttl = dns_read_u32(rdata, 4)?;
-        let sig_exp = timestame_to_str(dns_read_u32(rdata, 8)?)?;
-        let sig_inc = timestame_to_str(dns_read_u32(rdata, 12)?)?;
-        let key_tag = dns_read_u16(rdata, 16)?;
-        let (signer, offset_out) = dns_parse_name(rdata, 18)?;
-        let signature = &rdata[offset_out..];
-        return Ok(format!(
-            "{} {} {} {} {} {} {} {} {}",
-            sig_rrtype_str,
-            alg,
-            labels,
-            ttl,
-            sig_exp,
-            sig_inc,
-            key_tag,
-            signer,
-            hex::encode(&signature)
-        ));
+        return parse_rr_rrsig(rdata);
     } else if rrtype == DNS_RR_type::SSHFP {
-        if rdata.len() < 3 {
-            return Err("Invalid packet".into());
-        }
-        let alg = sshfp_algorithm(rdata[0])?;
-        let fp_type = sshfp_fp_type(rdata[1])?;
-        let fingerprint = &rdata[2..];
-        return Ok(format!("{} {} {}", alg, fp_type, hex::encode(&fingerprint)));
+        return parse_rr_sshfp(rdata);
     } else if rrtype == DNS_RR_type::OPENPGPKEY {
         let pubkey = general_purpose::STANDARD_NO_PAD.encode(&rdata);
         return Ok(pubkey);
@@ -413,89 +898,15 @@ pub fn dns_parse_rdata(
         let (mb, _offset) = dns_parse_name(packet, offset_in)?;
         return Ok(mb);
     } else if rrtype == DNS_RR_type::A6 {
-        let prefix_len = rdata[0];
-        let len: usize = (128 - prefix_len as usize) / 8;
-        let mut r: [u8; 16] = [0; 16];
-        for i in 0..len {
-            r[15 - i] = rdata[len - i]
-        }
-        let addr_suffix = Ipv6Addr::from(r);
-        let mut prefix_name = String::new();
-        if prefix_len != 0 {
-            (prefix_name, _) = dns_parse_name(packet, offset_in + 1 + len)?;
-        }
-        return Ok(format!("{} {} {}", prefix_len, addr_suffix, prefix_name));
+        return parse_rr_a6(packet, rdata, offset_in);
     } else if rrtype == DNS_RR_type::AMTRELAY {
-        let precedence = rdata[0];
-        let mut rtype = rdata[1];
-        let dbit = rtype >> 7;
-        rtype = rtype & 0x7f;
-        let mut relay: String = String::new();
-        if rtype == 3 {
-            (relay, _) = dns_parse_name(packet, offset_in + 2)?;
-        } else if rtype == 2 {
-            let r: [u8; 16] = rdata[2..18].try_into()?;
-            let addr = Ipv6Addr::from(r);
-            relay = format!("{}", addr);
-        } else if rtype == 1 {
-            let r: [u8; 4] = rdata[2..6].try_into()?;
-            let addr = Ipv4Addr::from(r);
-            relay = format!("{}", addr);
-        }
-        return Ok(format!("{} {} {} {}", precedence, dbit, rtype, relay));
+        return parse_rr_amtrelay(packet, rdata, offset_in);
     } else if rrtype == DNS_RR_type::X25 {
-        let len: usize = rdata[0] as usize;
-        if len + 1 != rdata.len() {
-            return Err("Ivalid X25 format".into());
-        }
-        let Some(addr) = rdata.get(1..1 + len) else {
-            return Err("Parse Error".into());
-        };
-        let addr1 = std::str::from_utf8(addr)?;
-        return Ok(String::from_str(addr1)?);
+        return parse_rr_x25(rdata);
     } else if rrtype == DNS_RR_type::NSEC3PARAM {
-        let hash = rdata[0];
-        let flags = rdata[1];
-        let iterations = dns_read_u16(rdata, 2)?;
-        let salt_len = rdata[4] as usize;
-        if salt_len + 5 > rdata.len() {
-            return Err("Invalid NSEC3PARAM format".into());
-        }
-        let Some(salt) = rdata.get(5..5 + salt_len) else {
-            return Err("Parse Error".into());
-        };
-        return Ok(format!(
-            "{} {} {} {}",
-            hash,
-            flags,
-            iterations,
-            hex::encode(salt)
-        ));
+        return parse_rr_nsec3param(rdata);
     } else if rrtype == DNS_RR_type::GPOS {
-        let mut idx = 0;
-        let lon_len = rdata[idx] as usize;
-        idx += 1;
-        let Some(lon) = rdata.get(idx..idx + lon_len) else {
-            return Err("Parse Error".into());
-        };
-        idx += lon_len;
-        let lat_len = rdata[idx] as usize;
-        idx += 1;
-        let Some(lat) = rdata.get(idx..idx + lat_len) else {
-            return Err("Parse Error".into());
-        };
-        idx += lat_len;
-        let alt_len = rdata[idx] as usize;
-        idx += 1;
-        let Some(alt) = rdata.get(idx..idx + alt_len) else {
-            return Err("Parse Error".into());
-        };
-        return Ok(format!(
-            "{} {} {}",
-            std::str::from_utf8(lon)?,
-            std::str::from_utf8(lat)?,
-            std::str::from_utf8(alt)?
-        ));
+        return parse_rr_gpos(rdata);
     } else if rrtype == DNS_RR_type::EUI48 {
         if rdata.len() != 6 {
             return Err("Parse Error".into());
@@ -513,97 +924,21 @@ pub fn dns_parse_rdata(
             rdata[0], rdata[1], rdata[2], rdata[3], rdata[4], rdata[5], rdata[6], rdata[7]
         ));
     } else if rrtype == DNS_RR_type::CERT {
-        let cert_type = dns_read_u16(rdata, 0)?;
-        let key_tag = dns_read_u16(rdata, 2)?;
-        let alg = dns_read_u8(rdata, 4)?;
-        let Some(cert) = rdata.get(5..) else {
-            return Err("Packet too small".into());
-        };
-        return Ok(format!(
-            "{} {} {} {}",
-            cert_type_str(cert_type)?,
-            (key_tag),
-            dnssec_algorithm(alg)?,
-            hex::encode(cert)
-        ));
+        return parse_rr_cert(rdata);
     } else if rrtype == DNS_RR_type::HTTPS || rrtype == DNS_RR_type::SVCB {
-        return parse_dns_https(rdata);
+        return parse_rr_https(rdata);
     } else if rrtype == DNS_RR_type::WKS {
-        let protocol = dns_read_u8(rdata, 4)?;
-        let Some(bitmap) = rdata.get(5..) else {
-            return Err("Parse error".into());
-        };
-
-        return Ok(format!(
-            "{}.{}.{}.{} {} {}",
-            rdata[0],
-            rdata[1],
-            rdata[2],
-            rdata[3],
-            parse_protocol(protocol)?,
-            parse_bitmap_str(bitmap)?
-        ));
-    } else if rrtype == DNS_RR_type::TSIG {
-        // todo
+        return parse_rr_wks(rdata);
+        /*    } else if rrtype == DNS_RR_type::TSIG {
+        // todo*/
     } else if rrtype == DNS_RR_type::APL {
-        let mut pos = 0;
-        let mut res = String::new();
-        while pos < rdata.len() {
-            let af = dns_read_u16(rdata, pos)?;
-            let pref_len = dns_read_u8(rdata, pos + 2)?;
-            let addr_len_ = dns_read_u8(rdata, pos + 3)?;
-            let flags = addr_len_ >> 7;
-            let mut neg_str = "";
-            if flags > 0 {
-                neg_str = "!";
-            }
-            let addr_len = (addr_len_ & 0x7f) as usize;
-            let Some(addr) = rdata.get(pos + 4..pos + 4 + addr_len) else {
-                return Err("Parse error".into());
-            };
-            //println!("{:?} {}", addr, addr_len);
-            let mut ip_addr = std::net::IpAddr::V4(Ipv4Addr::UNSPECIFIED);
-            if af == 1 {
-                // ipv4
-                let mut ip: [u8; 4] = [0; 4];
-                for i in 0..addr_len {
-                    ip[i] = addr[i];
-                }
-                ip_addr = std::net::IpAddr::V4(Ipv4Addr::from(ip));
-            }
-            if af == 2 {
-                // Ipv6
-                let mut ip: [u8; 16] = [0; 16];
-                for i in 0..addr_len {
-                    ip[i] = addr[i];
-                }
-                ip_addr = std::net::IpAddr::V6(Ipv6Addr::from(ip));
-            }
-            res += &format!("{}{}/{} ", neg_str, ip_addr, pref_len);
-            pos += 4 + addr_len;
-        }
-        return Ok(res);
+        return parse_rr_apl(rdata);
     } else if rrtype == DNS_RR_type::ATMA {
-        let format = rdata[0];
+        let format = dns_read_u8(rdata, 0)?;
         let address = &rdata[1..];
         return Ok(format!("{} {}", format, hex::encode(address)));
     } else if rrtype == DNS_RR_type::DLV {
-        let Some(key_id) = rdata.get(0..2) else {
-            return Err("Packet too small".into());
-        };
-
-        let alg = dns_read_u8(rdata, 2)?;
-        let digest_type = dns_read_u8(rdata, 3)?;
-        let Some(digest) = rdata.get(4..) else {
-            return Err("Packet too small".into());
-        };
-        return Ok(format!(
-            "{} {} {} {}",
-            hex::encode(key_id),
-            dnssec_algorithm(alg)?,
-            dnssec_digest(digest_type)?,
-            hex::encode(digest)
-        ));
+        return parse_rr_dlv(rdata);
     } else if rrtype == DNS_RR_type::TALINK {
         let (name1, offset_out) = dns_parse_name(packet, offset_in)?;
         let (name2, _) = dns_parse_name(packet, offset_out)?;
@@ -611,87 +946,22 @@ pub fn dns_parse_rdata(
     } else if rrtype == DNS_RR_type::DHCID {
         return Ok(format!("{}", hex::encode(rdata)));
     } else if rrtype == DNS_RR_type::ZONEMD {
-        let serial = dns_read_u32(rdata, 0)?;
-        let scheme = dns_read_u8(rdata, 4)?;
-        let alg = dns_read_u8(rdata, 5)?;
-        let Some(digest) = rdata.get(6..) else {
-            return Err("Packet too small".into());
-        };
-        return Ok(format!(
-            "{} {} {} {}",
-            serial,
-            scheme,
-            zonemd_digest(alg)?,
-            hex::encode(digest)
-        ));
+        return parse_rr_zonemd(rdata);
     } else if rrtype == DNS_RR_type::URI {
-        let prio = dns_read_u16(rdata, 0)?;
-        let weight = dns_read_u16(rdata, 2)?;
-        let Some(target_data) = rdata.get(4..) else {
-            return Err("Packet too small".into());
-        };
-        let target = std::str::from_utf8(target_data)?;
-        return Ok(format!("{} {} {}", prio, weight, target));
+        return parse_rr_uri(rdata);
     } else if rrtype == DNS_RR_type::CSYNC {
-        let soa = dns_read_u32(rdata, 0)?;
-        let flags = dns_read_u16(rdata, 4)?;
-        let bitmap = parse_nsec_bitmap_vec(&rdata[6..])?;
-        let mut bitmap_str = String::new();
-        for i in bitmap {
-            bitmap_str += &format!("{} ", DNS_RR_type::find(i)?);
-        }
-        return Ok(format!("{} {} {}", soa, flags, bitmap_str));
+        return parse_rr_csync(rdata);
     } else if rrtype == DNS_RR_type::DOA {
-        let doa_ent = dns_read_u32(rdata, 0)?;
-        let doa_type = dns_read_u32(rdata, 4)?;
-        let doa_loc = dns_read_u8(rdata, 8)?;
-        let doa_media_type_len = dns_read_u8(rdata, 9)? as usize;
-        let Some(doa_media_type) = rdata.get(10..10 + doa_media_type_len) else {
-            return Err("parse error".into());
-        };
-        let Some(doa_data) = rdata.get(10 + doa_media_type_len..) else {
-            return Err("parse error".into());
-        };
-
-        let doa_data_str = general_purpose::STANDARD.encode(doa_data);
-        return Ok(format!(
-            "{} {} {} {:?} {} ",
-            doa_ent,
-            doa_type,
-            doa_loc,
-            String::from_utf8_lossy(doa_media_type),
-            doa_data_str
-        ));
+        return parse_rr_doa(rdata);
     } else if rrtype == DNS_RR_type::HIP {
-        let hit_len = dns_read_u8(rdata, 0)? as usize;
-        let hit_alg = dns_read_u8(rdata, 1)?;
-        let pk_len = dns_read_u16(rdata, 2)? as usize;
-        let Some(hit) = rdata.get(4..4 + hit_len as usize) else {
-            return Err("parse error".into());
-        };
-        let Some(hip_pk) = rdata.get(4 + hit_len..4 + hit_len + pk_len) else {
-            return Err("parse error".into());
-        };
-        let (rendezvous, _) = dns_parse_name(rdata, 4 + hit_len + pk_len)?;
-        return Ok(format!(
-            "{} {:x?} {:x?} {}",
-            hit_alg,
-            hex::encode(hit),
-            general_purpose::STANDARD_NO_PAD.encode(hip_pk),
-            rendezvous
-        ));
-    } else if rrtype == DNS_RR_type::MD {
-        let (res_md, _) = dns_parse_name(packet, offset_in)?;
-        return Ok(format!("{}", res_md));
-    } else if rrtype == DNS_RR_type::MF {
-        let (res_mf, _) = dns_parse_name(packet, offset_in)?;
-        return Ok(format!("{}", res_mf));
-    } else if rrtype == DNS_RR_type::MG {
-        let (res_mg, _) = dns_parse_name(packet, offset_in)?;
-        return Ok(format!("{}", res_mg));
-    } else if rrtype == DNS_RR_type::MR {
-        let (res_mr, _) = dns_parse_name(packet, offset_in)?;
-        return Ok(format!("{}", res_mr));
+        return parse_rr_hip(rdata);
+    } else if rrtype == DNS_RR_type::MD
+        || rrtype == DNS_RR_type::MF
+        || rrtype == DNS_RR_type::MG
+        || rrtype == DNS_RR_type::MR
+    {
+        let (res, _) = dns_parse_name(packet, offset_in)?;
+        return Ok(format!("{}", res));
     } else if rrtype == DNS_RR_type::NXT {
         let (next, _) = dns_parse_name(packet, offset_in)?;
         let bm = parse_bitmap_vec(&rdata[next.len() + 1..])?;
@@ -710,90 +980,15 @@ pub fn dns_parse_rdata(
     //} else if rrtype == DNS_RR_type::MAILB {
     // todo
     } else if rrtype == DNS_RR_type::IPSECKEY {
-        let precedence = dns_read_u8(rdata, 0)?;
-        let gw_type = dns_read_u8(rdata, 1)?;
-        let alg = dns_read_u8(rdata, 2)?;
-        let mut pk_offset = 3;
-        let mut name = String::new();
-        match gw_type {
-            0 => {
-                name.push('.');
-            } // No Gateway
-            1 => {
-                pk_offset += 4;
-                let r: [u8; 4] = rdata[3..8].try_into()?;
-                let addr = IpAddr::V4(Ipv4Addr::from(r));
-                name = addr.to_string();
-            } // IPv4 address
-            2 => {
-                pk_offset += 16;
-                let r: [u8; 16] = rdata[3..20].try_into()?;
-                let addr = IpAddr::V6(Ipv6Addr::from(r));
-                name = addr.to_string();
-            } // IPv6 Address
-            3 => {
-                (name, pk_offset) = dns_parse_name(rdata, 3)?;
-            } // a FQDN
-            _ => {
-                return Err("Parse Error".into());
-            }
-        }
-        let alg_name;
-        if alg == 1 {
-            alg_name = "DSA"
-        } else if alg == 2 {
-            alg_name = "RSA"
-        } else {
-            return Err("Unknown algorithm".into());
-        }
-        let Some(pk) = rdata.get(pk_offset..) else {
-            return Err("Parse error".into());
-        };
-        return Ok(format!(
-            "{} {} {} {} {}",
-            precedence,
-            gw_type,
-            alg_name,
-            name,
-            hex::encode(pk)
-        ));
+        return parse_rr_ipseckey(rdata);
     } else if rrtype == DNS_RR_type::ISDN {
-        let addr_len = dns_read_u8(rdata, 0)?;
-        let Some(addr) = rdata.get(1..1 + addr_len as usize) else {
-            return Err("Parse error".into());
-        };
-        let subaddr_len = dns_read_u8(rdata, 1 + addr_len as usize)?;
-        let Some(sub_addr) = rdata.get(1..1 + addr_len as usize + 1 + subaddr_len as usize) else {
-            return Err("Parse error".into());
-        };
-        return Ok(format!(
-            "{} {}",
-            String::from_utf8_lossy(&addr),
-            String::from_utf8_lossy(&sub_addr)
-        ));
+        return parse_rr_isdn(rdata);
     } else if rrtype == DNS_RR_type::NID {
-        let prio = dns_read_u16(rdata, 0)?;
-        let node_id1 = dns_read_u16(rdata, 2)?;
-        let node_id2 = dns_read_u16(rdata, 4)?;
-        let node_id3 = dns_read_u16(rdata, 6)?;
-        let node_id4 = dns_read_u16(rdata, 7)?;
-        return Ok(format!(
-            "{} {:x}:{:x}:{:x}:{:x}",
-            prio, node_id1, node_id2, node_id3, node_id4
-        ));
+        return parse_rr_nid(rdata);
     } else if rrtype == DNS_RR_type::L32 {
-        let prio = dns_read_u16(rdata, 0)?;
-        let r: [u8; 4] = rdata[2..].try_into()?;
-        let addr = Ipv4Addr::from(r);
-        return Ok(format!("{} {}", prio, addr));
+        return parse_rr_l32(rdata);
     } else if rrtype == DNS_RR_type::L64 {
-        let prio = dns_read_u16(rdata, 0)?;
-        let mut r: [u8; 16] = [0; 16];
-        for i in 0..rdata[2..].len() {
-            r[i] = rdata[2 + i];
-        }
-        let addr = Ipv6Addr::from(r).to_string();
-        return Ok(format!("{} {}", prio, addr.trim_end_matches(':')));
+        return parse_rr_l64(rdata);
     } else if rrtype == DNS_RR_type::LP {
         let prio = dns_read_u16(rdata, 0)?;
         let (fqdn, _) = dns_parse_name(rdata, 2)?;
@@ -805,19 +1000,7 @@ pub fn dns_parse_rdata(
     } else if rrtype == DNS_RR_type::TKEY { // meta RR?
          // todo /
     } else if rrtype == DNS_RR_type::KEY {
-        let flags = dns_read_u16(rdata, 0)?;
-        let protocol = dns_read_u8(rdata, 2)?;
-        let alg = dns_read_u8(rdata, 3)?;
-        let Some(key) = rdata.get(4..) else {
-            return Err("Parse error".into());
-        };
-        return Ok(format!(
-            "{} {} {} {}",
-            flags,
-            key_protocol(protocol)?,
-            key_algorithm(alg)?,
-            general_purpose::STANDARD.encode(key)
-        ));
+        return parse_rr_key(rdata);
     } else if rrtype == DNS_RR_type::PX {
         let pref = dns_read_u16(rdata, 0)?;
         let (map822, offset) = dns_parse_name(rdata, 2)?;
@@ -826,59 +1009,13 @@ pub fn dns_parse_rdata(
     } else if rrtype == DNS_RR_type::SIG {
         // todo
     } else if rrtype == DNS_RR_type::SINK {
-        let mut coding = dns_read_u8(rdata, 0)?;
-        let mut offset = 1;
-        if coding == 0 {
-            // weird bind thing
-            coding = dns_read_u8(rdata, 1)?;
-            offset = 2;
-        }
-        let subcoding = dns_read_u8(rdata, offset)?;
-        let Some(data) = rdata.get(offset + 1..) else {
-            return Err("Parse error".into());
-        };
-        return Ok(format!(
-            "{} {} {}",
-            coding,
-            subcoding,
-            general_purpose::STANDARD.encode(data)
-        ));
+        return parse_rr_sink(rdata);
     } else if rrtype == DNS_RR_type::EID || rrtype == DNS_RR_type::NIMLOC {
         return Ok(hex::encode(rdata));
     } else if rrtype == DNS_RR_type::NSEC {
-        let (next_dom, offset) = dns_parse_name(rdata, 0)?;
-        let mut bitmap_str = String::new();
-        let bitmap = parse_nsec_bitmap_vec(&rdata[offset..])?;
-        for i in bitmap {
-            bitmap_str += &format!("{} ", DNS_RR_type::find(i)?);
-        }
-        return Ok(format!("{} {}", next_dom, bitmap_str));
+        return parse_rr_nsec(rdata);
     } else if rrtype == DNS_RR_type::NSEC3 {
-        let hash_alg = dns_read_u8(rdata, 0)?;
-        let flags = dns_read_u8(rdata, 1)?;
-        let iterations = dns_read_u16(rdata, 2)?;
-        let salt_len = dns_read_u8(rdata, 4)? as usize;
-        let Some(salt) = rdata.get(5..5 + salt_len) else {
-            return Err("parse error".into());
-        };
-        let hash_len = dns_read_u8(rdata, 5 + salt_len)? as usize;
-        let Some(next_owner) = rdata.get(6 + salt_len..6 + salt_len + hash_len) else {
-            return Err("parse error".into());
-        };
-        let bitmap = parse_nsec_bitmap_vec(&rdata[6 + salt_len + hash_len..])?;
-        let mut bitmap_str = String::new();
-        for i in bitmap {
-            bitmap_str += &format!("{} ", DNS_RR_type::find(i)?);
-        }
-        return Ok(format!(
-            "{} {} {} {} {} {}",
-            dnssec_digest(hash_alg)?,
-            flags,
-            iterations,
-            hex::encode(salt),
-            base32hex_encode(next_owner),
-            bitmap_str
-        ));
+        return parse_rr_nsec3(rdata);
     } else {
         return Err(format!("RR type not supported {:?}", rrtype).into());
     }

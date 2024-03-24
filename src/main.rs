@@ -20,14 +20,10 @@ pub mod tcp_data;
 pub mod version;
 use byteorder::{BigEndian, ByteOrder};
 use chrono::{DateTime, Utc};
-use clap::{arg,  Parser};
+use clap::{arg, Parser};
 use colored::Colorize;
-use config::{parse_config };
-use dns::{
-     dns_reply_type, 
-    DNS_RR_type,
-    DNS_record ,
-};
+use config::parse_config;
+use dns::{dns_reply_type, DNS_RR_type, DNS_record};
 use dns_cache::DNS_Cache;
 use dns_helper::{dns_read_u16, dns_read_u32, parse_class, parse_rrtype};
 use dns_rr::{dns_parse_name, dns_parse_rdata};
@@ -37,11 +33,10 @@ use pcap::{Active, Capture, Linktype};
 use publicsuffix::Psl;
 use regex::Regex;
 use skiplist::read_skip_list;
-use version::PROGNAME;
 use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufReader, Write};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::process::exit;
 use std::str::{self, FromStr};
 use std::sync::mpsc::TryRecvError;
@@ -49,12 +44,12 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::{thread, time};
 use syslog::Facility;
 use tcp_connection::{clean_tcp_list, TCP_Connections};
+use version::PROGNAME;
 
 use crate::config::Config;
 use crate::http_server::{listen, server};
 use crate::packet_info::Packet_info;
 use crate::statistics::Statistics;
-use asn_db2::Database;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum DNS_Protocol {
@@ -89,8 +84,8 @@ fn parse_question(
     let rrtype_val = dns_read_u16(packet, offset)?;
     let rrtype = parse_rrtype(rrtype_val)?;
     let class_val = dns_read_u16(packet, offset + 2)?;
-    let _rrtype = parse_rrtype(rrtype_val).unwrap();
-    let _class = parse_class(class_val).unwrap();
+    let _rrtype = parse_rrtype(rrtype_val)?;
+    let _class = parse_class(class_val)?;
     stats
         .qtypes
         .entry(rrtype.to_str()?)
@@ -382,6 +377,7 @@ fn parse_ip_data(
     skip_list: &[Regex],
     publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    //println!("IP data {:x?}", &packet);
     if protocol == 6 {
         packet_info.set_protocol(DNS_Protocol::TCP);
         // TCP
@@ -418,6 +414,7 @@ fn parse_ipv4(
     skip_list: &[Regex],
     publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    //println!("IPv4 {:x?}", &packet[..40]);
     if packet.len() < 20 {
         return Err("Invalid IPv6 packet".into());
     }
@@ -434,8 +431,17 @@ fn parse_ipv4(
     packet_info.set_dest_ip(std::net::IpAddr::V4(dst));
     packet_info.set_source_ip(std::net::IpAddr::V4(src));
     packet_info.set_ip_len(len);
-
-    parse_ip_data(
+    return parse_tunneling(
+        &packet[ihl as usize..],
+        next_header,
+        packet_info,
+        stats,
+        tcp_list,
+        config,
+        skip_list,
+        publicsuffixlist,
+    );
+    /*parse_ip_data(
         &packet[ihl as usize..],
         next_header,
         packet_info,
@@ -445,6 +451,65 @@ fn parse_ipv4(
         skip_list,
         publicsuffixlist,
     )?;
+    return Ok(());*/
+}
+
+fn parse_tunneling(
+    packet: &[u8],
+    next_header: u8,
+    packet_info: &mut Packet_info,
+    stats: &mut Statistics,
+    tcp_list: &Arc<Mutex<TCP_Connections>>,
+    config: &Config,
+    skip_list: &[Regex],
+    publicsuffixlist: &publicsuffix::List,
+) -> Result<(), Box<dyn std::error::Error>> {
+    //println!("{}", next_header);
+    if next_header == 4 {
+        // IPIP
+        if packet.len() < 1 {
+            return Err("Packet to small".into());
+        }
+        let ip_ver = packet[0] >> 4;
+        //println!("{}", ip_ver);
+        if ip_ver == 4 {
+            return parse_ipv4(
+                &packet,
+                packet_info,
+                stats,
+                tcp_list,
+                config,
+                skip_list,
+                publicsuffixlist,
+            );
+        } else if ip_ver == 6 {
+            return parse_ipv6(
+                &packet,
+                packet_info,
+                stats,
+                tcp_list,
+                config,
+                skip_list,
+                publicsuffixlist,
+            );
+        } else {
+            return Err("Unknown IP version".into());
+        }
+    } else {
+        //println!("Normal IP data {:x?}", &packet);
+
+        parse_ip_data(
+            &packet,
+            next_header,
+            packet_info,
+            stats,
+            tcp_list,
+            config,
+            skip_list,
+            publicsuffixlist,
+        )?;
+        //println!("{:?}", &packet_info);
+    }
     return Ok(());
 }
 
@@ -457,6 +522,7 @@ fn parse_ipv6(
     skip_list: &[Regex],
     publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    //println!("IPv6 {:x?}", &packet[..40]);
     if packet.len() < 40 {
         return Err("Invalid IPv6 packet".into());
     }
@@ -470,8 +536,9 @@ fn parse_ipv6(
     }
     packet_info.set_dest_ip(std::net::IpAddr::V6(dst));
     packet_info.set_source_ip(std::net::IpAddr::V6(src));
+
     let next_header = packet[6];
-    parse_ip_data(
+    return parse_tunneling(
         &packet[40..],
         next_header,
         packet_info,
@@ -480,8 +547,7 @@ fn parse_ipv6(
         config,
         skip_list,
         publicsuffixlist,
-    )?;
-    return Ok(());
+    );
 }
 
 fn parse_eth(
@@ -494,9 +560,25 @@ fn parse_eth(
     publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
     packet_info.frame_len = packet.len() as _;
-    if packet[12..14] == [8, 0] {
+    let mut offset = 12;
+    let mut eth_type_field = dns_read_u16(packet, offset)?;
+    offset += 2;
+    //println!("1 {:x}", eth_type_field);
+
+    if eth_type_field == 0x8100 {
+        // vlan tag
+        // println!("VLAN");
+        offset += 2;
+        eth_type_field = dns_read_u16(packet, offset)?;
+        // println!("2 {:x}", eth_type_field);
+        // println!(" {:x?}", packet.get(12..24).unwrap());
+        offset += 2;
+    }
+
+    if eth_type_field == 0x0800 {
+        //   println!("IPv4");
         return parse_ipv4(
-            &packet[14..],
+            &packet[offset..],
             packet_info,
             stats,
             tcp_list,
@@ -504,9 +586,9 @@ fn parse_eth(
             skip_list,
             publicsuffixlist,
         );
-    } else if packet[12..14] == [0x86, 0xdd] {
+    } else if eth_type_field == 0x86dd {
         return parse_ipv6(
-            &packet[14..],
+            &packet[offset..],
             packet_info,
             stats,
             tcp_list,
@@ -535,6 +617,13 @@ fn packet_loop<T: pcap::State>(
 ) where
     T: pcap::Activated,
 {
+    //    println!("{:#?}", cap.get_datalink());
+    let link_type = cap.get_datalink();
+
+    if link_type != Linktype::ETHERNET {
+        log::error!("Not ethernet {:?}", link_type);
+        panic!("Not ethernet");
+    }
     log::debug!("Reading pubsuf list {}", config.public_suffix_file);
     let publicsuffixlist: publicsuffix::List = match fs::read_to_string(&config.public_suffix_file)
     {
@@ -558,13 +647,14 @@ fn packet_loop<T: pcap::State>(
         log::debug!("Packet");
         //        eprintln!("{:?}", cap.stats().unwrap());
         let mut packet_info: Packet_info = Default::default();
-        packet_info.set_timestamp(
-            DateTime::<Utc>::from_timestamp(
-                packet.header.ts.tv_sec,
-                packet.header.ts.tv_usec as u32 * 1000,
-            )
-            .unwrap(),
-        );
+        let ts = match DateTime::<Utc>::from_timestamp(
+            packet.header.ts.tv_sec,
+            packet.header.ts.tv_usec as u32 * 1000,
+        ) {
+            Some(x) => x,
+            None => Utc::now(), //let mut last_push = Utc::now().timestamp() as u64;
+        };
+        packet_info.set_timestamp(ts);
         let result = parse_eth(
             &packet.data,
             &mut packet_info,
@@ -597,7 +687,7 @@ fn poll(
     let mut database_conn: Option<Mysql_connection> = None;
     let mut dns_cache: DNS_Cache = DNS_Cache::new(5);
     let mut last_push = Utc::now().timestamp() as u64;
-    if config.output != "" {
+    if config.output != "" && config.output != "-" {
         let mut options = OpenOptions::new();
         output_file = Some(
             options
@@ -607,6 +697,7 @@ fn poll(
                 .expect("Cannot open file"),
         );
     }
+
     if config.database != "" {
         let x = block_on(Mysql_connection::connect(
             &config.dbhostname,
@@ -617,13 +708,29 @@ fn poll(
         ));
         database_conn = Some(x);
     }
-    let asn_database = asn_db2::Database::from_reader(BufReader::new(File::open(&config.asn_database_file).unwrap())).unwrap();
-
-    /*let asn_database;
-    match maxminddb::Reader::open_readfile(&config.asn_database_file) {
-        Ok (a ) =>  { asn_database = a;}
-        Err(e) => { log::error!("{}", e.to_string()); exit(-1);}
-    }*/
+    let asn_database = match asn_db2::Database::from_reader(BufReader::new(
+        match File::open(&config.asn_database_file) {
+            Ok(x) => x,
+            Err(e) => {
+                log::error!(
+                    "Cannot open asn database {} {}",
+                    &config.asn_database_file,
+                    e
+                );
+                exit(-1);
+            }
+        },
+    )) {
+        Ok(x) => x,
+        Err(e) => {
+            log::error!(
+                "Cannot read asn database {}: {}",
+                &config.asn_database_file,
+                e
+            );
+            exit(-1);
+        }
+    };
 
     loop {
         let packet_info = packet_queue.lock().unwrap().pop_front();
@@ -631,6 +738,11 @@ fn poll(
             Some(p) => match p {
                 Some(mut p1) => {
                     p1.update_asn(&asn_database);
+                    if config.output == "-" {
+                        if !p1.dns_records.is_empty() {
+                            println!("{}", p1);
+                        }
+                    }
                     match output_file {
                         Some(ref mut of) => {
                             if config.output_type == "csv" {
@@ -727,7 +839,12 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
             let cap = Capture::from_file(&pcap_path);
             match cap {
                 Ok(mut c) => {
-                    c.filter(config.filter.as_str().as_ref(), false).unwrap();
+                    match c.filter(config.filter.as_str().as_ref(), false) {
+                        Ok(()) => {}
+                        Err(e) => {
+                            log::error!("Cannot apply filter {}: {}", config.filter, e)
+                        }
+                    }
                     let handle3 = s.spawn(|| {
                         packet_loop(
                             c,
@@ -760,13 +877,15 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
                 panic!("Something wrong with the capture");
             };
             log::debug!("Filter: {}", config.filter);
-            cap.filter(config.filter.as_str(), false).unwrap();
-            let link_type = cap.get_datalink();
 
-            if link_type != Linktype::ETHERNET {
-                log::error!("Not ethernet");
-                panic!("Not ethernet");
+            match cap.filter(config.filter.as_str(), false) {
+                Ok(()) => {}
+                Err(e) => {
+                    log::error!("Cannot apply filter {}: {}", config.filter, e)
+                }
             }
+            //cap.filter(config.filter.as_str(), false).unwrap();
+
             log::debug!("Ready to start packet loop");
             let handle3 = s.spawn(|| {
                 packet_loop(cap, &packet_queue, &tcp_list, &stats, config, &skiplist);
@@ -782,24 +901,22 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
     //println!("{:#?}", stats.lock().unwrap().to_str());
 }
 
-
-
 fn main() {
     syslog::init(Facility::LOG_USER, log::LevelFilter::Info, Some(PROGNAME))
         .expect("Logging failed");
 
     let mut config = Config::new();
     let mut pcap_path = String::new();
-    let mut create_db : bool  = false;
-    parse_config(&mut config, &mut pcap_path, &mut create_db, );
+    let mut create_db: bool = false;
+    parse_config(&mut config, &mut pcap_path, &mut create_db);
 
     if create_db {
         create_database(&config);
         exit(0);
     }
 
-    let stdout = File::open("/dev/null").unwrap();
-    let stderr = File::open("/dev/null").unwrap();
+    let stdout = File::open("/dev/null").expect("Cannot open /dev/null");
+    let stderr = File::open("/dev/null").expect("Cannot open /dev/null");
     //let stdout = File::open("/tmp/pdns.out").unwrap();
     //let stderr = File::open("/tmp/pdns.err").unwrap();
     let daemonize = daemonize::Daemonize::new()
