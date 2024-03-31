@@ -33,6 +33,7 @@ pub(crate) struct Config {
     pub gid: String,
     pub public_suffix_file: String,
     pub asn_database_file: String,
+    pub debug: bool,
 }
 
 impl Config {
@@ -61,6 +62,7 @@ impl Config {
             uid: String::new(),
             public_suffix_file: String::new(),
             asn_database_file: String::new(),
+            debug: false,
         };
         c.rr_type.extend(vec![
             DNS_RR_type::A,
@@ -94,7 +96,7 @@ pub fn parse_rrtypes(config_str: &str) -> Vec<DNS_RR_type> {
                 rrtypes.push(p);
             }
             Err(_e) => {
-                log::error!("Invalid RR type: {}", i);
+                tracing::error!("Invalid RR type: {}", i);
             }
         }
     }
@@ -103,7 +105,7 @@ pub fn parse_rrtypes(config_str: &str) -> Vec<DNS_RR_type> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{config::{parse_config, parse_rrtypes}, dns::DNS_RR_type};
+    use crate::{config::parse_rrtypes, dns::DNS_RR_type};
     #[test]
     fn test_parse_rrtypes1() {
         assert_eq!(
@@ -158,6 +160,7 @@ pub(crate) fn parse_config(config: &mut Config, mut pcap_path: &mut String, crea
         .arg(arg!(-F --public_suffix_file <VALUE>).required(false).long_help("Location of the public suffix file"))
         .arg(arg!(-A --asn_database_file <VALUE>).required(false).long_help("Location of the ASN database (ip2asn-combined.tsv)"))
         .arg(arg!(-g --gid <VALUE>).required(false).long_help("GID to change to after dropping privileges"))
+        .arg(arg!(--debug).required(false).action(ArgAction::SetTrue).long_help("Enable debugging mode"))
         .arg(
             arg!(--create_database)
                 .required(false)
@@ -250,6 +253,10 @@ pub(crate) fn parse_config(config: &mut Config, mut pcap_path: &mut String, crea
     config.daemon = matches
         .get_one::<bool>("daemon")
         .unwrap_or(&config.daemon)
+        .clone();
+    config.debug = matches
+        .get_one::<bool>("debug")
+        .unwrap_or(&config.debug)
         .clone();
     config.promisc = matches
         .get_one::<bool>("promisc")

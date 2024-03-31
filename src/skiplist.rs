@@ -10,7 +10,7 @@ pub fn read_skip_list(filename: &str) -> Vec<Regex> {
     let mut file = match File::open(filename) {
         Ok(file) => file,
         Err(_) => {
-            log::error!("Skip file not found: {}", filename);
+            tracing::error!("Skip file not found: {}", filename);
             return Vec::new();
         }
     };
@@ -26,7 +26,7 @@ pub fn read_skip_list(filename: &str) -> Vec<Regex> {
             return lines;
         }
         Err(_) => {
-            log::error!("File could not be read {}", filename);
+            tracing::error!("File could not be read {}", filename);
             return Vec::new();
         }
     };

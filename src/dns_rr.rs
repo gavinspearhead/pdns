@@ -430,7 +430,7 @@ fn parse_rr_apl(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
             return Err("Parse error".into());
         };
         //println!("{:?} {}", addr, addr_len);
-        let mut ip_addr = std::net::IpAddr::V4(Ipv4Addr::UNSPECIFIED);
+        let ip_addr;
         if af == 1 {
             // ipv4
             let ip: [u8; 4] = addr.try_into()?;
@@ -730,7 +730,7 @@ fn parse_rr_l32(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
 }
 fn parse_rr_l64(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
     let prio = dns_read_u16(rdata, 0)?;
-    let mut r: [u8; 16] = rdata[2..].try_into()?;
+    let r: [u8; 16] = rdata[2..].try_into()?;
     let addr = Ipv6Addr::from(r).to_string();
     return Ok(format!("{} {}", prio, addr.trim_end_matches(':')));
 }

@@ -201,13 +201,22 @@ pub struct DNS_record {
     pub(crate) asn: String,
     pub(crate) asn_owner: String,
     pub(crate) prefix: String,
+    pub(crate) error: DnsReplyType,
 }
 
 impl DNS_record {
     pub fn to_str(&self) -> Result<String, Box<dyn std::error::Error>> {
         return Ok(format!(
             "{} {} {} {} {} {} {} {} {}",
-            self.name, self.rr_type, self.class, self.ttl, self.rdata, self.domain, self.asn, self.asn_owner, self.prefix
+            self.name,
+            self.rr_type,
+            self.class,
+            self.ttl,
+            self.rdata,
+            self.domain,
+            self.asn,
+            self.asn_owner,
+            self.prefix
         ));
     }
 }
@@ -254,76 +263,77 @@ impl Default for DNS_record {
             asn: String::new(),
             asn_owner: String::new(),
             prefix: String::new(),
+            error: DnsReplyType::NOERROR,
         }
     }
 }
 
-pub fn dns_reply_type(u: u16) -> Result<&'static str, Box<dyn std::error::Error>> {
-    match u {
-        0 => {
-            return Ok("NOERROR");
-        }
-        1 => {
-            return Ok("FORMERROR");
-        }
-        2 => {
-            return Ok("SERVFAIL");
-        }
-        3 => {
-            return Ok("NXDOMAIN");
-        }
-        4 => {
-            return Ok("NOTIMP");
-        }
-        5 => {
-            return Ok("REFUSED");
-        }
-        6 => {
-            return Ok("YXDOMAIN");
-        }
-        7 => {
-            return Ok("YXRRSET");
-        }
-        8 => {
-            return Ok("NXRRSET");
-        }
-        9 => {
-            return Ok("NOTAUTH");
-        }
-        10 => {
-            return Ok("NOTZONE");
-        }
-        11 => {
-            return Ok("DSOTYPENI");
-        }
-        16 => {
-            return Ok("BADVERS");
-        }
-        17 => {
-            return Ok("BADKEY");
-        }
-        18 => {
-            return Ok("BADTIME");
-        }
-        19 => {
-            return Ok("BADMODE");
-        }
-        20 => {
-            return Ok("BADNAME");
-        }
-        21 => {
-            return Ok("BADALG");
-        }
-        22 => {
-            return Ok("BADTRUNC");
-        }
-        23 => {
-            return Ok("BADCOOKIE");
-        }
-        _ => {
-            return Err("Unkown error".into());
-        }
+#[derive(
+    Debug, EnumIter, Copy, Clone, AsStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize,
+)]
+pub enum DnsReplyType {
+    NOERROR = 0,
+    FORMERROR = 1,
+    SERVFAIL = 2,
+    NXDOMAIN = 3,
+    NOTIMP = 4,
+    REFUSED = 5,
+    YXDOMAIN = 6,
+    YXRRSET = 7,
+    NXRRSET = 8,
+    NOTAUTH = 9,
+    NOTZONE = 10,
+    DSOTYPENI = 11,
+    BADVERS = 16,
+    BADKEY = 17,
+    BADTIME = 18,
+    BADMODE = 19,
+    BADNAME = 20,
+    BADALG = 21,
+    BADTRUNC = 22,
+    BADCOOKIE = 23,
+}
+
+impl DnsReplyType {
+    pub fn to_str(self) -> Result<String, Box<dyn std::error::Error>> {
+        let x = self;
+        return Ok(String::from(strum::AsStaticRef::as_static(&x)));
     }
+
+    pub fn find(val: u16) -> Result<Self, Box<dyn std::error::Error>> {
+        for rr in DnsReplyType::iter() {
+            if (rr as u16) == val {
+                return Ok(rr);
+            }
+        }
+        return Err(format!("Invalid ReplyType type {:?}", val).into());
+    }
+}
+pub fn dns_reply_type(u: u16) -> Result<String, Box<dyn std::error::Error>> {
+    return DnsReplyType::find(u).unwrap().to_str();
+    /* match u {
+        0 => { return Ok("NOERROR");
+        } 1 => { return Ok("FORMERROR"); }
+        2 => { return Ok("SERVFAIL"); }
+        3 => { return Ok("NXDOMAIN"); }
+        4 => { return Ok("NOTIMP"); }
+        5 => { return Ok("REFUSED"); }
+        6 => { return Ok("YXDOMAIN"); }
+        7 => { return Ok("YXRRSET"); }
+        8 => { return Ok("NXRRSET"); }
+        9 => { return Ok("NOTAUTH"); }
+        10 => { return Ok("NOTZONE"); }
+        11 => { return Ok("DSOTYPENI"); }
+        16 => { return Ok("BADVERS"); }
+        17 => { return Ok("BADKEY"); }
+        18 => { return Ok("BADTIME"); }
+        19 => { return Ok("BADMODE"); }
+        20 => { return Ok("BADNAME"); }
+        21 => { return Ok("BADALG"); }
+        22 => { return Ok("BADTRUNC"); }
+        23 => { return Ok("BADCOOKIE"); }
+        _ => { return Err("Unkown error".into()); }
+    }*/
 }
 
 pub fn tlsa_cert_usage(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {

@@ -1,7 +1,6 @@
 // TODO
 // - Look at timestamp utc vs local time?
 // parametrize Rank with IP address type
-// ASN / prefix determination
 
 #![allow(non_camel_case_types)]
 pub mod config;
@@ -23,28 +22,41 @@ use chrono::{DateTime, Utc};
 use clap::{arg, Parser};
 use colored::Colorize;
 use config::parse_config;
-use dns::{dns_reply_type, DNS_RR_type, DNS_record};
+use dns::{dns_reply_type, DNS_RR_type, DNS_record, DnsReplyType};
 use dns_cache::DNS_Cache;
 use dns_helper::{dns_read_u16, dns_read_u32, parse_class, parse_rrtype};
 use dns_rr::{dns_parse_name, dns_parse_rdata};
 use futures::executor::block_on;
+use log::warn;
 use mysql_connection::{create_database, Mysql_connection};
 use pcap::{Active, Capture, Linktype};
 use publicsuffix::Psl;
 use regex::Regex;
 use skiplist::read_skip_list;
+use tracing_rfc_5424::layer::Layer;
+use tracing_rfc_5424::rfc5424::Rfc5424;
+use tracing_rfc_5424::tracing::TrivialTracingFormatter;
+use tracing_rfc_5424::transport::{UdpTransport, UnixSocket};
+use version::PROGNAME;
 use std::collections::VecDeque;
+use std::ffi::CString;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufReader, Write};
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::{Ipv4Addr, Ipv6Addr, UdpSocket};
+use std::os::unix::net::UnixDatagram;
 use std::process::exit;
 use std::str::{self, FromStr};
 use std::sync::mpsc::TryRecvError;
 use std::sync::{mpsc, Arc, Mutex};
 use std::{thread, time};
-use syslog::Facility;
+//use syslog::{self, Formatter3164, LoggerBackend};
 use tcp_connection::{clean_tcp_list, TCP_Connections};
-use version::PROGNAME;
+use tracing::Level;
+use tracing_subscriber::{filter, fmt, prelude::*, reload, Registry};
+use tracing_subscriber::{
+    layer::SubscriberExt, // Needed to get `with()`
+};
+use syslog_tracing;
 
 use crate::config::Config;
 use crate::http_server::{listen, server};
@@ -69,7 +81,7 @@ fn match_skip_list(name: &str, skip_list: &[Regex]) -> bool {
 
 fn parse_question(
     _query: &[u8],
-    _packet_info: &mut Packet_info,
+    packet_info: &mut Packet_info,
     packet: &[u8],
     offset_in: usize,
     stats: &mut Statistics,
@@ -82,10 +94,10 @@ fn parse_question(
         return Err(format!("skipped: {}", name).into());
     }
     let rrtype_val = dns_read_u16(packet, offset)?;
-    let rrtype = parse_rrtype(rrtype_val)?;
-    let class_val = dns_read_u16(packet, offset + 2)?;
     let _rrtype = parse_rrtype(rrtype_val)?;
-    let _class = parse_class(class_val)?;
+    let class_val = dns_read_u16(packet, offset + 2)?;
+    let rrtype = parse_rrtype(rrtype_val)?;
+    let class = parse_class(class_val)?;
     stats
         .qtypes
         .entry(rrtype.to_str()?)
@@ -93,10 +105,29 @@ fn parse_question(
         .or_insert(1);
     let len = offset - offset_in;
     if rcode == 3 {
-        stats.topnx.add(name);
+        stats.topnx.add(name.clone());
     } else if rcode == 0 {
-        stats.topdomain.add(name);
+        stats.topdomain.add(name.clone());
     }
+
+    if rcode != 0 {
+        let rec: DNS_record = DNS_record {
+            rr_type: rrtype.to_str()?,
+            ttl: 0,
+            class: class.to_str()?,
+            name: name,
+            rdata: String::new(),
+            count: 1,
+            timestamp: packet_info.timestamp,
+            domain: String::new(),
+            asn: String::new(),
+            asn_owner: String::new(),
+            prefix: String::new(),
+            error : DnsReplyType::find(rcode)?,
+        };
+        packet_info.add_dns_record(rec);
+    }
+
     return Ok(len + 4);
 }
 
@@ -152,7 +183,7 @@ fn parse_answer(
             //println!("{:?}", domain_str);
         }
         None => {
-            log::debug!("Not found {}", name);
+            tracing::debug!("Not found {}", name);
         }
     }
 
@@ -170,6 +201,7 @@ fn parse_answer(
         asn: String::new(),
         asn_owner: String::new(),
         prefix: String::new(),
+        error: DnsReplyType::NOERROR,
     };
     packet_info.add_dns_record(rec);
     offset += datalen as usize - 1;
@@ -204,13 +236,13 @@ fn parse_dns(
     let rcode = flags & 0x000f;
 
     if tr != 0 {
-        // truncated DNS packets are skipped
+        tracing::debug!("Skipping truncated DNS packets");
         return Ok(());
     }
 
     let questions = dns_read_u16(packet, offset)?;
     if questions == 0 {
-        // Empty questions section --> Skip it
+        tracing::debug!("Empty questions section... skipping");
         return Ok(());
     }
 
@@ -254,15 +286,15 @@ fn parse_dns(
             skip_list,
         )?;
     }
-    //println!("Answers {} {} ", answers, offset);
+    tracing::debug!("Answers {}", answers);
     for _i in 0..answers {
         offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist)?;
     }
-    //println!("Authority {} {}", authority, offset);
+    tracing::debug!("Authority {}", authority);
     for _i in 0..authority {
         offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist)?;
     }
-    //println!("Additional {} {}", additional, offset);
+    tracing::debug!("Additional {}", additional);
     for _i in 0..additional {
         offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist)?;
     }
@@ -303,7 +335,6 @@ fn parse_tcp(
         return Err("Parse Error TCP".into());
     };
     //println!("{:x?}", dnsdata);
-    //println!("{}", "2 Locking.... ".blue());
     let r = tcp_list.lock().unwrap().process_data(
         sp,
         dp,
@@ -314,11 +345,9 @@ fn parse_tcp(
         packet_info.timestamp,
         flags,
     );
-    //println!("{}", "2 UnLocking.... ".red());
     match r {
         Some(d) => {
             stats.tcp += 1;
-            //println!("Parsing TCP!!");
             return parse_dns(
                 &d.data(),
                 packet_info,
@@ -377,7 +406,6 @@ fn parse_ip_data(
     skip_list: &[Regex],
     publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    //println!("IP data {:x?}", &packet);
     if protocol == 6 {
         packet_info.set_protocol(DNS_Protocol::TCP);
         // TCP
@@ -414,7 +442,6 @@ fn parse_ipv4(
     skip_list: &[Regex],
     publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    //println!("IPv4 {:x?}", &packet[..40]);
     if packet.len() < 20 {
         return Err("Invalid IPv6 packet".into());
     }
@@ -441,17 +468,6 @@ fn parse_ipv4(
         skip_list,
         publicsuffixlist,
     );
-    /*parse_ip_data(
-        &packet[ihl as usize..],
-        next_header,
-        packet_info,
-        stats,
-        tcp_list,
-        config,
-        skip_list,
-        publicsuffixlist,
-    )?;
-    return Ok(());*/
 }
 
 fn parse_tunneling(
@@ -464,14 +480,12 @@ fn parse_tunneling(
     skip_list: &[Regex],
     publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    //println!("{}", next_header);
     if next_header == 4 {
         // IPIP
         if packet.len() < 1 {
             return Err("Packet to small".into());
         }
         let ip_ver = packet[0] >> 4;
-        //println!("{}", ip_ver);
         if ip_ver == 4 {
             return parse_ipv4(
                 &packet,
@@ -576,7 +590,6 @@ fn parse_eth(
     }
 
     if eth_type_field == 0x0800 {
-        //   println!("IPv4");
         return parse_ipv4(
             &packet[offset..],
             packet_info,
@@ -617,20 +630,19 @@ fn packet_loop<T: pcap::State>(
 ) where
     T: pcap::Activated,
 {
-    //    println!("{:#?}", cap.get_datalink());
     let link_type = cap.get_datalink();
 
     if link_type != Linktype::ETHERNET {
-        log::error!("Not ethernet {:?}", link_type);
+        tracing::error!("Not ethernet {:?}", link_type);
         panic!("Not ethernet");
     }
-    log::debug!("Reading pubsuf list {}", config.public_suffix_file);
+    tracing::debug!("Reading pubsuf list {}", config.public_suffix_file);
     let publicsuffixlist: publicsuffix::List = match fs::read_to_string(&config.public_suffix_file)
     {
         Ok(c) => match c.as_str().parse() {
             Ok(d) => d,
             Err(_) => {
-                log::error!(
+                tracing::error!(
                     "Cannot parse public suffic file: {}",
                     config.public_suffix_file
                 );
@@ -638,13 +650,13 @@ fn packet_loop<T: pcap::State>(
             }
         },
         Err(_) => {
-            log::error!("Cannot read file {}", config.public_suffix_file);
+            tracing::error!("Cannot read file {}", config.public_suffix_file);
             exit(-1);
         }
     };
-    log::debug!("Starting loop");
+    tracing::debug!("Starting loop");
     while let Ok(packet) = cap.next_packet() {
-        log::debug!("Packet");
+        //        tracing::debug!("Packet");
         //        eprintln!("{:?}", cap.stats().unwrap());
         let mut packet_info: Packet_info = Default::default();
         let ts = match DateTime::<Utc>::from_timestamp(
@@ -669,7 +681,7 @@ fn packet_loop<T: pcap::State>(
                 packet_queue.lock().unwrap().push_back(Some(packet_info));
             }
             Err(error) => {
-                log::debug!("{}", format!("{:?}", error));
+                tracing::debug!("{}", format!("{:?}", error));
             }
         }
     }
@@ -681,7 +693,6 @@ fn poll(
     config: &Config,
     rx: mpsc::Receiver<String>,
 ) {
-    //println!("Polling....");
     let mut timeout = time::Duration::from_millis(0);
     let mut output_file: Option<File> = None;
     let mut database_conn: Option<Mysql_connection> = None;
@@ -712,7 +723,7 @@ fn poll(
         match File::open(&config.asn_database_file) {
             Ok(x) => x,
             Err(e) => {
-                log::error!(
+                tracing::error!(
                     "Cannot open asn database {} {}",
                     &config.asn_database_file,
                     e
@@ -723,7 +734,7 @@ fn poll(
     )) {
         Ok(x) => x,
         Err(e) => {
-            log::error!(
+            tracing::error!(
                 "Cannot read asn database {}: {}",
                 &config.asn_database_file,
                 e
@@ -802,7 +813,6 @@ fn poll(
                     }
                     None => {}
                 }
-                //println!("{} {:?}", "Disconnect".yellow(), _e);
                 return;
             }
             Err(TryRecvError::Disconnected) => {
@@ -814,17 +824,15 @@ fn poll(
                         return;
                     }
                     None => {}
-                } //println!("{}", "Lost connection".yellow());
+                }
                 return;
             }
             Err(TryRecvError::Empty) => {}
         }
-        //        println!("{} {:?}", "sleeping".cyan(), dur);
     }
 }
 
 fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
-    // println!("{:?}", config);
     let packet_queue = Arc::new(Mutex::new(VecDeque::new()));
     let tcp_list = Arc::new(Mutex::new(TCP_Connections::new()));
     let stats = Arc::new(Mutex::new(Statistics::origin(config.toplistsize)));
@@ -842,7 +850,7 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
                     match c.filter(config.filter.as_str().as_ref(), false) {
                         Ok(()) => {}
                         Err(e) => {
-                            log::error!("Cannot apply filter {}: {}", config.filter, e)
+                            tracing::error!("Cannot apply filter {}: {}", config.filter, e)
                         }
                     }
                     let handle3 = s.spawn(|| {
@@ -866,27 +874,25 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
                 }
             }
         } else if config.interface != "" {
-            log::debug!("Listening on interface {}", config.interface);
+            tracing::debug!("Listening on interface {}", config.interface);
             let listener = listen(&config.server, config.port.clone());
             let handle4 = s.spawn(|| match listener {
                 Some(l) => server(l, &stats.clone(), &tcp_list.clone(), &config.clone()),
                 None => {}
             });
             let Some(mut cap) = capin else {
-                log::error!("Something wrong with the capture");
+                tracing::error!("Something wrong with the capture");
                 panic!("Something wrong with the capture");
             };
-            log::debug!("Filter: {}", config.filter);
+            tracing::debug!("Filter: {}", config.filter);
 
             match cap.filter(config.filter.as_str(), false) {
                 Ok(()) => {}
                 Err(e) => {
-                    log::error!("Cannot apply filter {}: {}", config.filter, e)
+                    tracing::error!("Cannot apply filter {}: {}", config.filter, e)
                 }
             }
-            //cap.filter(config.filter.as_str(), false).unwrap();
-
-            log::debug!("Ready to start packet loop");
+            tracing::debug!("Ready to start packet loop");
             let handle3 = s.spawn(|| {
                 packet_loop(cap, &packet_queue, &tcp_list, &stats, config, &skiplist);
             });
@@ -901,20 +907,125 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
     //println!("{:#?}", stats.lock().unwrap().to_str());
 }
 
-fn main() {
-    syslog::init(Facility::LOG_USER, log::LevelFilter::Info, Some(PROGNAME))
-        .expect("Logging failed");
+struct PrintlnVisitor {
+    data: String,
+}
 
+impl tracing::field::Visit for PrintlnVisitor {
+    fn record_f64(&mut self, _field: &tracing::field::Field, value: f64) {
+        self.data.push_str(&format!("{} ", value));
+    }
+
+    fn record_i64(&mut self, _field: &tracing::field::Field, value: i64) {
+        self.data.push_str(&format!("{} ", value));
+    }
+
+    fn record_u64(&mut self, _field: &tracing::field::Field, value: u64) {
+        self.data.push_str(&format!("{} ", value));
+    }
+
+    fn record_bool(&mut self, _field: &tracing::field::Field, value: bool) {
+        self.data.push_str(&format!("{} ", value));
+    }
+
+    fn record_str(&mut self, _field: &tracing::field::Field, value: &str) {
+        self.data
+            .push_str(&format!("{} ", value.replace("\n", " ")));
+    }
+
+    fn record_error(
+        &mut self,
+        _field: &tracing::field::Field,
+        value: &(dyn std::error::Error + 'static),
+    ) {
+        self.data.push_str(&format!("{} ", value));
+    }
+
+    fn record_debug(&mut self, _field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.data.push_str(&format!("{:?} ", &value));
+    }
+}
+
+/*use libc::{self, openlog, LOG_USER};
+
+
+pub struct CustomLayer {
+    min_level: Level,
+    ident : CString,
+   // logger: syslog::Logger<LoggerBackend, Formatter3164>,
+}
+impl CustomLayer {
+    fn new(min_level: Level) -> CustomLayer {
+        
+        let c = CustomLayer {
+            min_level: min_level,
+            ident : CString::new(PROGNAME).expect("String")
+
+           // logger: syslog::unix(f).expect("Cannot start logger"),
+        };
+        unsafe { openlog(c.ident.as_ptr(), libc::LOG_PID, LOG_USER) };
+        return c;
+    }
+}
+
+impl<S> tracing_subscriber::Layer<S> for CustomLayer
+where
+    S: tracing::Subscriber,
+{
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        println!("{} <= {} =  {} ", event.metadata().level() , &self.min_level, event.metadata().level() <= &self.min_level);
+        if event.metadata().level() <= &self.min_level {
+            let mut visitor = PrintlnVisitor {
+                data: String::new(),
+            };
+            event.record(&mut visitor);
+            match event.metadata().level() {
+                &Level::WARN => {
+                    unsafe {libc::syslog(libc::LOG_WARNING, CString::new(format!("{}", visitor.data)).expect("Could not parse string").as_ptr());}
+                }
+                &Level::ERROR => {
+                    unsafe {libc::syslog(libc::LOG_ERR, CString::new(format!("{}", visitor.data)).expect("Could not parse string").as_ptr());}
+                }
+                                &Level::INFO => {
+                    unsafe {libc::syslog(libc::LOG_INFO, CString::new(format!("{}", visitor.data)).expect("Could not parse string").as_ptr());}
+                }
+                &Level::DEBUG => {
+                    unsafe {libc::syslog(libc::LOG_DEBUG, CString::new(format!("{}", visitor.data)).expect("Could not parse string").as_ptr());}
+                }
+                &Level::TRACE => {}
+            }
+        }
+    }
+}*/
+
+fn main() {
+    let filter = filter::LevelFilter::WARN;
+    let (filter, reload_handle) = reload::Layer::new(filter);
+    tracing_subscriber::Registry::default()
+        .with(filter)
+        .with(fmt::Layer::default())
+    //    .with(CustomLayer::new(Level::INFO))
+        .with(Layer::with_transport(UnixSocket::new("/run/systemd/journal/syslog").unwrap()))
+        .init();
     let mut config = Config::new();
     let mut pcap_path = String::new();
     let mut create_db: bool = false;
+    //tracing::error!("test");
+    ////tracing::warn!("test");
+    //tracing::info!("test");
+    //tracing::debug!("test");
     parse_config(&mut config, &mut pcap_path, &mut create_db);
-
+    if config.debug {
+        let _ = reload_handle.modify(|filter| *filter = filter::LevelFilter::DEBUG);
+    }
     if create_db {
         create_database(&config);
         exit(0);
     }
-
     let stdout = File::open("/dev/null").expect("Cannot open /dev/null");
     let stderr = File::open("/dev/null").expect("Cannot open /dev/null");
     //let stdout = File::open("/tmp/pdns.out").unwrap();
@@ -949,19 +1060,19 @@ fn main() {
         serde_json::to_string_pretty(&config).unwrap(),
     );*/
     if config.daemon {
-        log::debug!("Daemonising");
+        tracing::debug!("Daemonising");
         match daemonize.start() {
             Ok(_) => {
-                log::debug!("Daemonising2");
+                tracing::debug!("Daemonising2");
                 run(&config, cap, &pcap_path);
             }
             Err(_e) => {
-                log::error!("Error daemonizing {}", _e);
+                tracing::error!("Error daemonizing {}", _e);
                 exit(-1);
             }
         }
     } else {
-        log::debug!("NOT Daemonising");
+        tracing::debug!("NOT Daemonising");
         run(&config, cap, &pcap_path);
     }
 }

@@ -37,7 +37,7 @@ pub(crate) fn server(
                 handle_connection(stream, stats, tcp_list, config);
             }
             Err(e) => {
-                log::error!("Cannot open stream {}", e);
+                tracing::error!("Cannot open stream {}", e);
                 exit(-1);
             }
         }
