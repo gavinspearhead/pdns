@@ -2,7 +2,7 @@ use crate::rank::Rank;
 use serde::Serialize;
 use std::collections::HashMap;
 
-#[derive(Serialize,  Debug, Clone)]
+#[derive(Serialize, Debug, Clone)]
 pub(crate) struct Statistics {
     pub errors: HashMap<String, u128>,
     pub qtypes: HashMap<String, u128>,

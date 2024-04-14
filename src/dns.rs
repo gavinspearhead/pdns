@@ -6,6 +6,8 @@ use strum::IntoEnumIterator;
 use strum_macros::EnumString;
 use strum_macros::{AsStaticStr, EnumIter};
 
+use crate::errors::{DNS_Error_Type, DNS_error};
+
 #[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq, EnumString, AsStaticStr)]
 pub enum DNS_Class {
     IN = 1,
@@ -27,7 +29,8 @@ impl DNS_Class {
                 return Ok(cl);
             }
         }
-        return Err(format!("Invalid Class type  {:?}", val).into());
+        return Err(DNS_error::new(DNS_Error_Type::Invalid_Class, &format!("{}", val)).into());
+        // return Err(format!("Invalid Class type  {:?}", val).into());
     }
 }
 
@@ -115,6 +118,7 @@ pub enum DNS_RR_type {
     OPT = 41,
     PTR = 12,
     PX = 26,
+    RESINFO = 261,
     RKEY = 57,
     RP = 17,
     RRSIG = 46,
@@ -141,6 +145,7 @@ pub enum DNS_RR_type {
     X25 = 19,
     ZONEMD = 63,
 }
+
 impl DNS_RR_type {
     pub fn to_str(self) -> Result<String, Box<dyn std::error::Error>> {
         let x = self;
@@ -153,7 +158,8 @@ impl DNS_RR_type {
                 return Ok(rr);
             }
         }
-        return Err(format!("Invalid RR type  {:?}", val).into());
+        //return Err(format!("Invalid RR type  {:?}", val).into());
+        return Err(DNS_error::new(DNS_Error_Type::Invalid_RR, &format!("{}", val)).into());
     }
     pub fn to_vec() -> Vec<DNS_RR_type> {
         return DNS_RR_type::iter().collect::<Vec<_>>();
@@ -306,34 +312,37 @@ impl DnsReplyType {
                 return Ok(rr);
             }
         }
-        return Err(format!("Invalid ReplyType type {:?}", val).into());
+        return Err(DNS_error::new(DNS_Error_Type::Invalid_reply_type, &format!("{}", val)).into());
+        //return Err(format!("Invalid ReplyType type {:?}", val).into());
     }
 }
+
+#[cfg(test)]
+mod tests2 {
+    use std::str::FromStr;
+
+    use crate::dns::DnsReplyType;
+
+    #[test]
+    fn test_dns_rt() {
+        assert_eq!(DnsReplyType::NXDOMAIN.to_str().unwrap(), "NXDOMAIN");
+        assert_eq!(DnsReplyType::NOERROR.to_str().unwrap(), "NOERROR");
+    }
+    #[test]
+    fn test_dns_rt1() {
+        assert_eq!(
+            DnsReplyType::from_str("NXDOMAIN").unwrap(),
+            DnsReplyType::NXDOMAIN
+        );
+        assert_eq!(
+            DnsReplyType::from_str("NOERROR").unwrap(),
+            DnsReplyType::NOERROR
+        );
+    }
+}
+
 pub fn dns_reply_type(u: u16) -> Result<String, Box<dyn std::error::Error>> {
     return DnsReplyType::find(u).unwrap().to_str();
-    /* match u {
-        0 => { return Ok("NOERROR");
-        } 1 => { return Ok("FORMERROR"); }
-        2 => { return Ok("SERVFAIL"); }
-        3 => { return Ok("NXDOMAIN"); }
-        4 => { return Ok("NOTIMP"); }
-        5 => { return Ok("REFUSED"); }
-        6 => { return Ok("YXDOMAIN"); }
-        7 => { return Ok("YXRRSET"); }
-        8 => { return Ok("NXRRSET"); }
-        9 => { return Ok("NOTAUTH"); }
-        10 => { return Ok("NOTZONE"); }
-        11 => { return Ok("DSOTYPENI"); }
-        16 => { return Ok("BADVERS"); }
-        17 => { return Ok("BADKEY"); }
-        18 => { return Ok("BADTIME"); }
-        19 => { return Ok("BADMODE"); }
-        20 => { return Ok("BADNAME"); }
-        21 => { return Ok("BADALG"); }
-        22 => { return Ok("BADTRUNC"); }
-        23 => { return Ok("BADCOOKIE"); }
-        _ => { return Err("Unkown error".into()); }
-    }*/
 }
 
 pub fn tlsa_cert_usage(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
@@ -351,7 +360,7 @@ pub fn tlsa_cert_usage(u: u8) -> Result<&'static str, Box<dyn std::error::Error>
             return Ok("DANE-EE");
         }
         _ => {
-            return Err("Unkown usage".into());
+            return Err("Unkown cert usage".into());
         }
     };
 }
@@ -365,7 +374,7 @@ pub fn tlsa_selector(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> 
             return Ok("Pubkey");
         }
         _ => {
-            return Err("Unkown selector".into());
+            return Err("Unkown TLSA selector".into());
         }
     };
 }
@@ -382,7 +391,7 @@ pub fn tlsa_algorithm(u: u8) -> Result<&'static str, Box<dyn std::error::Error>>
             return Ok("SHA2-512");
         }
         _ => {
-            return Err("Unkown algorithm".into());
+            return Err("Unkown TLSA algorithm".into());
         }
     };
 }
@@ -613,6 +622,6 @@ impl SVC_Param_Keys {
                 return Ok(k);
             }
         }
-        return Err(format!("Invalid RR type  {:?}", val).into());
+        return Err(DNS_error::new(DNS_Error_Type::Invalid_RR, &format!("{}", val)).into());
     }
 }

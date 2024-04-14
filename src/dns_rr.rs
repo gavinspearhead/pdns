@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
 
@@ -21,8 +22,8 @@ pub(crate) fn dns_parse_name(
     offset: usize,
 ) -> Result<(String, usize), Box<dyn std::error::Error>> {
     let (mut name, offset_out) = dns_parse_name_internal(packet, offset)?;
-    if name.len() == 0 {
-        name = String::from(".");
+    if name.is_empty() {
+        name = String::from('.');
     } else {
         name = name.trim_end_matches('.').to_string();
     }
@@ -35,12 +36,11 @@ fn dns_parse_name_internal(
 ) -> Result<(String, usize), Box<dyn std::error::Error>> {
     let mut idx = offset_in;
     let mut name = String::new();
-    //    println!("{} {:x?}", offset_in, &packet[offset_in.. offset_in+20]);
     while packet[idx] != 0 {
         let val = dns_read_u8(packet, idx)?;
         if val > 63 {
             let pos = (dns_read_u16(packet, idx)? & 0x3fff) as usize;
-            let (name1, _len) = dns_parse_name(&packet, pos)?;
+            let (name1, _len) = dns_parse_name(packet, pos)?;
             return Ok((name + &name1, idx + 2));
         } else {
             let label_len: usize = dns_read_u8(packet, idx)? as usize;
@@ -48,7 +48,7 @@ fn dns_parse_name_internal(
             let Some(label) = packet.get(idx..(idx + (label_len))) else {
                 return Err("Invalid index !!".into());
             };
-            name.push_str(std::str::from_utf8(&label)?);
+            name.push_str(std::str::from_utf8(label)?);
             name.push('.');
             idx += label_len;
         }
@@ -155,10 +155,6 @@ fn parse_rr_a(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
     if rdata.len() != 4 {
         return Err("Invalid record".into());
     }
-    /*outdata.push_str(&format!(
-        "{}.{}.{}.{}",
-        rdata[0], rdata[1], rdata[2], rdata[3]
-    ));*/
     let r: [u8; 4] = rdata.try_into()?;
     let addr = Ipv4Addr::from(r);
     return Ok(addr.to_string());
@@ -168,10 +164,6 @@ fn parse_rr_aaaa(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
     if rdata.len() != 16 {
         return Err("Invalid record".into());
     }
-    /*outdata.push_str(&format!(
-        "{}.{}.{}.{}",
-        rdata[0], rdata[1], rdata[2], rdata[3]
-    ));*/
     let r: [u8; 16] = rdata.try_into()?;
     let addr = Ipv6Addr::from(r);
     return Ok(addr.to_string());
@@ -200,7 +192,7 @@ fn parse_rr_soa(packet: &[u8], offset_in: usize) -> Result<String, Box<dyn std::
     let sn = dns_read_u32(packet, offset)?;
     let refr = dns_read_u32(packet, offset + 4)?;
     let ret = dns_read_u32(packet, offset + 8)?;
-    let exp = dns_read_u32(packet, offset + 16)?;
+    let exp = dns_read_u32(packet, offset + 12)?;
     let ttl = dns_read_u32(packet, offset + 16)?;
     return Ok(format!(
         "{} {} {} {} {} {} {}",
@@ -216,10 +208,11 @@ fn parse_rr_txt(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
         let Some(r) = rdata.get(1 + pos..pos + tlen + 1) else {
             return Err("Index error".into());
         };
-        res += &format!("{} ", std::str::from_utf8(r)?);
+        //res += &format!("{} ", std::str::from_utf8(r)?);
+        let _ = write!(res, "{} ", std::str::from_utf8(r)?);
         pos += 1 + tlen;
     }
-    return Ok(String::from(res));
+    return Ok(res);
 }
 
 fn parse_rr_hinfo(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
@@ -544,7 +537,7 @@ fn parse_rr_sshfp(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
     let alg = sshfp_algorithm(rdata[0])?;
     let fp_type = sshfp_fp_type(rdata[1])?;
     let fingerprint = &rdata[2..];
-    return Ok(format!("{} {} {}", alg, fp_type, hex::encode(&fingerprint)));
+    return Ok(format!("{} {} {}", alg, fp_type, hex::encode(fingerprint)));
 }
 
 fn parse_rr_cert(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
@@ -758,8 +751,8 @@ fn parse_rr_isdn(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
     };
     return Ok(format!(
         "{} {}",
-        String::from_utf8_lossy(&addr),
-        String::from_utf8_lossy(&sub_addr)
+        String::from_utf8_lossy(addr),
+        String::from_utf8_lossy(sub_addr)
     ));
 }
 
@@ -771,7 +764,7 @@ fn parse_rr_amtrelay(
     let precedence = dns_read_u8(rdata, 0)?;
     let mut rtype = dns_read_u8(rdata, 1)?;
     let dbit = rtype >> 7;
-    rtype = rtype & 0x7f;
+    rtype &= 0x7f;
     let mut relay: String = String::new();
     if rtype == 3 {
         (relay, _) = dns_parse_name(packet, offset_in + 2)?;
@@ -827,7 +820,7 @@ fn parse_rr_rrsig(rdata: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
         sig_inc,
         key_tag,
         signer,
-        hex::encode(&signature)
+        hex::encode(signature)
     ));
 }
 
@@ -888,7 +881,7 @@ pub fn dns_parse_rdata(
     } else if rrtype == DNS_RR_type::SSHFP {
         return parse_rr_sshfp(rdata);
     } else if rrtype == DNS_RR_type::OPENPGPKEY {
-        let pubkey = general_purpose::STANDARD_NO_PAD.encode(&rdata);
+        let pubkey = general_purpose::STANDARD_NO_PAD.encode(rdata);
         return Ok(pubkey);
     } else if rrtype == DNS_RR_type::RP {
         let (mailbox, offset) = dns_parse_name(rdata, 0)?;

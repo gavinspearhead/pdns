@@ -35,8 +35,7 @@ impl Tcp_data {
         };
         return t;
     }
-    pub fn data(&self) -> &[u8]
-    {
+    pub fn data(&self) -> &[u8] {
         return self.data.as_ref();
     }
 }

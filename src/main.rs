@@ -8,6 +8,7 @@ pub mod dns;
 pub mod dns_cache;
 pub mod dns_helper;
 pub mod dns_rr;
+pub mod errors;
 pub mod http_server;
 pub mod mysql_connection;
 pub mod packet_info;
@@ -27,36 +28,28 @@ use dns_cache::DNS_Cache;
 use dns_helper::{dns_read_u16, dns_read_u32, parse_class, parse_rrtype};
 use dns_rr::{dns_parse_name, dns_parse_rdata};
 use futures::executor::block_on;
-use log::warn;
 use mysql_connection::{create_database, Mysql_connection};
 use pcap::{Active, Capture, Linktype};
 use publicsuffix::Psl;
 use regex::Regex;
-use skiplist::read_skip_list;
-use tracing_rfc_5424::layer::Layer;
-use tracing_rfc_5424::rfc5424::Rfc5424;
-use tracing_rfc_5424::tracing::TrivialTracingFormatter;
-use tracing_rfc_5424::transport::{UdpTransport, UnixSocket};
-use version::PROGNAME;
+use skiplist::{match_skip_list, read_skip_list};
 use std::collections::VecDeque;
-use std::ffi::CString;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufReader, Write};
-use std::net::{Ipv4Addr, Ipv6Addr, UdpSocket};
-use std::os::unix::net::UnixDatagram;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::process::exit;
 use std::str::{self, FromStr};
 use std::sync::mpsc::TryRecvError;
 use std::sync::{mpsc, Arc, Mutex};
 use std::{thread, time};
-//use syslog::{self, Formatter3164, LoggerBackend};
 use tcp_connection::{clean_tcp_list, TCP_Connections};
-use tracing::Level;
-use tracing_subscriber::{filter, fmt, prelude::*, reload, Registry};
+use tracing::{debug, error};
+use tracing_rfc_5424::layer::Layer;
+use tracing_rfc_5424::transport::{UdpTransport, UnixSocket};
+use tracing_subscriber::{filter, fmt, prelude::*, reload};
 use tracing_subscriber::{
     layer::SubscriberExt, // Needed to get `with()`
 };
-use syslog_tracing;
 
 use crate::config::Config;
 use crate::http_server::{listen, server};
@@ -67,16 +60,6 @@ use crate::statistics::Statistics;
 enum DNS_Protocol {
     TCP,
     UDP,
-}
-
-fn match_skip_list(name: &str, skip_list: &[Regex]) -> bool {
-    for i in skip_list {
-        let r = i;
-        if r.is_match(&name.trim_end_matches('.')) {
-            return true;
-        }
-    }
-    return false;
 }
 
 fn parse_question(
@@ -123,7 +106,7 @@ fn parse_question(
             asn: String::new(),
             asn_owner: String::new(),
             prefix: String::new(),
-            error : DnsReplyType::find(rcode)?,
+            error: DnsReplyType::find(rcode)?,
         };
         packet_info.add_dns_record(rec);
     }
@@ -174,13 +157,11 @@ fn parse_answer(
 
     let domain = publicsuffixlist.domain(name.as_bytes());
     let mut domain_str = String::new();
-    //println!("{:?} == {:?}", domain, domain_str);
     match domain {
         Some(d) => {
             let x = d.trim().as_bytes().to_vec();
-            domain_str = String::from_utf8(x).unwrap_or(String::new());
-            //            domain_str = String::from_str(str::from_utf8(d.as_bytes()).or(Ok(""))?)?;
-            //println!("{:?}", domain_str);
+            domain_str = String::from_utf8(x).unwrap_or_default();
+            //domain_str = String::from_utf8(x).unwrap_or(String::new());
         }
         None => {
             tracing::debug!("Not found {}", name);
@@ -191,10 +172,8 @@ fn parse_answer(
         rr_type: rrtype.to_str()?,
         ttl: ttl,
         class: class.to_str()?,
-        //name: name.trim_end_matches('.').to_string(),
         name: name,
         rdata: rdata,
-        //rdata: rdata.trim_end_matches('.').to_string(),
         count: 1,
         timestamp: packet_info.timestamp,
         domain: domain_str,
@@ -229,11 +208,17 @@ fn parse_dns(
     let flags = dns_read_u16(packet, offset)?;
     offset += 2;
     let qr = (flags & 0x8000) >> 15;
-    let _opcode = (flags >> 11) & 0x000f;
+    let opcode = (flags >> 11) & 0x000f;
     let tr = (flags >> 9) & 0x0001;
     let _rd = (flags >> 8) & 0x0001;
     let _ra = (flags >> 7) & 0x0001;
     let rcode = flags & 0x000f;
+
+    if opcode != 0 {
+        // Query
+        tracing::debug!("Skipping DNS packets that are not queries");
+        return Ok(());
+    }
 
     if tr != 0 {
         tracing::debug!("Skipping truncated DNS packets");
@@ -260,8 +245,6 @@ fn parse_dns(
 
     if qr != 1 {
         // we ignore questions
-        //stats.sources.add(&packet_info.s_addr.to_string());
-        //stats.destinations.add(&packet_info.d_addr.to_string());
         stats.sources.add(packet_info.s_addr.to_string());
         stats.destinations.add(packet_info.d_addr.to_string());
         return Ok(());
@@ -328,13 +311,10 @@ fn parse_tcp(
     packet_info.set_dest_port(dp);
     packet_info.set_source_port(sp);
     packet_info.set_data_len(len);
-    //        println! ("{} {} {} {} {}  {} {:x?}", flags, hl, sp, dp , len, &packet[12]>>4, &packet[..32]);
 
     let Some(dnsdata) = packet.get((hl as usize)..) else {
-        //println!("{} {} {} {:x?}", flags, hl, &packet[12] >> 4, &packet[..32]);
         return Err("Parse Error TCP".into());
     };
-    //println!("{:x?}", dnsdata);
     let r = tcp_list.lock().unwrap().process_data(
         sp,
         dp,
@@ -345,19 +325,16 @@ fn parse_tcp(
         packet_info.timestamp,
         flags,
     );
-    match r {
-        Some(d) => {
-            stats.tcp += 1;
-            return parse_dns(
-                &d.data(),
-                packet_info,
-                stats,
-                config,
-                skip_list,
-                publicsuffixlist,
-            );
-        }
-        None => {}
+    if let Some(d) = r {
+        stats.tcp += 1;
+        return parse_dns(
+            d.data(),
+            packet_info,
+            stats,
+            config,
+            skip_list,
+            publicsuffixlist,
+        );
     };
 
     return Ok(());
@@ -410,7 +387,7 @@ fn parse_ip_data(
         packet_info.set_protocol(DNS_Protocol::TCP);
         // TCP
         return parse_tcp(
-            &packet,
+            packet,
             packet_info,
             stats,
             tcp_list,
@@ -422,7 +399,7 @@ fn parse_ip_data(
         packet_info.set_protocol(DNS_Protocol::UDP);
         //  UDP
         return parse_udp(
-            &packet,
+            packet,
             packet_info,
             stats,
             config,
@@ -454,7 +431,7 @@ fn parse_ipv4(
     t = packet[16..20].try_into()?;
     let dst = Ipv4Addr::from(t);
     let len: u16 = dns_read_u16(packet, 2)? - ihl;
-    let next_header = packet[9] as u8;
+    let next_header = packet[9];
     packet_info.set_dest_ip(std::net::IpAddr::V4(dst));
     packet_info.set_source_ip(std::net::IpAddr::V4(src));
     packet_info.set_ip_len(len);
@@ -482,13 +459,14 @@ fn parse_tunneling(
 ) -> Result<(), Box<dyn std::error::Error>> {
     if next_header == 4 {
         // IPIP
-        if packet.len() < 1 {
+        if packet.len() < 20 {
+            //ip packets are always >= 20 bytes
             return Err("Packet to small".into());
         }
         let ip_ver = packet[0] >> 4;
         if ip_ver == 4 {
             return parse_ipv4(
-                &packet,
+                packet,
                 packet_info,
                 stats,
                 tcp_list,
@@ -498,7 +476,7 @@ fn parse_tunneling(
             );
         } else if ip_ver == 6 {
             return parse_ipv6(
-                &packet,
+                packet,
                 packet_info,
                 stats,
                 tcp_list,
@@ -513,7 +491,7 @@ fn parse_tunneling(
         //println!("Normal IP data {:x?}", &packet);
 
         parse_ip_data(
-            &packet,
+            packet,
             next_header,
             packet_info,
             stats,
@@ -577,15 +555,10 @@ fn parse_eth(
     let mut offset = 12;
     let mut eth_type_field = dns_read_u16(packet, offset)?;
     offset += 2;
-    //println!("1 {:x}", eth_type_field);
 
     if eth_type_field == 0x8100 {
-        // vlan tag
-        // println!("VLAN");
         offset += 2;
         eth_type_field = dns_read_u16(packet, offset)?;
-        // println!("2 {:x}", eth_type_field);
-        // println!(" {:x?}", packet.get(12..24).unwrap());
         offset += 2;
     }
 
@@ -614,7 +587,7 @@ fn parse_eth(
     }
 }
 
-#[derive(Parser)]
+#[derive(Parser, Clone, Debug, PartialEq)]
 struct Args {
     #[arg(short, long)]
     path: std::path::PathBuf,
@@ -631,7 +604,6 @@ fn packet_loop<T: pcap::State>(
     T: pcap::Activated,
 {
     let link_type = cap.get_datalink();
-
     if link_type != Linktype::ETHERNET {
         tracing::error!("Not ethernet {:?}", link_type);
         panic!("Not ethernet");
@@ -655,37 +627,47 @@ fn packet_loop<T: pcap::State>(
         }
     };
     tracing::debug!("Starting loop");
-    while let Ok(packet) = cap.next_packet() {
-        //        tracing::debug!("Packet");
-        //        eprintln!("{:?}", cap.stats().unwrap());
-        let mut packet_info: Packet_info = Default::default();
-        let ts = match DateTime::<Utc>::from_timestamp(
-            packet.header.ts.tv_sec,
-            packet.header.ts.tv_usec as u32 * 1000,
-        ) {
-            Some(x) => x,
-            None => Utc::now(), //let mut last_push = Utc::now().timestamp() as u64;
-        };
-        packet_info.set_timestamp(ts);
-        let result = parse_eth(
-            &packet.data,
-            &mut packet_info,
-            &mut stats.lock().unwrap(),
-            tcp_list,
-            config,
-            skip_list,
-            &publicsuffixlist,
-        );
-        match result {
-            Ok(_c) => {
-                packet_queue.lock().unwrap().push_back(Some(packet_info));
+    loop {
+        match (cap.next_packet()) {
+            Ok(packet) => {
+                //        tracing::debug!("Packet");
+                let mut packet_info: Packet_info = Default::default();
+                let ts = match DateTime::<Utc>::from_timestamp(
+                    packet.header.ts.tv_sec,
+                    packet.header.ts.tv_usec as u32 * 1000,
+                ) {
+                    Some(x) => x,
+                    None => Utc::now(), //let mut last_push = Utc::now().timestamp() as u64;
+                };
+                packet_info.set_timestamp(ts);
+                let result = parse_eth(
+                    packet.data,
+                    &mut packet_info,
+                    &mut stats.lock().unwrap(),
+                    tcp_list,
+                    config,
+                    skip_list,
+                    &publicsuffixlist,
+                );
+                match result {
+                    Ok(_c) => {
+                        packet_queue.lock().unwrap().push_back(Some(packet_info));
+                    }
+                    Err(error) => {
+                        tracing::debug!("{}", format!("{:?}", error));
+                    }
+                }
             }
-            Err(error) => {
-                tracing::debug!("{}", format!("{:?}", error));
+            Err(pcap::Error::TimeoutExpired ) => {
+                debug!("Packet capture error {}", pcap::Error::TimeoutExpired);
+            }
+            Err(e) => {
+                error!("Packet capture error {}", e);
+                packet_queue.lock().unwrap().push_back(None);
+
             }
         }
     }
-    packet_queue.lock().unwrap().push_back(None);
 }
 
 fn poll(
@@ -698,7 +680,7 @@ fn poll(
     let mut database_conn: Option<Mysql_connection> = None;
     let mut dns_cache: DNS_Cache = DNS_Cache::new(5);
     let mut last_push = Utc::now().timestamp() as u64;
-    if config.output != "" && config.output != "-" {
+    if !config.output.is_empty() && config.output != "-" {
         let mut options = OpenOptions::new();
         output_file = Some(
             options
@@ -709,7 +691,7 @@ fn poll(
         );
     }
 
-    if config.database != "" {
+    if !config.database.is_empty() {
         let x = block_on(Mysql_connection::connect(
             &config.dbhostname,
             &config.dbusername,
@@ -719,6 +701,7 @@ fn poll(
         ));
         database_conn = Some(x);
     }
+    tracing::debug!("{}", config.asn_database_file);
     let asn_database = match asn_db2::Database::from_reader(BufReader::new(
         match File::open(&config.asn_database_file) {
             Ok(x) => x,
@@ -754,31 +737,22 @@ fn poll(
                             println!("{}", p1);
                         }
                     }
-                    match output_file {
-                        Some(ref mut of) => {
-                            if config.output_type == "csv" {
-                                of.write(p1.to_csv().as_str().as_bytes())
-                                    .expect("Write failed");
-                            } else if config.output_type == "json" {
-                                of.write(p1.to_json().as_str().as_bytes())
-                                    .expect("Write failed");
-                            }
+                    if let Some(ref mut of) = output_file {
+                        if config.output_type == "csv" {
+                            of.write_all(p1.to_csv().as_bytes()).expect("Write failed");
+                        } else if config.output_type == "json" {
+                            of.write_all(p1.to_json().as_bytes()).expect("Write failed");
                         }
-                        None => {}
                     };
-                    match database_conn {
-                        Some(ref _db) => {
-                            for i in p1.dns_records {
-                                dns_cache.add(&i);
-                            }
+                    if let Some(ref _db) = database_conn {
+                        for i in p1.dns_records {
+                            dns_cache.add(&i);
                         }
-                        None => {}
                     }
-
                     timeout = time::Duration::from_millis(0);
                 }
                 None => {
-                    //println!("Terminating poll()");
+                    debug!("Terminating poll()");
                     return;
                 }
             },
@@ -790,40 +764,28 @@ fn poll(
             }
         }
         let ct = Utc::now().timestamp() as u64;
-        if ct > (last_push as u64) + dns_cache.timeout() {
-            //println!("{} {}", dns_cache, last_push);
-            match database_conn {
-                Some(ref mut db) => {
-                    for i in dns_cache.push_all() {
-                        db.insert_or_update_record(&i);
-                    }
-                    last_push = Utc::now().timestamp() as u64;
+        if ct > last_push + dns_cache.timeout() {
+            if let Some(ref mut db) = database_conn {
+                for i in dns_cache.push_all() {
+                    db.insert_or_update_record(&i);
                 }
-                None => {}
+                last_push = Utc::now().timestamp() as u64;
             }
         }
         match rx.try_recv() {
             Ok(_e) => {
-                match database_conn {
-                    Some(ref mut db) => {
-                        for i in dns_cache.push_all() {
-                            db.insert_or_update_record(&i);
-                        }
-                        return;
+                if let Some(ref mut db) = database_conn {
+                    for i in dns_cache.push_all() {
+                        db.insert_or_update_record(&i);
                     }
-                    None => {}
                 }
                 return;
             }
             Err(TryRecvError::Disconnected) => {
-                match database_conn {
-                    Some(ref mut db) => {
-                        for i in dns_cache.push_all() {
-                            db.insert_or_update_record(&i);
-                        }
-                        return;
+                if let Some(ref mut db) = database_conn {
+                    for i in dns_cache.push_all() {
+                        db.insert_or_update_record(&i);
                     }
-                    None => {}
                 }
                 return;
             }
@@ -840,14 +802,14 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
     let (_pq_tx, pq_rx) = mpsc::channel();
     let skiplist = read_skip_list(&config.skip_list_file);
     thread::scope(|s| {
-        let handle = s.spawn(|| poll(&packet_queue.clone(), &config, pq_rx));
+        let handle = s.spawn(|| poll(&packet_queue.clone(), config, pq_rx));
         let handle2 = s.spawn(|| clean_tcp_list(&tcp_list.clone(), tcp_rx));
 
-        if pcap_path != "" {
-            let cap = Capture::from_file(&pcap_path);
+        if !pcap_path.is_empty() {
+            let cap = Capture::from_file(pcap_path);
             match cap {
                 Ok(mut c) => {
-                    match c.filter(config.filter.as_str().as_ref(), false) {
+                    match c.filter(&config.filter, false) {
                         Ok(()) => {}
                         Err(e) => {
                             tracing::error!("Cannot apply filter {}: {}", config.filter, e)
@@ -873,12 +835,13 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
                     panic!("{}", format!("{:?}", e).red());
                 }
             }
-        } else if config.interface != "" {
+        } else if !config.interface.is_empty() {
             tracing::debug!("Listening on interface {}", config.interface);
-            let listener = listen(&config.server, config.port.clone());
-            let handle4 = s.spawn(|| match listener {
-                Some(l) => server(l, &stats.clone(), &tcp_list.clone(), &config.clone()),
-                None => {}
+            let listener = listen(&config.server, config.port);
+            let handle4 = s.spawn(|| {
+                if let Some(l) = listener {
+                    server(l, &stats.clone(), &tcp_list.clone(), &config.clone())
+                }
             });
             let Some(mut cap) = capin else {
                 tracing::error!("Something wrong with the capture");
@@ -886,7 +849,7 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
             };
             tracing::debug!("Filter: {}", config.filter);
 
-            match cap.filter(config.filter.as_str(), false) {
+            match cap.filter(&config.filter, false) {
                 Ok(()) => {}
                 Err(e) => {
                     tracing::error!("Cannot apply filter {}: {}", config.filter, e)
@@ -904,103 +867,7 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
             handle.join().unwrap();
         }
     });
-    //println!("{:#?}", stats.lock().unwrap().to_str());
 }
-
-struct PrintlnVisitor {
-    data: String,
-}
-
-impl tracing::field::Visit for PrintlnVisitor {
-    fn record_f64(&mut self, _field: &tracing::field::Field, value: f64) {
-        self.data.push_str(&format!("{} ", value));
-    }
-
-    fn record_i64(&mut self, _field: &tracing::field::Field, value: i64) {
-        self.data.push_str(&format!("{} ", value));
-    }
-
-    fn record_u64(&mut self, _field: &tracing::field::Field, value: u64) {
-        self.data.push_str(&format!("{} ", value));
-    }
-
-    fn record_bool(&mut self, _field: &tracing::field::Field, value: bool) {
-        self.data.push_str(&format!("{} ", value));
-    }
-
-    fn record_str(&mut self, _field: &tracing::field::Field, value: &str) {
-        self.data
-            .push_str(&format!("{} ", value.replace("\n", " ")));
-    }
-
-    fn record_error(
-        &mut self,
-        _field: &tracing::field::Field,
-        value: &(dyn std::error::Error + 'static),
-    ) {
-        self.data.push_str(&format!("{} ", value));
-    }
-
-    fn record_debug(&mut self, _field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-        self.data.push_str(&format!("{:?} ", &value));
-    }
-}
-
-/*use libc::{self, openlog, LOG_USER};
-
-
-pub struct CustomLayer {
-    min_level: Level,
-    ident : CString,
-   // logger: syslog::Logger<LoggerBackend, Formatter3164>,
-}
-impl CustomLayer {
-    fn new(min_level: Level) -> CustomLayer {
-        
-        let c = CustomLayer {
-            min_level: min_level,
-            ident : CString::new(PROGNAME).expect("String")
-
-           // logger: syslog::unix(f).expect("Cannot start logger"),
-        };
-        unsafe { openlog(c.ident.as_ptr(), libc::LOG_PID, LOG_USER) };
-        return c;
-    }
-}
-
-impl<S> tracing_subscriber::Layer<S> for CustomLayer
-where
-    S: tracing::Subscriber,
-{
-    fn on_event(
-        &self,
-        event: &tracing::Event<'_>,
-        _ctx: tracing_subscriber::layer::Context<'_, S>,
-    ) {
-        println!("{} <= {} =  {} ", event.metadata().level() , &self.min_level, event.metadata().level() <= &self.min_level);
-        if event.metadata().level() <= &self.min_level {
-            let mut visitor = PrintlnVisitor {
-                data: String::new(),
-            };
-            event.record(&mut visitor);
-            match event.metadata().level() {
-                &Level::WARN => {
-                    unsafe {libc::syslog(libc::LOG_WARNING, CString::new(format!("{}", visitor.data)).expect("Could not parse string").as_ptr());}
-                }
-                &Level::ERROR => {
-                    unsafe {libc::syslog(libc::LOG_ERR, CString::new(format!("{}", visitor.data)).expect("Could not parse string").as_ptr());}
-                }
-                                &Level::INFO => {
-                    unsafe {libc::syslog(libc::LOG_INFO, CString::new(format!("{}", visitor.data)).expect("Could not parse string").as_ptr());}
-                }
-                &Level::DEBUG => {
-                    unsafe {libc::syslog(libc::LOG_DEBUG, CString::new(format!("{}", visitor.data)).expect("Could not parse string").as_ptr());}
-                }
-                &Level::TRACE => {}
-            }
-        }
-    }
-}*/
 
 fn main() {
     let filter = filter::LevelFilter::WARN;
@@ -1008,20 +875,19 @@ fn main() {
     tracing_subscriber::Registry::default()
         .with(filter)
         .with(fmt::Layer::default())
-    //    .with(CustomLayer::new(Level::INFO))
-        .with(Layer::with_transport(UnixSocket::new("/run/systemd/journal/syslog").unwrap()))
+        .with(Layer::with_transport(
+            UnixSocket::new("/var/run/systemd/journal/syslog").unwrap(),
+        ))
+        //  .with(Layer::with_transport(UdpTransport::new("127.0.0.1:514").unwrap()))
         .init();
     let mut config = Config::new();
     let mut pcap_path = String::new();
     let mut create_db: bool = false;
-    //tracing::error!("test");
-    ////tracing::warn!("test");
-    //tracing::info!("test");
-    //tracing::debug!("test");
     parse_config(&mut config, &mut pcap_path, &mut create_db);
     if config.debug {
         let _ = reload_handle.modify(|filter| *filter = filter::LevelFilter::DEBUG);
     }
+
     if create_db {
         create_database(&config);
         exit(0);
@@ -1042,13 +908,13 @@ fn main() {
         //.privileged_action(|| "Executed before drop privileges")
         ;
     let mut cap = None;
-    if config.interface != "" {
+    if !config.interface.is_empty() {
         // do it here otherwise PCAP hangs on open if we do it after daemonizing
         cap = Some(
             Capture::from_device(config.interface.as_str())
                 .unwrap()
                 .timeout(1000)
-                .promisc(true) // todo make a paramater
+                .promisc(config.promisc) // todo make a paramater
                 //                .immediate_mode(true) //seems to brak on ubuntu?
                 .open()
                 .unwrap(),
@@ -1063,11 +929,11 @@ fn main() {
         tracing::debug!("Daemonising");
         match daemonize.start() {
             Ok(_) => {
-                tracing::debug!("Daemonising2");
+                tracing::debug!("Daemonised");
                 run(&config, cap, &pcap_path);
             }
-            Err(_e) => {
-                tracing::error!("Error daemonizing {}", _e);
+            Err(e) => {
+                tracing::error!("Error daemonising {}", e);
                 exit(-1);
             }
         }

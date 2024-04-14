@@ -1,7 +1,6 @@
-use std::str::FromStr;
-
 use clap::{arg, ArgAction, Command};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 use crate::{
     dns::DNS_RR_type,
@@ -74,14 +73,14 @@ impl Config {
         return c;
     }
     pub fn from_str(config_str: &str) -> Result<Config, serde_json::Error> {
-        return serde_json::from_str(&config_str);
+        return serde_json::from_str(config_str);
     }
 }
 
 pub fn parse_rrtypes(config_str: &str) -> Vec<DNS_RR_type> {
     let mut rrtypes: Vec<DNS_RR_type> = Vec::new();
     //println!("{:?} ", config_str);
-    if config_str == "" {
+    if config_str.is_empty() {
         return rrtypes;
     } else if config_str == "*" {
         rrtypes = DNS_RR_type::to_vec();
@@ -131,36 +130,112 @@ mod tests {
             ]
         );
     }
-
-    
-
 }
 
-pub(crate) fn parse_config(config: &mut Config, mut pcap_path: &mut String, create_db: &mut bool) {
+pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String, create_db: &mut bool) {
     let matches = Command::new("pdns")
         .version(VERSION)
         .author(AUTHOR)
         .about(PROGNAME)
-        .arg(arg!(-c --config <VALUE>).required(false).long_help("location of the config file"))
-        .arg(arg!(-H --dbhostname <VALUE>).required(false).long_help("hostname of the database"))
-        .arg(arg!(-T --dbport <VALUE>).required(false).long_help("port number of the database"))
-        .arg(arg!(-u --dbusername <VALUE>).required(false).long_help("username for the database"))
-        .arg(arg!(-w --dbpassword <VALUE>).required(false).long_help("password for the database"))
-        .arg(arg!(-p --path <VALUE>).required(false).long_help("Location of a pcap file to parse"))
-        .arg(arg!(-S --skip_list_file <VALUE>).required(false).long_help("location of the file, containing regular expressions with domains to ignore"))
-        .arg(arg!(-l --listen <VALUE>).required(false).long_help("Hostname or IP address for the internal web server to liste no"))
-        .arg(arg!(-P --port <VALUE>).required(false).long_help("Port number for the internal web server to listen on"))
-        .arg(arg!(-r --rrtypes <VALUE>).required(false).long_help("Comma-separated list of RR types to record"))
-        .arg(arg!(-i --interface <VALUE>).required(false).long_help("Interface to listen on for packet capture"))
-        .arg(arg!(-f --filter <VALUE>).required(false).long_help("BPF filter definition (port 53)"))
-        .arg(arg!(-o --output <VALUE>).required(false).long_help("Write output to a file; - for standard out"))
-        .arg(arg!(-d --database <VALUE>).required(false).long_help("Write output to a database (mysql)"))
-        .arg(arg!(-L --toplistsize <VALUE>).required(false).long_help("Number of entries in the statistics"))
-        .arg(arg!(-U --uid <VALUE>).required(false).long_help("UID to change to after dropping privileges"))
-        .arg(arg!(-F --public_suffix_file <VALUE>).required(false).long_help("Location of the public suffix file"))
-        .arg(arg!(-A --asn_database_file <VALUE>).required(false).long_help("Location of the ASN database (ip2asn-combined.tsv)"))
-        .arg(arg!(-g --gid <VALUE>).required(false).long_help("GID to change to after dropping privileges"))
-        .arg(arg!(--debug).required(false).action(ArgAction::SetTrue).long_help("Enable debugging mode"))
+        .arg(
+            arg!(-c --config <VALUE>)
+                .required(false)
+                .long_help("location of the config file"),
+        )
+        .arg(
+            arg!(-H --dbhostname <VALUE>)
+                .required(false)
+                .long_help("hostname of the database"),
+        )
+        .arg(
+            arg!(-T --dbport <VALUE>)
+                .required(false)
+                .long_help("port number of the database"),
+        )
+        .arg(
+            arg!(-u --dbusername <VALUE>)
+                .required(false)
+                .long_help("username for the database"),
+        )
+        .arg(
+            arg!(-w --dbpassword <VALUE>)
+                .required(false)
+                .long_help("password for the database"),
+        )
+        .arg(
+            arg!(-p --path <VALUE>)
+                .required(false)
+                .long_help("Location of a pcap file to parse"),
+        )
+        .arg(arg!(-S --skip_list_file <VALUE>).required(false).long_help(
+            "location of the file, containing regular expressions with domains to ignore",
+        ))
+        .arg(
+            arg!(-l --listen <VALUE>)
+                .required(false)
+                .long_help("Hostname or IP address for the internal web server to liste no"),
+        )
+        .arg(
+            arg!(-P --port <VALUE>)
+                .required(false)
+                .long_help("Port number for the internal web server to listen on"),
+        )
+        .arg(
+            arg!(-r --rrtypes <VALUE>)
+                .required(false)
+                .long_help("Comma-separated list of RR types to record"),
+        )
+        .arg(
+            arg!(-i --interface <VALUE>)
+                .required(false)
+                .long_help("Interface to listen on for packet capture"),
+        )
+        .arg(
+            arg!(-f --filter <VALUE>)
+                .required(false)
+                .long_help("BPF filter definition (port 53)"),
+        )
+        .arg(
+            arg!(-o --output <VALUE>)
+                .required(false)
+                .long_help("Write output to a file; - for standard out"),
+        )
+        .arg(
+            arg!(-d --database <VALUE>)
+                .required(false)
+                .long_help("Write output to a database (mysql)"),
+        )
+        .arg(
+            arg!(-L --toplistsize <VALUE>)
+                .required(false)
+                .long_help("Number of entries in the statistics"),
+        )
+        .arg(
+            arg!(-U --uid <VALUE>)
+                .required(false)
+                .long_help("UID to change to after dropping privileges"),
+        )
+        .arg(
+            arg!(-F --public_suffix_file <VALUE>)
+                .required(false)
+                .long_help("Location of the public suffix file"),
+        )
+        .arg(
+            arg!(-A --asn_database_file <VALUE>)
+                .required(false)
+                .long_help("Location of the ASN database (ip2asn-combined.tsv)"),
+        )
+        .arg(
+            arg!(-g --gid <VALUE>)
+                .required(false)
+                .long_help("GID to change to after dropping privileges"),
+        )
+        .arg(
+            arg!(--debug)
+                .required(false)
+                .action(ArgAction::SetTrue)
+                .long_help("Enable debugging mode"),
+        )
         .arg(
             arg!(--create_database)
                 .required(false)
@@ -170,22 +245,26 @@ pub(crate) fn parse_config(config: &mut Config, mut pcap_path: &mut String, crea
         .arg(
             arg!(-C --promisc <VALUE>)
                 .required(false)
-                .action(ArgAction::SetTrue).long_help("Put the interface is promiscuous mode when capturing"),
+                .action(ArgAction::SetTrue)
+                .long_help("Put the interface is promiscuous mode when capturing"),
         )
         .arg(
             arg!(-D - -daemon)
                 .required(false)
-                .action(ArgAction::SetTrue).long_help("Start as a background process (daemon)"),
+                .action(ArgAction::SetTrue)
+                .long_help("Start as a background process (daemon)"),
         )
         .arg(
             arg!(-I --pid_file <VALUE>)
                 .required(false)
-                .default_missing_value("/var/run/pdns.pid").long_help("Location of the PID file"),
+                .default_missing_value("/var/run/pdns.pid")
+                .long_help("Location of the PID file"),
         )
         .arg(
             arg!(-t --output_type <VALUE>)
                 .required(false)
-                .default_missing_value("csv").long_help("Output format (CSV or JSON"),
+                .default_missing_value("csv")
+                .long_help("Output format (CSV or JSON"),
         )
         .get_matches();
     let empty_str = String::new();
@@ -193,23 +272,25 @@ pub(crate) fn parse_config(config: &mut Config, mut pcap_path: &mut String, crea
         .get_one::<String>("config")
         .unwrap_or(&String::from_str(&empty_str).unwrap())
         .clone();
-
-    if config.config_file != "" {
-        let config_str = std::fs::read_to_string(&config.config_file).unwrap_or(String::new());
+    if !config.config_file.is_empty() {
+        let config_str = std::fs::read_to_string(&config.config_file).unwrap_or_default();
         if !config_str.is_empty() {
             match Config::from_str(&config_str) {
                 Ok(x) => {
                     x.clone_into(config);
                 }
                 Err(e) => {
-                    let err_msg = format!("Failed to parse config file: {} {}", (config.config_file), e);
+                    let err_msg = format!(
+                        "Failed to parse config file: {} {}",
+                        config.config_file,
+                        e
+                    );
                     panic!("{}", err_msg);
                 }
             }
         }
     }
 
-    //  println!("config: {:#?}", config);
     *create_db = *matches.get_one::<bool>("create_database").unwrap_or(&false);
 
     config.server = matches
@@ -219,13 +300,13 @@ pub(crate) fn parse_config(config: &mut Config, mut pcap_path: &mut String, crea
     config.port = matches
         .get_one::<String>("port")
         .unwrap_or(&format!("{}", config.port))
-        .clone()
+        // .clone()
         .parse::<u16>()
         .unwrap();
     matches
         .get_one::<String>("path")
         .unwrap_or(&empty_str)
-        .clone_into(&mut pcap_path);
+        .clone_into(pcap_path);
     config.interface = matches
         .get_one::<String>("interface")
         .unwrap_or(&config.interface)
@@ -250,22 +331,14 @@ pub(crate) fn parse_config(config: &mut Config, mut pcap_path: &mut String, crea
         .get_one::<String>("database")
         .unwrap_or(&config.database)
         .clone();
-    config.daemon = matches
-        .get_one::<bool>("daemon")
-        .unwrap_or(&config.daemon)
-        .clone();
-    config.debug = matches
-        .get_one::<bool>("debug")
-        .unwrap_or(&config.debug)
-        .clone();
-    config.promisc = matches
+    config.daemon = *matches.get_one::<bool>("daemon").unwrap_or(&config.daemon);
+    config.debug = *matches.get_one::<bool>("debug").unwrap_or(&config.debug);
+    config.promisc = *matches
         .get_one::<bool>("promisc")
-        .unwrap_or(&config.promisc)
-        .clone();
-    config.toplistsize = matches
+        .unwrap_or(&config.promisc);
+    config.toplistsize = *matches
         .get_one::<usize>("toplistsize")
-        .unwrap_or(&config.toplistsize)
-        .clone();
+        .unwrap_or(&config.toplistsize);
     config.pid_file = matches
         .get_one::<String>("pid_file")
         .unwrap_or(&config.pid_file)
@@ -291,4 +364,5 @@ pub(crate) fn parse_config(config: &mut Config, mut pcap_path: &mut String, crea
     if !rr_types.is_empty() {
         config.rr_type = rr_types;
     }
+    //    tracing::debug!("{:#?}", config);
 }

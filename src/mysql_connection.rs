@@ -8,6 +8,7 @@ use crate::{
     dns::{DNS_record, DnsReplyType},
 };
 
+#[derive(Debug, Clone)]
 pub(crate) struct Mysql_connection {
     pool: Pool<MySql>,
 }
@@ -40,7 +41,6 @@ impl Mysql_connection {
         let i = record;
         let ts = i.timestamp.timestamp();
         let q_res;
-        //println!("QQQQ  {:?}", record);
         if record.error == DnsReplyType::NOERROR {
             let q = r#"INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN, DOMAIN, asn, asn_owner, prefix) VALUES (
                 ?, ?, ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?), ?,  
@@ -54,6 +54,7 @@ impl Mysql_connection {
                 asn_owner = if (asn_owner is null and LENGTH(?) > 0, ?, asn_owner) ,
                 prefix = if (prefix is null and LENGTH(?) > 0, ?, prefix) 
                 "#;
+     
             q_res = block_on(
                 sqlx::query(q)
                     .bind(&i.name)
@@ -86,8 +87,9 @@ impl Mysql_connection {
                     .bind(&i.prefix)
                     .execute(&self.pool),
             );
+            
         } else {
-            let q = r#"INSERT INTO pdns_err (QUERY,RR,MAPTYPE,COUNT,LAST_SEEN,FIRST_SEEN, ERROR_VAL ) VALUES (
+            let q = r#"INSERT INTO pdns_err (QUERY,RR,MAPTYPE,COUNT,LAST_SEEN,FIRST_SEEN, ERROR_VAL) VALUES (
                 ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?), ?   
                 ) ON DUPLICATE KEY UPDATE
                 COUNT = COUNT + ?, 
@@ -114,10 +116,8 @@ impl Mysql_connection {
         match q_res {
             Ok(x) => {
                 tracing::debug!("Success {:?}", x);
-                //println!("Success {:?}", x);
             }
             Err(e) => {
-                //println!("Error: {}", e);
                 tracing::error!("Error: {}", e);
             }
         }
@@ -187,7 +187,7 @@ impl Mysql_connection {
 }
 
 pub(crate) fn create_database(config: &Config) {
-    if config.database != "" {
+    if !config.database.is_empty() {
         let x = block_on(Mysql_connection::connect(
             &config.dbhostname,
             &config.dbusername,
@@ -195,11 +195,11 @@ pub(crate) fn create_database(config: &Config) {
             &config.dbport,
             &config.dbname,
         ));
-        let mut database_conn = Some(x);
-        match database_conn {
+        //let mut database_conn = Some(x);
+        match Some(x) {
             Some(ref mut _db) => {
+                tracing::debug!("Database created");
                 _db.create_database();
-                //eprintln!("Database created");
             }
             None => {
                 tracing::error!("No database configured");

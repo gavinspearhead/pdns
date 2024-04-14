@@ -2,7 +2,6 @@ use std::{collections::HashMap, fmt};
 
 use crate::dns::DNS_record;
 
-
 #[derive(Debug, Clone)]
 pub struct DNS_Cache {
     items: HashMap<(String, String, String), DNS_record>,
@@ -16,8 +15,7 @@ impl DNS_Cache {
             timeout: time_out,
         };
     }
-    pub fn timeout(&self) -> u64
-    {
+    pub fn timeout(&self) -> u64 {
         return self.timeout;
     }
 

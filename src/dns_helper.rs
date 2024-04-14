@@ -1,6 +1,6 @@
+use crate::dns::{DNS_Class, DNS_RR_type};
 use byteorder::{BigEndian, ByteOrder};
 use chrono::{DateTime, NaiveDateTime, Utc};
-use crate::dns::{DNS_Class, DNS_RR_type};
 
 pub fn parse_protocol(proto: u8) -> Result<String, Box<dyn std::error::Error>> {
     match proto {
@@ -62,7 +62,6 @@ pub fn dns_read_u32(packet: &[u8], offset: usize) -> Result<u32, Box<dyn std::er
 }
 pub fn base32hex_encode(input: &[u8]) -> String {
     static BASE32HEX_NOPAD: data_encoding::Encoding = data_encoding::BASE32HEX_NOPAD;
-
     let mut output = String::new();
     let mut enc = BASE32HEX_NOPAD.new_encoder(&mut output);
     enc.append(input);

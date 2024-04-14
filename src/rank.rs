@@ -1,6 +1,6 @@
-use std::{cmp::min, collections::HashMap, fmt};
 use serde::ser::SerializeSeq;
 use serde::Serialize;
+use std::{cmp::min, collections::HashMap, fmt};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Rank<T>
@@ -71,7 +71,7 @@ where
         }
         l.sort_by(|a, b| (b.1).partial_cmp(a.1).unwrap());
         for (k, v) in l.iter() {
-            write!(f, "{}: {}\n", k, v).expect("Cannot write output format ");
+            writeln!(f, "{}: {}", k, v).expect("Cannot write output format ");
         }
         return write!(f, "");
     }
