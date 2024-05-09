@@ -5,23 +5,26 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use tracing::error;
+
 use crate::config::Config;
 use crate::statistics::Statistics;
 use crate::tcp_connection::TCP_Connections;
 
 pub fn listen(address: &str, port: u16) -> Option<TcpListener> {
     if address.is_empty() {
-        return None;
+         return None;
     }
-    let addr = format!("{}:{}", address, port);
-    tracing::debug!("Listening on {}", addr);
+    let addr = format!("{address}:{port}");
+    tracing::debug!("Listening on {addr}");
     let x = TcpListener::bind(addr);
     match x {
         Ok(conn) => {
-            return Some(conn);
+            Some(conn)
         }
         Err(_e) => {
-            panic!("Cannot listen on {}:{}", address, port);
+            error!("Cannot listen on {address}:{port}");
+            None
         }
     }
 }
@@ -96,7 +99,7 @@ pub(crate) fn handle_connection(
         stream.write_all(response.as_bytes()).unwrap();
     } else if req[1] == "/debug" {
         let tcp_len = tcp_list.lock().unwrap().len();
-        let debug_str = format!("TCP LEN: {}\r\n", tcp_len);
+        let debug_str = format!("TCP LEN: {tcp_len}\r\n");
         let len = debug_str.len();
         let response = format!("{status_line}\r\nContent-Length: {len}\r\n\r\n{debug_str}");
         stream.write_all(response.as_bytes()).unwrap();
@@ -116,5 +119,4 @@ pub(crate) fn handle_connection(
         let response = format!("{status_line}\r\nContent-Length: {len}\r\n\r\n{s}\r\n");
         stream.write_all(response.as_bytes()).unwrap();
     }
-    return;
 }

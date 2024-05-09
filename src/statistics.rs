@@ -7,6 +7,8 @@ pub(crate) struct Statistics {
     pub errors: HashMap<String, u128>,
     pub qtypes: HashMap<String, u128>,
     pub atypes: HashMap<String, u128>,
+    pub qclass: HashMap<String, u128>,
+    pub aclass: HashMap<String, u128>,
     pub queries: u128,
     pub answers: u128,
     pub additional: u128,
@@ -25,6 +27,8 @@ impl Statistics {
             errors: HashMap::new(),
             qtypes: HashMap::new(),
             atypes: HashMap::new(),
+            qclass: HashMap::new(),
+            aclass: HashMap::new(),
             queries: 0,
             answers: 0,
             additional: 0,
@@ -39,7 +43,7 @@ impl Statistics {
     }
 
     pub fn to_str(&self) -> String {
-        return format!(
+        format!(
             "Statistics:
         Query types: {:#?}
         Answer Types: {:#?}
@@ -63,6 +67,6 @@ impl Statistics {
             self.authority,
             self.udp,
             self.tcp
-        );
+        )
     }
 }

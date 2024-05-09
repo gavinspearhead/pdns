@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use crate::{
     dns::DNS_RR_type,
-    version::{AUTHOR, PROGNAME, VERSION},
+    version::{AUTHOR, DESCRIPTION, PROGNAME, VERSION},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,7 +36,7 @@ pub(crate) struct Config {
 }
 
 impl Config {
-    pub fn new() -> Config {
+    pub(crate) fn new() -> Config {
         let mut c = Config {
             rr_type: Vec::<crate::dns::DNS_RR_type>::new(),
             interface: String::new(),
@@ -70,16 +70,15 @@ impl Config {
             DNS_RR_type::PTR,
             DNS_RR_type::MX,
         ]);
-        return c;
+        c
     }
-    pub fn from_str(config_str: &str) -> Result<Config, serde_json::Error> {
-        return serde_json::from_str(config_str);
+    pub(crate) fn from_str(config_str: &str) -> Result<Config, serde_json::Error> {
+        serde_json::from_str(config_str)
     }
 }
 
-pub fn parse_rrtypes(config_str: &str) -> Vec<DNS_RR_type> {
+pub(crate) fn parse_rrtypes(config_str: &str) -> Vec<DNS_RR_type> {
     let mut rrtypes: Vec<DNS_RR_type> = Vec::new();
-    //println!("{:?} ", config_str);
     if config_str.is_empty() {
         return rrtypes;
     } else if config_str == "*" {
@@ -95,11 +94,11 @@ pub fn parse_rrtypes(config_str: &str) -> Vec<DNS_RR_type> {
                 rrtypes.push(p);
             }
             Err(_e) => {
-                tracing::error!("Invalid RR type: {}", i);
+                tracing::error!("Invalid RR type: {i}");
             }
         }
     }
-    return rrtypes;
+    rrtypes
 }
 
 #[cfg(test)]
@@ -133,10 +132,12 @@ mod tests {
 }
 
 pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String, create_db: &mut bool) {
-    let matches = Command::new("pdns")
+    let matches = Command::new(PROGNAME)
         .version(VERSION)
         .author(AUTHOR)
-        .about(PROGNAME)
+        .about(DESCRIPTION)
+        .name(DESCRIPTION)
+        .flatten_help(true)
         .arg(
             arg!(-c --config <VALUE>)
                 .required(false)
@@ -264,7 +265,7 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String, create_d
             arg!(-t --output_type <VALUE>)
                 .required(false)
                 .default_missing_value("csv")
-                .long_help("Output format (CSV or JSON"),
+                .long_help("Output format (CSV or JSON)"),
         )
         .get_matches();
     let empty_str = String::new();
@@ -280,12 +281,9 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String, create_d
                     x.clone_into(config);
                 }
                 Err(e) => {
-                    let err_msg = format!(
-                        "Failed to parse config file: {} {}",
-                        config.config_file,
-                        e
-                    );
-                    panic!("{}", err_msg);
+                    let err_msg =
+                        format!("Failed to parse config file: {} {}", config.config_file, e);
+                    panic!("{err_msg}");
                 }
             }
         }
@@ -364,5 +362,4 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String, create_d
     if !rr_types.is_empty() {
         config.rr_type = rr_types;
     }
-    //    tracing::debug!("{:#?}", config);
 }

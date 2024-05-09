@@ -1,15 +1,16 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use unic_idna::to_unicode;
 use std::fmt;
 use std::str::FromStr;
 use strum::IntoEnumIterator;
 use strum_macros::EnumString;
 use strum_macros::{AsStaticStr, EnumIter};
 
-use crate::errors::{DNS_Error_Type, DNS_error};
+use crate::errors::{DNS_Error_Type, DNS_error, Parse_error};
 
 #[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq, EnumString, AsStaticStr)]
-pub enum DNS_Class {
+pub(crate) enum DNS_Class {
     IN = 1,
     CS = 2,
     CH = 3,
@@ -18,19 +19,20 @@ pub enum DNS_Class {
 }
 
 impl DNS_Class {
-    pub fn to_str(self) -> Result<String, Box<dyn std::error::Error>> {
-        let x = self;
-        return Ok(String::from(strum::AsStaticRef::as_static(&x)));
+    pub(crate) fn to_str(self) -> String {
+        String::from(strum::AsStaticRef::as_static(&self))
     }
 
-    pub fn find(val: u16) -> Result<Self, Box<dyn std::error::Error>> {
+    pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
         for cl in DNS_Class::iter() {
             if (cl as u16) == val {
                 return Ok(cl);
             }
         }
-        return Err(DNS_error::new(DNS_Error_Type::Invalid_Class, &format!("{}", val)).into());
-        // return Err(format!("Invalid Class type  {:?}", val).into());
+        Err(DNS_error::new(
+            DNS_Error_Type::Invalid_Class,
+            &format!("{}", val),
+        ))
     }
 }
 
@@ -40,7 +42,7 @@ mod tests {
 
     #[test]
     fn test_dns_class2() {
-        assert_eq!(DNS_Class::IN.to_str().unwrap(), "IN");
+        assert_eq!(DNS_Class::IN.to_str(), "IN");
     }
     #[test]
     fn test_dns_class1() {
@@ -51,7 +53,7 @@ mod tests {
 #[derive(
     Debug, EnumIter, Copy, Clone, AsStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize,
 )]
-pub enum DNS_RR_type {
+pub(crate) enum DNS_RR_type {
     A = 1,
     A6 = 38,
     AAAA = 28,
@@ -147,31 +149,33 @@ pub enum DNS_RR_type {
 }
 
 impl DNS_RR_type {
-    pub fn to_str(self) -> Result<String, Box<dyn std::error::Error>> {
+    pub(crate) fn to_str(self) -> String {
         let x = self;
-        return Ok(String::from(strum::AsStaticRef::as_static(&x)));
+        String::from(strum::AsStaticRef::as_static(&x))
     }
 
-    pub fn find(val: u16) -> Result<Self, Box<dyn std::error::Error>> {
+    pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
         for rr in DNS_RR_type::iter() {
             if (rr as u16) == val {
                 return Ok(rr);
             }
         }
-        //return Err(format!("Invalid RR type  {:?}", val).into());
-        return Err(DNS_error::new(DNS_Error_Type::Invalid_RR, &format!("{}", val)).into());
+        Err(DNS_error::new(
+            DNS_Error_Type::Invalid_RR,
+            &format!("{val}"),
+        ))
     }
-    pub fn to_vec() -> Vec<DNS_RR_type> {
-        return DNS_RR_type::iter().collect::<Vec<_>>();
+    pub(crate) fn to_vec() -> Vec<DNS_RR_type> {
+        DNS_RR_type::iter().collect::<Vec<_>>()
     }
-    pub fn from_string(s: &str) -> Result<DNS_RR_type, strum::ParseError> {
-        return DNS_RR_type::from_str(s);
+    pub(crate) fn from_string(s: &str) -> Result<DNS_RR_type, strum::ParseError> {
+        DNS_RR_type::from_str(s)
     }
 }
 
 impl fmt::Display for DNS_RR_type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        return write!(f, "{}", self.to_str().unwrap_or("RRtype Not found".into()));
+        write!(f, "{}", self.to_str())
     }
 }
 
@@ -183,8 +187,8 @@ mod tests1 {
 
     #[test]
     fn test_dns_rr() {
-        assert_eq!(DNS_RR_type::HTTPS.to_str().unwrap(), "HTTPS");
-        assert_eq!(DNS_RR_type::AAAA.to_str().unwrap(), "AAAA");
+        assert_eq!(DNS_RR_type::HTTPS.to_str(), "HTTPS");
+        assert_eq!(DNS_RR_type::AAAA.to_str(), "AAAA");
     }
     #[test]
     fn test_dns_rr1() {
@@ -195,7 +199,7 @@ mod tests1 {
 
 #[derive(Debug, Clone)]
 
-pub struct DNS_record {
+pub(crate) struct DNS_record {
     pub(crate) rr_type: String,
     pub(crate) ttl: u32,
     pub(crate) class: String,
@@ -211,8 +215,8 @@ pub struct DNS_record {
 }
 
 impl DNS_record {
-    pub fn to_str(&self) -> Result<String, Box<dyn std::error::Error>> {
-        return Ok(format!(
+    pub(crate) fn to_str(&self) -> Result<String, Box<dyn std::error::Error>> {
+        Ok(format!(
             "{} {} {} {} {} {} {} {} {}",
             self.name,
             self.rr_type,
@@ -223,35 +227,36 @@ impl DNS_record {
             self.asn,
             self.asn_owner,
             self.prefix
-        ));
+        ))
     }
 }
 
 impl std::fmt::Display for DNS_record {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        return write!(
+        write!(
             f,
-            "Name: {} 
+            "Name: {} ({})
             RData: {}  
-            RR Type: {}
-            Class:{}
-            Count: {}
-            Time: {},
+            RR Type: {}    Class: {}     TTL: {}
+            Count: {}      Time: {}
             Domain: {}
-            ASN: {}
-            ASN Owner: {}
-            Prefix: {}",
-            self.name,
+            ASN: {}        ASN Owner: {}
+            Prefix: {}
+            Error: {}",
+            snailquote::escape(&self.name),
+            to_unicode(&self.name, unic_idna::Flags {transitional_processing:false,verify_dns_length:true, use_std3_ascii_rules: true }).0,
             self.rdata,
             self.rr_type,
             self.class,
+            self.ttl,
             self.count,
             self.timestamp,
             self.domain,
             self.asn,
             self.asn_owner,
-            self.prefix
-        );
+            self.prefix,
+            self.error
+        )
     }
 }
 
@@ -277,7 +282,7 @@ impl Default for DNS_record {
 #[derive(
     Debug, EnumIter, Copy, Clone, AsStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize,
 )]
-pub enum DnsReplyType {
+pub(crate) enum DnsReplyType {
     NOERROR = 0,
     FORMERROR = 1,
     SERVFAIL = 2,
@@ -301,32 +306,37 @@ pub enum DnsReplyType {
 }
 
 impl DnsReplyType {
-    pub fn to_str(self) -> Result<String, Box<dyn std::error::Error>> {
-        let x = self;
-        return Ok(String::from(strum::AsStaticRef::as_static(&x)));
+    pub(crate) fn to_str(self) -> String {
+        String::from(strum::AsStaticRef::as_static(&self))
     }
 
-    pub fn find(val: u16) -> Result<Self, Box<dyn std::error::Error>> {
+    pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
         for rr in DnsReplyType::iter() {
             if (rr as u16) == val {
                 return Ok(rr);
             }
         }
-        return Err(DNS_error::new(DNS_Error_Type::Invalid_reply_type, &format!("{}", val)).into());
-        //return Err(format!("Invalid ReplyType type {:?}", val).into());
+        Err(DNS_error::new(
+            DNS_Error_Type::Invalid_reply_type,
+            &val.to_string(),
+        ))
     }
 }
 
+impl std::fmt::Display for DnsReplyType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_str())
+    }
+}
 #[cfg(test)]
 mod tests2 {
-    use std::str::FromStr;
-
     use crate::dns::DnsReplyType;
+    use std::str::FromStr;
 
     #[test]
     fn test_dns_rt() {
-        assert_eq!(DnsReplyType::NXDOMAIN.to_str().unwrap(), "NXDOMAIN");
-        assert_eq!(DnsReplyType::NOERROR.to_str().unwrap(), "NOERROR");
+        assert_eq!(DnsReplyType::NXDOMAIN.to_str(), "NXDOMAIN");
+        assert_eq!(DnsReplyType::NOERROR.to_str(), "NOERROR");
     }
     #[test]
     fn test_dns_rt1() {
@@ -341,271 +351,175 @@ mod tests2 {
     }
 }
 
-pub fn dns_reply_type(u: u16) -> Result<String, Box<dyn std::error::Error>> {
-    return DnsReplyType::find(u).unwrap().to_str();
+pub(crate) fn dns_reply_type(u: u16) -> Result<String, Box<dyn std::error::Error>> {
+    Ok(DnsReplyType::find(u)?.to_str())
 }
 
-pub fn tlsa_cert_usage(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
+pub(crate) fn tlsa_cert_usage(u: u8) -> Result<&'static str, Parse_error> {
     match u {
-        0 => {
-            return Ok("PKIX-TA");
-        }
-        1 => {
-            return Ok("PKIX-EE");
-        }
-        2 => {
-            return Ok("DANE-TA");
-        }
-        3 => {
-            return Ok("DANE-EE");
-        }
-        _ => {
-            return Err("Unkown cert usage".into());
-        }
-    };
-}
-
-pub fn tlsa_selector(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
-    match u {
-        0 => {
-            return Ok("All");
-        }
-        1 => {
-            return Ok("Pubkey");
-        }
-        _ => {
-            return Err("Unkown TLSA selector".into());
-        }
-    };
-}
-
-pub fn tlsa_algorithm(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
-    match u {
-        0 => {
-            return Ok("None");
-        }
-        1 => {
-            return Ok("SHA2-256");
-        }
-        2 => {
-            return Ok("SHA2-512");
-        }
-        _ => {
-            return Err("Unkown TLSA algorithm".into());
-        }
-    };
-}
-pub fn key_protocol(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
-    match u {
-        1 => {
-            return Ok("TLS");
-        }
-        2 => {
-            return Ok("email");
-        }
-        3 => {
-            return Ok("dnssec");
-        }
-        4 => {
-            return Ok("ipsec");
-        }
-        255 => {
-            return Ok("all");
-        }
-        _ => {
-            return Err("Unkown algorithm".into());
-        }
+        0 => Ok("PKIX-TA"),
+        1 => Ok("PKIX-EE"),
+        2 => Ok("DANE-TA"),
+        3 => Ok("DANE-EE"),
+        _ => Err(Parse_error::new(
+            crate::errors::ParseErrorType::Invalid_Parameter,
+            "Unknown certificate usage",
+        )),
     }
 }
 
-pub fn key_algorithm(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
+pub(crate) fn tlsa_selector(u: u8) -> Result<&'static str, Parse_error> {
     match u {
-        1 => {
-            return Ok("RSA/MD5");
-        }
-        2 => {
-            return Ok("DH");
-        }
-        3 => {
-            return Ok("DSA");
-        }
-        _ => {
-            return Err("Unkown algorithm".into());
-        }
+        0 => Ok("All"),
+        1 => Ok("Pubkey"),
+        _ => Err(Parse_error::new(
+            crate::errors::ParseErrorType::Invalid_Parameter,
+            "Unknown TLSA selectory",
+        )),
     }
 }
 
-pub fn sshfp_algorithm(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
+pub(crate) fn tlsa_algorithm(u: u8) -> Result<&'static str, Parse_error> {
     match u {
-        1 => {
-            return Ok("RSA");
-        }
-        2 => {
-            return Ok("DSS");
-        }
-        3 => {
-            return Ok("ECDSA");
-        }
-        4 => {
-            return Ok("Ed25519");
-        }
-        5 => {
-            return Ok("Ed448");
-        }
-        _ => {
-            return Err("Unkown algorithm".into());
-        }
+        0 => Ok("None"),
+        1 => Ok("SHA2-256"),
+        2 => Ok("SHA2-512"),
+        _ => Err(Parse_error::new(
+            crate::errors::ParseErrorType::Invalid_Parameter,
+            "Unknown algorithm",
+        )),
+    }
+}
+pub(crate) fn key_protocol(u: u8) -> Result<&'static str, Parse_error> {
+    match u {
+        1 => Ok("TLS"),
+        2 => Ok("email"),
+        3 => Ok("dnssec"),
+        4 => Ok("ipsec"),
+        255 => Ok("all"),
+        _ => Err(Parse_error::new(
+            crate::errors::ParseErrorType::Invalid_Parameter,
+            "Unknown algorithm",
+        )),
     }
 }
 
-pub fn sshfp_fp_type(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
+pub(crate) fn key_algorithm(u: u8) -> Result<&'static str, Parse_error> {
     match u {
-        1 => {
-            return Ok("SHA-1");
-        }
-        2 => {
-            return Ok("SHA2-256");
-        }
-        _ => {
-            return Err("Unkown algorithm".into());
-        }
+        1 => Ok("RSA/MD5"),
+        2 => Ok("DH"),
+        3 => Ok("DSA"),
+        _ => Err(Parse_error::new(
+            crate::errors::ParseErrorType::Invalid_Parameter,
+            "Unknown algorithm",
+        )),
     }
 }
 
-pub fn dnssec_algorithm(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
+pub(crate) fn sshfp_algorithm(u: u8) -> Result<&'static str, Parse_error> {
     match u {
-        0 => {
-            return Ok("Reserved");
-        }
-        1 => {
-            return Ok("RSA/MD5");
-        }
-        3 => {
-            return Ok("DSA/SHA1");
-        }
-        5 => {
-            return Ok("RSA/SHA1");
-        }
-        6 => {
-            return Ok("DSA-NSEC3-SHA1");
-        }
-        7 => {
-            return Ok("RSASHA1-NSEC3-SHA1");
-        }
-        8 => {
-            return Ok("RSA/SHA2-256");
-        }
-        10 => {
-            return Ok("RSA/SHA2-512");
-        }
-        12 => {
-            return Ok("GOST");
-        }
-        13 => {
-            return Ok("ECDSA/SHA2-256");
-        }
-        14 => {
-            return Ok("ECDSA/SHA2-384");
-        }
-        15 => {
-            return Ok("Ed25519");
-        }
-        16 => {
-            return Ok("Ed448");
-        }
-        _ => {
-            return Err("Unkown algorithm".into());
-        }
-    };
-}
-
-pub fn dnssec_digest(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
-    match u {
-        0 => {
-            return Ok("Reserved");
-        }
-        1 => {
-            return Ok("SHA1");
-        }
-        2 => {
-            return Ok("SHA2-256");
-        }
-        3 => {
-            return Ok("GOST R 34.10-2001");
-        }
-        4 => {
-            return Ok("SHA2-384");
-        }
-        _ => {
-            return Err("Unkown digest".into());
-        }
-    };
-}
-
-pub fn zonemd_digest(u: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
-    match u {
-        1 => {
-            return Ok("SHA2-384");
-        }
-        2 => {
-            return Ok("SHA2-512");
-        }
-        _ => {
-            return Err("Unkown digest".into());
-        }
-    };
-}
-
-pub fn ipsec_alg(alg: u8) -> Result<&'static str, Box<dyn std::error::Error>> {
-    if alg == 1 {
-        return Ok("DSA");
-    } else if alg == 2 {
-        return Ok("RSA");
-    } else {
-        return Err("Unknown algorithm".into());
+        1 => Ok("RSA"),
+        2 => Ok("DSS"),
+        3 => Ok("ECDSA"),
+        4 => Ok("Ed25519"),
+        5 => Ok("Ed448"),
+        _ => Err(Parse_error::new(
+            crate::errors::ParseErrorType::Invalid_Parameter,
+            "Unknown algorithm",
+        )),
     }
 }
 
-pub fn cert_type_str(t: u16) -> Result<&'static str, Box<dyn std::error::Error>> {
+pub(crate) fn sshfp_fp_type(u: u8) -> Result<&'static str, Parse_error> {
+    match u {
+        1 => Ok("SHA-1"),
+        2 => Ok("SHA2-256"),
+        _ => Err(Parse_error::new(
+            crate::errors::ParseErrorType::Invalid_Parameter,
+            "Unknown algorithm",
+        )),
+    }
+}
+
+pub(crate) fn dnssec_algorithm(u: u8) -> Result<&'static str, Parse_error> {
+    match u {
+        0 => Ok("Reserved"),
+        1 => Ok("RSA/MD5"),
+        3 => Ok("DSA/SHA1"),
+        5 => Ok("RSA/SHA1"),
+        6 => Ok("DSA-NSEC3-SHA1"),
+        7 => Ok("RSASHA1-NSEC3-SHA1"),
+        8 => Ok("RSA/SHA2-256"),
+        10 => Ok("RSA/SHA2-512"),
+        12 => Ok("GOST"),
+        13 => Ok("ECDSA/SHA2-256"),
+        14 => Ok("ECDSA/SHA2-384"),
+        15 => Ok("Ed25519"),
+        16 => Ok("Ed448"),
+        _ => Err(Parse_error::new(
+            crate::errors::ParseErrorType::Invalid_Parameter,
+            "Unknown algorithm",
+        )),
+    }
+}
+
+pub(crate) fn dnssec_digest(u: u8) -> Result<&'static str, Parse_error> {
+    match u {
+        0 => Ok("Reserved"),
+        1 => Ok("SHA1"),
+        2 => Ok("SHA2-256"),
+        3 => Ok("GOST R 34.10-2001"),
+        4 => Ok("SHA2-384"),
+        _ => Err(Parse_error::new(
+            crate::errors::ParseErrorType::Invalid_Parameter,
+            "Unknown digest",
+        )),
+    }
+}
+
+pub(crate) fn zonemd_digest(u: u8) -> Result<&'static str, Parse_error> {
+    match u {
+        1 => Ok("SHA2-384"),
+        2 => Ok("SHA2-512"),
+        _ => Err(Parse_error::new(
+            crate::errors::ParseErrorType::Invalid_Parameter,
+            "Unknown digest",
+        )),
+    }
+}
+
+pub(crate) fn ipsec_alg(alg: u8) -> Result<&'static str, Parse_error> {
+    match alg {
+        1 => Ok("DSA"),
+        2 => Ok("RSA"),
+        _ => Err(Parse_error::new(
+            crate::errors::ParseErrorType::Invalid_Parameter,
+            "Unknown algorithm",
+        )),
+    }
+}
+
+pub(crate) fn cert_type_str(t: u16) -> Result<&'static str, Parse_error> {
     match t {
-        1 => {
-            return Ok("PKIX");
-        }
-        2 => {
-            return Ok("SKPI");
-        }
-        3 => {
-            return Ok("PGP");
-        }
-        4 => {
-            return Ok("IPKIX");
-        }
-        5 => {
-            return Ok("ISPKI");
-        }
-        6 => {
-            return Ok("IPGP");
-        }
-        7 => {
-            return Ok("ACPKIX");
-        }
-        8 => {
-            return Ok("IACPKIX");
-        }
-        253 => {
-            return Ok("URI");
-        }
-        254 => {
-            return Ok("OID");
-        }
-        _ => {
-            return Err("Unkown digest".into());
-        }
+        1 => Ok("PKIX"),
+        2 => Ok("SKPI"),
+        3 => Ok("PGP"),
+        4 => Ok("IPKIX"),
+        5 => Ok("ISPKI"),
+        6 => Ok("IPGP"),
+        7 => Ok("ACPKIX"),
+        8 => Ok("IACPKIX"),
+        253 => Ok("URI"),
+        254 => Ok("OID"),
+        _ => Err(Parse_error::new(
+            crate::errors::ParseErrorType::Invalid_Parameter,
+            "Unknown digest",
+        )),
     }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, EnumIter, AsStaticStr)]
-pub enum SVC_Param_Keys {
+pub(crate) enum SVC_Param_Keys {
     mandatory = 0,
     alpn = 1,
     no_default_alpn = 2,
@@ -616,12 +530,15 @@ pub enum SVC_Param_Keys {
 }
 
 impl SVC_Param_Keys {
-    pub fn find(val: u16) -> Result<Self, Box<dyn std::error::Error>> {
+    pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
         for k in SVC_Param_Keys::iter() {
             if (k as u16) == val {
                 return Ok(k);
             }
         }
-        return Err(DNS_error::new(DNS_Error_Type::Invalid_RR, &format!("{}", val)).into());
+        return Err(DNS_error::new(
+            DNS_Error_Type::Invalid_RR,
+            &format!("{val}"),
+        ));
     }
 }

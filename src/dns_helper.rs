@@ -1,77 +1,165 @@
-use crate::dns::{DNS_Class, DNS_RR_type};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+use crate::{
+    dns::{DNS_Class, DNS_RR_type},
+    errors::{DNS_error, ParseErrorType, Parse_error},
+};
 use byteorder::{BigEndian, ByteOrder};
 use chrono::{DateTime, NaiveDateTime, Utc};
 
-pub fn parse_protocol(proto: u8) -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn parse_protocol(proto: u8) -> Result<String, Parse_error> {
     match proto {
-        17 => {
-            return Ok("UDP".into());
-        }
-        6 => {
-            return Ok("TCP".into());
-        }
-        _ => {
-            return Err("Unknown protocol".into());
-        }
+        17 => Ok("UDP".into()),
+        6 => Ok("TCP".into()),
+        _ => Err(Parse_error::new(
+            ParseErrorType::Unknown_Protocol,
+            &proto.to_string(),
+        )),
     }
 }
 
-pub fn parse_rrtype(rrtype: u16) -> Result<DNS_RR_type, Box<dyn std::error::Error>> {
-    return DNS_RR_type::find(rrtype);
+pub(crate) fn parse_rrtype(rrtype: u16) -> Result<DNS_RR_type, DNS_error> {
+    DNS_RR_type::find(rrtype)
 }
 
-pub fn parse_class(class: u16) -> Result<DNS_Class, Box<dyn std::error::Error>> {
-    return DNS_Class::find(class);
+pub(crate) fn parse_class(class: u16) -> Result<DNS_Class, DNS_error> {
+    DNS_Class::find(class)
 }
 
-pub fn timestame_to_str(timestamp: u32) -> Result<String, Box<dyn std::error::Error>> {
+//pub fn timestame_to_str(timestamp: u32) -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn timestame_to_str(timestamp: u32) -> Result<String, Parse_error> {
     let Some(naive_datetime) = NaiveDateTime::from_timestamp_opt(timestamp as i64, 0) else {
-        return Err("Cannot parse timestamp".into());
+        return Err(Parse_error::new(
+            ParseErrorType::Invalid_timestamp,
+            &timestamp.to_string(),
+        ));
     };
     let datetime_again: DateTime<Utc> = DateTime::from_naive_utc_and_offset(naive_datetime, Utc);
-    return Ok(datetime_again.to_string());
+    Ok(datetime_again.to_string())
 }
 
-pub fn dns_read_u64(packet: &[u8], offset: usize) -> Result<u64, Box<dyn std::error::Error>> {
+pub(crate) fn dns_read_u64(packet: &[u8], offset: usize) -> Result<u64, Parse_error> {
     let Some(r) = packet.get(offset..offset + 8) else {
-        return Err("Invalid index !".into());
+        return Err(Parse_error::new(
+            ParseErrorType::Invalid_packet_index,
+            &offset.to_string(),
+        ));
     };
     let val = BigEndian::read_u64(r);
-    return Ok(val);
-}
-pub fn dns_read_u16(packet: &[u8], offset: usize) -> Result<u16, Box<dyn std::error::Error>> {
-    let Some(r) = packet.get(offset..offset + 2) else {
-        return Err("Invalid index !".into());
-    };
-    let val = BigEndian::read_u16(r);
-    return Ok(val);
+    Ok(val)
 }
 
-pub fn dns_read_u8(packet: &[u8], offset: usize) -> Result<u8, Box<dyn std::error::Error>> {
-    let Some(r) = packet.get(offset) else {
-        return Err("Invalid index !".into());
+pub(crate) fn dns_read_u16(packet: &[u8], offset: usize) -> Result<u16, Parse_error> {
+    let Some(r) = packet.get(offset..offset + 2) else {
+        return Err(Parse_error::new(
+            ParseErrorType::Invalid_packet_index,
+            &offset.to_string(),
+        ));
     };
-    return Ok(*r);
+    let val = BigEndian::read_u16(r);
+    Ok(val)
 }
-pub fn dns_read_u32(packet: &[u8], offset: usize) -> Result<u32, Box<dyn std::error::Error>> {
+
+pub(crate) fn dns_read_u8(packet: &[u8], offset: usize) -> Result<u8, Parse_error> {
+    let Some(r) = packet.get(offset) else {
+        return Err(Parse_error::new(
+            ParseErrorType::Invalid_packet_index,
+            &offset.to_string(),
+        ));
+    };
+    Ok(*r)
+}
+pub(crate) fn dns_read_u32(packet: &[u8], offset: usize) -> Result<u32, Parse_error> {
     let Some(r) = packet.get(offset..offset + 4) else {
-        return Err("Invalid index !".into());
+        return Err(Parse_error::new(
+            ParseErrorType::Invalid_packet_index,
+            &offset.to_string(),
+        ));
     };
     let val = BigEndian::read_u32(r);
-    return Ok(val);
+    Ok(val)
 }
-pub fn base32hex_encode(input: &[u8]) -> String {
+pub(crate) fn base32hex_encode(input: &[u8]) -> String {
     static BASE32HEX_NOPAD: data_encoding::Encoding = data_encoding::BASE32HEX_NOPAD;
     let mut output = String::new();
     let mut enc = BASE32HEX_NOPAD.new_encoder(&mut output);
     enc.append(input);
     enc.finalize();
-    return output;
+    output
+}
+
+pub(crate) fn parse_dns_str(rdata: &[u8]) -> Result<String, Parse_error> {
+    if let Ok(x) = std::str::from_utf8(rdata) {
+        Ok(x.to_string())
+    } else {
+        Err(Parse_error::new(ParseErrorType::Invalid_DNS_Packet, ""))
+    }
+}
+
+pub(crate) fn parse_ipv4(data: &[u8]) -> Result<IpAddr, Parse_error> {
+    let r: [u8; 4] = match data.try_into() {
+        Ok(x) => x,
+        Err(_) => {
+            return Err(Parse_error::new(ParseErrorType::Invalid_DNS_Packet, ""));
+        }
+    };
+    let addr = Ipv4Addr::from(r);
+    Ok(std::net::IpAddr::V4(addr))
+}
+
+pub(crate) fn parse_ipv6(data: &[u8]) -> Result<IpAddr, Parse_error> {
+    let r: [u8; 16] = match data.try_into() {
+        Ok(x) => x,
+        Err(_) => {
+            return Err(Parse_error::new(ParseErrorType::Invalid_DNS_Packet, ""));
+        }
+    };
+    let addr = Ipv6Addr::from(r);
+    Ok(std::net::IpAddr::V6(addr))
 }
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        net::{Ipv4Addr, Ipv6Addr},
+        str::FromStr,
+    };
+
     use crate::dns_helper::{dns_read_u16, dns_read_u32, dns_read_u64, dns_read_u8};
+
+    use super::{parse_ipv4, parse_ipv6};
+
+    #[test]
+    fn test_parse_ipv4() {
+        assert_eq!(
+            parse_ipv4(&[192, 168, 178, 254]).unwrap(),
+            Ipv4Addr::from_str("192.168.178.254").unwrap()
+        );
+        assert_eq!(
+            parse_ipv4(&[130, 89, 1, 1]).unwrap(),
+            Ipv4Addr::from_str("130.89.1.1").unwrap()
+        );
+        assert!(parse_ipv4(&[130, 89, 1]).is_err());
+        assert!(parse_ipv4(&[89, 1]).is_err());
+    }
+    #[test]
+    fn test_parse_ipv6() {
+        assert_eq!(
+            parse_ipv6(&[
+                0xfe, 0x80, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1a, 0xc0, 0x4d, 0xff, 0xfe, 0xaf, 0x86,
+                0x31
+            ])
+            .unwrap(),
+            Ipv6Addr::from_str("fe80:0:0:0:1ac0:4dff:feaf:8631").unwrap()
+        );
+        assert!(parse_ipv6(&[
+            0xfe, 0x80, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1a, 0xc0, 0x4d, 0xff, 0xfe, 0xaf, 0x86, 0x31
+        ])
+        .is_err());
+        assert!(
+            parse_ipv6(&[0x0, 0x0, 0x0, 0x1a, 0xc0, 0x4d, 0xff, 0xfe, 0xaf, 0x86, 0x31]).is_err()
+        );
+    }
 
     #[test]
     fn test_dns_read_u32() {

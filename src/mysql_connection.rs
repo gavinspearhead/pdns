@@ -21,7 +21,7 @@ impl Mysql_connection {
         port: &str,
         dbname: &str,
     ) -> Mysql_connection {
-        let database_url = format!("mysql://{}:{}@{}:{}/{}", user, pass, host, port, dbname);
+        let database_url = format!("mysql://{user}:{pass}@{host}:{port}/{dbname}");
         match MySqlPoolOptions::new()
             .max_connections(10)
             .connect(&database_url)
@@ -29,20 +29,19 @@ impl Mysql_connection {
         {
             Ok(mysql_pool) => {
                 // println!("Connection to the database is successful!");
-                return Mysql_connection { pool: mysql_pool };
+                Mysql_connection { pool: mysql_pool }
             }
             Err(err) => {
                 tracing::error!("Failed to connect to the database: {:?}", err);
                 std::process::exit(1);
             }
-        };
+        }
     }
     pub fn insert_or_update_record(&mut self, record: &DNS_record) {
         let i = record;
         let ts = i.timestamp.timestamp();
-        let q_res;
-        if record.error == DnsReplyType::NOERROR {
-            let q = r#"INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN, DOMAIN, asn, asn_owner, prefix) VALUES (
+        let q_res = if record.error == DnsReplyType::NOERROR {
+            let q = r"INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN, DOMAIN, asn, asn_owner, prefix) VALUES (
                 ?, ?, ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?), ?,  
                  if (length(?) > 0, ?, NULL),  
                  if (length(?) > 0, ?, NULL),
@@ -53,9 +52,9 @@ impl Mysql_connection {
                 asn = if (asn is null and LENGTH(?) > 0, ?, asn), 
                 asn_owner = if (asn_owner is null and LENGTH(?) > 0, ?, asn_owner) ,
                 prefix = if (prefix is null and LENGTH(?) > 0, ?, prefix) 
-                "#;
-     
-            q_res = block_on(
+                ";
+            tracing::debug!("{} {} {} {}", i.name, i.rr_type, i.rdata, i.count);
+            block_on(
                 sqlx::query(q)
                     .bind(&i.name)
                     .bind(&i.class)
@@ -86,17 +85,17 @@ impl Mysql_connection {
                     .bind(&i.prefix)
                     .bind(&i.prefix)
                     .execute(&self.pool),
-            );
-            
+            )
         } else {
-            let q = r#"INSERT INTO pdns_err (QUERY,RR,MAPTYPE,COUNT,LAST_SEEN,FIRST_SEEN, ERROR_VAL) VALUES (
+            let q = r"INSERT INTO pdns_err (QUERY,RR,MAPTYPE,COUNT,LAST_SEEN,FIRST_SEEN, ERROR_VAL) VALUES (
                 ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?), ?   
                 ) ON DUPLICATE KEY UPDATE
                 COUNT = COUNT + ?, 
                 LAST_SEEN = if (LAST_SEEN < FROM_UNIXTIME(?), FROM_UNIXTIME(?), LAST_SEEN),
                 FIRST_SEEN = if (FIRST_SEEN > FROM_UNIXTIME(?), FROM_UNIXTIME(?), FIRST_SEEN) 
-                "#;
-            q_res = block_on(
+                ";
+            tracing::debug!("{} {} {} {}", i.name, i.rr_type, i.error as u16, i.count);
+            block_on(
                 sqlx::query(q)
                     .bind(&i.name)
                     .bind(&i.class)
@@ -111,8 +110,8 @@ impl Mysql_connection {
                     .bind(ts)
                     .bind(ts)
                     .execute(&self.pool),
-            );
-        }
+            )
+        };
         match q_res {
             Ok(x) => {
                 tracing::debug!("Success {:?}", x);
@@ -123,7 +122,7 @@ impl Mysql_connection {
         }
     }
     pub fn create_database(&mut self) {
-        let create_cmd = "CREATE TABLE If NOT EXISTS `pdns`  (
+        let create_cmd = r"CREATE TABLE If NOT EXISTS `pdns`  (
         `ID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
         `QUERY` varchar(255) NOT NULL DEFAULT '',
         `MAPTYPE` varchar(16) NOT NULL DEFAULT '',
@@ -147,17 +146,16 @@ impl Mysql_connection {
         KEY `asn` (`asn`)
       ) ENGINE=MyISAM  DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
       ";
-        let q_res = block_on(sqlx::query(create_cmd).execute(&self.pool));
-        match q_res {
+        match block_on(sqlx::query(create_cmd).execute(&self.pool)) {
             Ok(x) => {
-                tracing::debug!("Success {:?}", x)
+                tracing::debug!("Success {:?}", x);
             }
             Err(e) => {
                 tracing::error!("Error: {}", e);
                 exit(-1);
             }
         }
-        let create_cmd1 = "CREATE TABLE IF NOT EXISTS `pdns_err` (
+        let create_cmd1 = r"CREATE TABLE IF NOT EXISTS `pdns_err` (
              `ID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
         `QUERY` varchar(255) NOT NULL DEFAULT '',
         `MAPTYPE` varchar(16) NOT NULL DEFAULT '',
@@ -173,10 +171,9 @@ impl Mysql_connection {
         KEY `FIRSTSEEN` (`FIRST_SEEN`)
       ) ENGINE=MyISAM  DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
       ";
-        let q_res = block_on(sqlx::query(create_cmd1).execute(&self.pool));
-        match q_res {
+        match block_on(sqlx::query(create_cmd1).execute(&self.pool)) {
             Ok(x) => {
-                tracing::debug!("Success {:?}", x)
+                tracing::debug!("Success {:?}", x);
             }
             Err(e) => {
                 tracing::error!("Error: {}", e);
@@ -196,7 +193,7 @@ pub(crate) fn create_database(config: &Config) {
             &config.dbname,
         ));
         //let mut database_conn = Some(x);
-        match Some(x) {
+        /*match Some(x) {
             Some(ref mut _db) => {
                 tracing::debug!("Database created");
                 _db.create_database();
@@ -205,6 +202,13 @@ pub(crate) fn create_database(config: &Config) {
                 tracing::error!("No database configured");
                 panic!("No database configured");
             }
+        }*/
+        if let Some(ref mut _db) = Some(x) {
+            tracing::debug!("Database created");
+            _db.create_database();
+        } else {
+            tracing::error!("No database configured");
+            panic!("No database configured");
         }
     }
 }

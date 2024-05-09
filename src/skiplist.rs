@@ -3,7 +3,7 @@ use std::{fs::File, io::Read};
 
 fn prefix_str(mut s1: String, s2: &str) -> String {
     s1.insert_str(0, s2);
-    return s1;
+    s1
 }
 
 fn parse_skiplist(file_contents: &str) -> Vec<Regex> {
@@ -15,7 +15,7 @@ fn parse_skiplist(file_contents: &str) -> Vec<Regex> {
         .map(|s| Regex::new(s.as_str()).unwrap())
         .collect();
     tracing::debug!("Regex: {:?}", lines);
-    return lines;
+    lines
 }
 
 pub fn read_skip_list(filename: &str) -> Vec<Regex> {
@@ -23,27 +23,23 @@ pub fn read_skip_list(filename: &str) -> Vec<Regex> {
         tracing::debug!("Empty skiplist");
         return Vec::new();
     }
-    let mut file = match File::open(filename) {
-        Ok(file) => file,
-        Err(_) => {
-            tracing::error!("Skip file not found: {}", filename);
-            return Vec::new();
-        }
+
+    let Ok(mut file) = File::open(filename) else {
+        tracing::error!("Skip file not found: {}", filename);
+        return Vec::new();
     };
 
     let mut file_contents = String::new();
 
-    match file.read_to_string(&mut file_contents) {
-        Ok(_) => {
-            return parse_skiplist(&file_contents);
-        }
-        Err(_) => {
-            tracing::error!("File could not be read {}", filename);
-            return Vec::new();
-        }
-    };
+    if file.read_to_string(&mut file_contents).is_ok() {
+        parse_skiplist(&file_contents)
+    } else {
+        tracing::error!("File could not be read {}", filename);
+        Vec::new()
+    }
 }
 
+#[must_use]
 pub fn match_skip_list(name: &str, skip_list: &[Regex]) -> bool {
     for i in skip_list {
         let r = i;
@@ -51,7 +47,7 @@ pub fn match_skip_list(name: &str, skip_list: &[Regex]) -> bool {
             return true;
         }
     }
-    return false;
+    false
 }
 #[cfg(test)]
 mod tests {

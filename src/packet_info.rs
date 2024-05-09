@@ -71,10 +71,10 @@ impl Packet_info {
     }
 
     pub fn to_str(&self) -> String {
-        return format!(
+        format!(
             "{}:{} => {}:{}\n{:?}",
             self.s_addr, self.sp, self.d_addr, self.dp, self.dns_records
-        );
+        )
     }
     pub fn to_csv(&self) -> String {
         let mut s = String::new();
@@ -92,15 +92,15 @@ impl Packet_info {
                 1
             );
         }
-        return s;
+        s
     }
     pub fn to_json(&self) -> String {
         let mut s = String::new();
         for i in &self.dns_records {
             s += &format!(
                 "{{ 
-                    \"source_ip\" : {},
-                    \"destination_ip\" : {},
+                   \"source_ip\" : {},
+                   \"destination_ip\" : {},
                    \"timestamp\": {},
                    \"rr_type\": {},
                    \"class\": {},
@@ -120,32 +120,33 @@ impl Packet_info {
                 1
             );
         }
-        return s;
+        s
     }
 
     fn find_asn<'a>(asn_db: &'a Database, ip: &'a str) -> Option<IpEntry<'a>> {
-        match ip.parse::<IpAddr>() {
-            Ok(ip) => {
-                return asn_db.lookup(ip);
-            }
-            Err(_) => return None,
+        if let Ok(x) = ip.parse::<IpAddr>() {
+            asn_db.lookup(x)
+        } else {
+            None
         }
     }
 
     pub fn update_asn(&mut self, asn_db: &asn_db2::Database) {
-        for i in self.dns_records.iter_mut() {
+        for i in &mut self.dns_records {
             if let Ok(rr_type) = DNS_RR_type::from_string(&i.rr_type) {
                 if rr_type == DNS_RR_type::A || rr_type == DNS_RR_type::AAAA {
                     if let Some(x) = Packet_info::find_asn(asn_db, &i.rdata) {
                         match x {
                             IpEntry::V4(v4) => {
                                 i.asn = v4.as_number.to_string();
-                                i.asn_owner = v4.owner.clone();
+                                // i.asn_owner = v4.owner.clone();
+                                i.asn_owner.clone_from(&v4.owner);
                                 i.prefix = v4.subnet.to_string();
                             }
                             IpEntry::V6(v6) => {
                                 i.asn = v6.as_number.to_string();
-                                i.asn_owner = v6.owner.clone();
+                                // i.asn_owner = v6.owner.clone();
+                                i.asn_owner.clone_from(&v6.owner);
                                 i.prefix = v6.subnet.to_string();
                             }
                         }
@@ -153,7 +154,6 @@ impl Packet_info {
                 }
             }
         }
-        //println!("{:?}", self.dns_records);
     }
 }
 
@@ -166,8 +166,8 @@ impl fmt::Display for Packet_info {
         )
         .expect("Cannot write output format ");
         for i in &self.dns_records {
-            writeln!(f, "{}", i).expect("Cannot write output format ");
+            writeln!(f, "{i}").expect("Cannot write output format ");
         }
-        return write!(f, "");
+        write!(f, "")
     }
 }
