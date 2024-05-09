@@ -24,7 +24,7 @@ pub(crate) fn dns_parse_name(packet: &[u8], offset: usize) -> Result<(String, us
     name = if name.is_empty() {
         String::from('.')
     } else {
-        name.trim_end_matches('.').to_string();
+        name = name.trim_end_matches('.').to_string();
         if name.len() > 253 {
             return Err(Parse_error::new(ParseErrorType::Invalid_Domain_name, &name));
         }
