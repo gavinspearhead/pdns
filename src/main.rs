@@ -31,7 +31,8 @@ use regex::Regex;
 use skiplist::read_skip_list;
 use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
-use std::io::{BufReader, Write};
+use std::io::{self, BufReader, Write};
+use std::net::TcpStream;
 use std::process::exit;
 use std::str::{self, FromStr};
 use std::sync::mpsc::TryRecvError;
@@ -62,7 +63,7 @@ struct Args {
     path: std::path::PathBuf,
 }
 
-fn packet_loop<T: pcap::State>(
+fn packet_loop<T>(
     mut cap: Capture<T>,
     packet_queue: &Arc<Mutex<VecDeque<Option<Packet_info>>>>,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
@@ -74,7 +75,7 @@ fn packet_loop<T: pcap::State>(
 {
     let link_type = cap.get_datalink();
     if link_type != Linktype::ETHERNET {
-        tracing::error!("Not ethernet {:?}", link_type);
+        tracing::error!("Not ethernet {link_type:?}");
         //     return Err(Parse_error::new( errors::ParseErrorType::Invalid_IP_Version , &format!("{}", &packet[0]>>4)) .into());
         panic!("Not ethernet");
     }
@@ -98,7 +99,6 @@ fn packet_loop<T: pcap::State>(
     loop {
         match cap.next_packet() {
             Ok(packet) => {
-                //        tracing::debug!("Packet");
                 let mut packet_info = Packet_info::default();
                 let ts = match DateTime::<Utc>::from_timestamp(
                     packet.header.ts.tv_sec,
@@ -122,7 +122,7 @@ fn packet_loop<T: pcap::State>(
                         packet_queue.lock().unwrap().push_back(Some(packet_info));
                     }
                     Err(error) => {
-                        tracing::debug!("{}", format!("{:?}", error));
+                        tracing::debug!("{:?}", error);
                     }
                 }
             }
@@ -130,7 +130,7 @@ fn packet_loop<T: pcap::State>(
                 debug!("Packet capture error: {}", pcap::Error::TimeoutExpired);
             }
             Err(e) => {
-                error!("Packet capture error: {}", e);
+                error!("Packet capture error: {e}");
                 packet_queue.lock().unwrap().push_back(None);
                 break;
             }
@@ -142,11 +142,11 @@ fn load_asn_database(config: &Config) -> asn_db2::Database {
     tracing::debug!("{}", config.asn_database_file);
     //let asn_database =
     let Ok(f) = File::open(&config.asn_database_file) else {
-        tracing::error!("Cannot open ASN database {} ", &config.asn_database_file,);
+        tracing::error!("Cannot open ASN database {} ", &config.asn_database_file);
         exit(-1);
     };
     let Ok(asn_database) = asn_db2::Database::from_reader(BufReader::new(f)) else {
-        tracing::error!("Cannot read ASN database {}", &config.asn_database_file,);
+        tracing::error!("Cannot read ASN database {}", &config.asn_database_file);
         exit(-1);
     };
     asn_database
@@ -162,6 +162,10 @@ fn poll(
     let mut database_conn: Option<Mysql_connection> = None;
     let mut dns_cache: DNS_Cache = DNS_Cache::new(5);
     let mut last_push = Utc::now().timestamp() as u64;
+    let Some(listener) = listen(&config.live_dump_host, config.live_dump_port.try_into().unwrap()) else {
+        panic!("cannot listen on port")
+    };
+    let mut live_dump: Vec<TcpStream> = Vec::new();
     if !config.output.is_empty() && config.output != "-" {
         let mut options = OpenOptions::new();
         output_file = Some(
@@ -184,18 +188,48 @@ fn poll(
         database_conn = Some(x);
     }
     let asn_database = load_asn_database(config);
-
+    let Ok(_) = listener.set_nonblocking(true) else {
+        panic!("cannot set non-b/locking");
+    };
     loop {
+        loop {
+            match listener.accept() {
+                Ok((socket, addr)) => {
+                    debug!("New connection from {addr}");
+                    live_dump.push(socket);
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    break;
+                }
+                Err(e) => error!("couldn't get client: {e:?}"),
+            }
+        }
         let packet_info = packet_queue.lock().unwrap().pop_front();
         match packet_info {
             Some(p) => match p {
                 Some(mut p1) => {
                     p1.update_asn(&asn_database);
-                    if config.output == "-" {
-                        if !p1.dns_records.is_empty() {
+                    let mut x = Vec::new();
+                    if !p1.dns_records.is_empty() {
+                        if config.output == "-" {
                             println!("{p1}");
                         }
+                        for (idx, mut stream) in (&live_dump).into_iter().enumerate() {
+                            let tmp_str = &format!("{:#}", &p1);
+                            match stream.write_all(&tmp_str.as_bytes()) {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    debug!("{}", e);
+                                    x.push(idx);
+                                }
+                            }
+                        }
                     }
+                    for i in x {
+                        debug!("Removing connection {}", i);
+                        live_dump.remove(i);
+                    }
+
                     if let Some(ref mut of) = output_file {
                         if config.output_type == "csv" {
                             of.write_all(p1.to_csv().as_bytes()).expect("Write failed");
@@ -208,6 +242,7 @@ fn poll(
                             dns_cache.add(&i);
                         }
                     }
+
                     timeout = time::Duration::from_millis(0);
                 }
                 None => {

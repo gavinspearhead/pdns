@@ -1,11 +1,11 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use unic_idna::to_unicode;
 use std::fmt;
 use std::str::FromStr;
 use strum::IntoEnumIterator;
 use strum_macros::EnumString;
 use strum_macros::{AsStaticStr, EnumIter};
+use unic_idna::to_unicode;
 
 use crate::errors::{DNS_Error_Type, DNS_error, Parse_error};
 
@@ -31,7 +31,7 @@ impl DNS_Class {
         }
         Err(DNS_error::new(
             DNS_Error_Type::Invalid_Class,
-            &format!("{}", val),
+            &format!("{val}"),
         ))
     }
 }
@@ -215,8 +215,8 @@ pub(crate) struct DNS_record {
 }
 
 impl DNS_record {
-    pub(crate) fn to_str(&self) -> Result<String, Box<dyn std::error::Error>> {
-        Ok(format!(
+    pub(crate) fn to_str(&self) -> String {
+        format!(
             "{} {} {} {} {} {} {} {} {}",
             self.name,
             self.rr_type,
@@ -227,15 +227,42 @@ impl DNS_record {
             self.asn,
             self.asn_owner,
             self.prefix
-        ))
+        )
     }
 }
 
 impl std::fmt::Display for DNS_record {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "Name: {} ({})
+        if f.alternate() {
+            writeln!(
+                f,
+                "{} ({}) {} {} {} {} {} {} {} {} ({}) {} {}",
+                snailquote::escape(&self.name),
+                to_unicode(
+                    &self.name,
+                    unic_idna::Flags {
+                        transitional_processing: false,
+                        verify_dns_length: true,
+                        use_std3_ascii_rules: true
+                    }
+                )
+                .0,
+                self.rdata,
+                self.rr_type,
+                self.class,
+                self.ttl,
+                self.count,
+                self.timestamp,
+                self.domain,
+                self.asn,
+                self.asn_owner,
+                self.prefix,
+                self.error
+            )
+        } else {
+            write!(
+                f,
+                "Name: {} ({})
             RData: {}  
             RR Type: {}    Class: {}     TTL: {}
             Count: {}      Time: {}
@@ -243,20 +270,29 @@ impl std::fmt::Display for DNS_record {
             ASN: {}        ASN Owner: {}
             Prefix: {}
             Error: {}",
-            snailquote::escape(&self.name),
-            to_unicode(&self.name, unic_idna::Flags {transitional_processing:false,verify_dns_length:true, use_std3_ascii_rules: true }).0,
-            self.rdata,
-            self.rr_type,
-            self.class,
-            self.ttl,
-            self.count,
-            self.timestamp,
-            self.domain,
-            self.asn,
-            self.asn_owner,
-            self.prefix,
-            self.error
-        )
+                snailquote::escape(&self.name),
+                to_unicode(
+                    &self.name,
+                    unic_idna::Flags {
+                        transitional_processing: false,
+                        verify_dns_length: true,
+                        use_std3_ascii_rules: true
+                    }
+                )
+                .0,
+                self.rdata,
+                self.rr_type,
+                self.class,
+                self.ttl,
+                self.count,
+                self.timestamp,
+                self.domain,
+                self.asn,
+                self.asn_owner,
+                self.prefix,
+                self.error
+            )
+        }
     }
 }
 
@@ -536,9 +572,9 @@ impl SVC_Param_Keys {
                 return Ok(k);
             }
         }
-        return Err(DNS_error::new(
+        Err(DNS_error::new(
             DNS_Error_Type::Invalid_RR,
             &format!("{val}"),
-        ));
+        ))
     }
 }

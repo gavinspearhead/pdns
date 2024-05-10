@@ -33,6 +33,8 @@ pub(crate) struct Config {
     pub public_suffix_file: String,
     pub asn_database_file: String,
     pub debug: bool,
+    pub live_dump_port: u16,
+    pub live_dump_host: String,
 }
 
 impl Config {
@@ -62,6 +64,8 @@ impl Config {
             public_suffix_file: String::new(),
             asn_database_file: String::new(),
             debug: false,
+            live_dump_port: 0,
+            live_dump_host: String::new(),
         };
         c.rr_type.extend(vec![
             DNS_RR_type::A,
@@ -266,6 +270,15 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String, create_d
                 .required(false)
                 .default_missing_value("csv")
                 .long_help("Output format (CSV or JSON)"),
+        ).arg(
+            arg!(--live_dump_host <VALUE>)
+                .required(false)
+                .long_help("Hostname or IP address for the live dump to liste to"),
+        )
+        .arg(
+            arg!(--live_dump_port <VALUE>)
+                .required(false)
+                .long_help("Port number for the live dump to listen on"),
         )
         .get_matches();
     let empty_str = String::new();
@@ -356,6 +369,14 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String, create_d
     config.asn_database_file = matches
         .get_one::<String>("asn_database_file")
         .unwrap_or(&config.asn_database_file)
+        .clone();
+    config.live_dump_host = matches
+        .get_one::<String>("live_dump_host")
+        .unwrap_or(&config.live_dump_host)
+        .clone();
+    config.live_dump_port = matches
+        .get_one::<u16>("live_dump_port")
+        .unwrap_or(&config.live_dump_port)
         .clone();
 
     let rr_types = parse_rrtypes(&matches.get_one("rrtypes").unwrap_or(&empty_str).clone());

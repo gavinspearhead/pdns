@@ -14,7 +14,7 @@ fn parse_skiplist(file_contents: &str) -> Vec<Regex> {
         .map(|t| prefix_str(t, "(?i)"))
         .map(|s| Regex::new(s.as_str()).unwrap())
         .collect();
-    tracing::debug!("Regex: {:?}", lines);
+    tracing::debug!("Regex: {lines:?}");
     lines
 }
 
@@ -25,7 +25,7 @@ pub fn read_skip_list(filename: &str) -> Vec<Regex> {
     }
 
     let Ok(mut file) = File::open(filename) else {
-        tracing::error!("Skip file not found: {}", filename);
+        tracing::error!("Skip file not found: {filename}");
         return Vec::new();
     };
 
@@ -34,8 +34,8 @@ pub fn read_skip_list(filename: &str) -> Vec<Regex> {
     if file.read_to_string(&mut file_contents).is_ok() {
         parse_skiplist(&file_contents)
     } else {
-        tracing::error!("File could not be read {}", filename);
-        Vec::new()
+        tracing::error!("File could not be read {filename}");
+        return Vec::new();
     }
 }
 

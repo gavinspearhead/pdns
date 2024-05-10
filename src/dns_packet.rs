@@ -535,7 +535,7 @@ pub(crate) fn parse_eth(
     skip_list: &[Regex],
     publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    packet_info.frame_len = packet.len() as u32;
+    packet_info.frame_len = u32::try_from(packet.len())?;
     let mut offset = 12;
     let mut eth_type_field = dns_read_u16(packet, offset)?;
     offset += 2;

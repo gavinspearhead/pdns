@@ -166,7 +166,11 @@ impl fmt::Display for Packet_info {
         )
         .expect("Cannot write output format ");
         for i in &self.dns_records {
-            writeln!(f, "{i}").expect("Cannot write output format ");
+            if f.alternate() {
+                write!(f, "{i:#}").expect("Cannot write output format ");
+            } else {
+                write!(f, "{i}").expect("Cannot write output format ");
+            }
         }
         write!(f, "")
     }

@@ -204,8 +204,8 @@ fn parse_rr_https(rdata: &[u8]) -> Result<String, Parse_error> {
 }
 
 fn decode_gpos_size(val: u8) -> String {
-    let mut base = ((val & 0xf0) >> 4) as u64;
-    let exp = (val & 0x0f) as u64;
+    let mut base = u64::from((val & 0xf0) >> 4);
+    let exp = u64::from(val & 0x0f);
     if exp < 2 {
         if exp == 1 {
             base *= 10;
@@ -379,13 +379,10 @@ fn parse_rr_nsec3(rdata: &[u8]) -> Result<String, Parse_error> {
         );
     }
     Ok(format!(
-        "{} {} {} {} {} {}",
+        "{} {flags} {iterations} {} {} {bitmap_str}",
         dnssec_digest(hash_alg)?,
-        flags,
-        iterations,
         hex::encode(salt),
         base32hex_encode(next_owner),
-        bitmap_str
     ))
 }
 fn parse_rr_dnskey(rdata: &[u8]) -> Result<String, Parse_error> {
@@ -569,19 +566,20 @@ fn parse_rr_x25(rdata: &[u8]) -> Result<String, Parse_error> {
 fn parse_rr_naptr(rdata: &[u8]) -> Result<String, Parse_error> {
     let order = dns_read_u16(rdata, 0)?;
     let pref = dns_read_u16(rdata, 2)?;
-    let flag_len = dns_read_u8(rdata, 4)? as usize;
+    let flag_len = usize::from(dns_read_u8(rdata, 4)?);
     let mut offset: usize = 5;
     let flags = parse_dns_str(&rdata[offset..offset + flag_len])?;
-    offset += flag_len as usize;
-    let srv_len = rdata[offset] as usize;
+    offset += usize::from(flag_len);
+    let srv_len = usize::from(rdata[offset]);
     offset += 1;
     let srv = parse_dns_str(&rdata[offset..offset + srv_len])?;
     offset += srv_len;
-    let re_len = dns_read_u8(rdata, offset)? as usize;
+    let re_len = usize::from(dns_read_u8(rdata, offset)?);
     offset += 1;
     let mut re = String::new();
     if re_len > 0 {
-        re = parse_dns_str(&rdata[offset..offset + re_len])?.clone();
+        re.clone_from(&(parse_dns_str(&rdata[offset..offset + re_len])?))
+        //parse_dns_str(&rdata[offset..offset + re_len])?.clone();
     }
     offset += re_len;
     let (repl, _) = dns_parse_name(rdata, offset)?;
@@ -606,7 +604,7 @@ fn parse_rr_sshfp(rdata: &[u8]) -> Result<String, Parse_error> {
     let alg = sshfp_algorithm(rdata[0])?;
     let fp_type = sshfp_fp_type(rdata[1])?;
     let fingerprint = &rdata[2..];
-    Ok(format!("{alg} {alg} {}", hex::encode(fingerprint)))
+    Ok(format!("{alg} {fp_type} {}", hex::encode(fingerprint)))
 }
 
 fn parse_rr_cert(rdata: &[u8]) -> Result<String, Parse_error> {
@@ -837,8 +835,7 @@ fn parse_rr_nid(rdata: &[u8]) -> Result<String, Parse_error> {
     let node_id3 = dns_read_u16(rdata, 6)?;
     let node_id4 = dns_read_u16(rdata, 7)?;
     Ok(format!(
-        "{prio} {:x}:{:x}:{:x}:{:x}",
-        node_id1, node_id2, node_id3, node_id4
+        "{prio} {node_id1:x}:{node_id2:x}:{node_id3:x}:{node_id4:x}"
     ))
 }
 
@@ -878,7 +875,7 @@ fn parse_rr_amtrelay(packet: &[u8], rdata: &[u8], offset_in: usize) -> Result<St
             &rtype.to_string(),
         ));
     }
-    Ok(format!("{precedence} {precedence} {rtype} {relay}"))
+    Ok(format!("{precedence} {dbit} {rtype} {relay}"))
 }
 fn parse_rr_a6(packet: &[u8], rdata: &[u8], offset_in: usize) -> Result<String, Parse_error> {
     let prefix_len = dns_read_u8(rdata, 0)? as usize;
@@ -896,11 +893,6 @@ fn parse_rr_a6(packet: &[u8], rdata: &[u8], offset_in: usize) -> Result<String, 
 }
 
 fn parse_rr_rrsig(rdata: &[u8]) -> Result<String, Parse_error> {
-    /*  let sig_rrtype = if let Ok(x) = parse_rrtype(dns_read_u16(rdata, 0)?) {
-        x
-    } else {
-        return Err(Parse_error::new(ParseErrorType::Invalid_Parameter, ""));
-    };*/
     let Ok(sig_rrtype) = parse_rrtype(dns_read_u16(rdata, 0)?) else {
         return Err(Parse_error::new(ParseErrorType::Invalid_Parameter, ""));
     };
@@ -961,7 +953,7 @@ pub(crate) fn dns_parse_rdata(
     } else if rrtype == DNS_RR_type::AFSDB {
         let subtype = dns_read_u16(rdata, 0)?;
         let (hostname, _offset_out) = dns_parse_name(rdata, 2)?;
-        Ok(format!("{subtype} {subtype}"))
+        Ok(format!("{subtype} {hostname}"))
     } else if rrtype == DNS_RR_type::CDS || rrtype == DNS_RR_type::DS || rrtype == DNS_RR_type::TA {
         parse_rr_cds(rdata)
     } else if rrtype == DNS_RR_type::DNSKEY || rrtype == DNS_RR_type::CDNSKEY {
@@ -1118,7 +1110,7 @@ fn parse_nsec_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, Parse_error> {
     let mut offset = 0;
     while offset < len {
         let high_byte = (bitmap[offset] as u16) << 8;
-        let size = bitmap[offset + 1] as usize;
+        let size = usize::from(bitmap[offset + 1]);
         for i in 0..size {
             let mut pos: u8 = 0x80;
             for j in 0..8 {
