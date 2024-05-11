@@ -5,6 +5,7 @@
 #![allow(non_camel_case_types)]
 pub mod config;
 pub mod dns;
+pub mod live_dump;
 pub mod dns_cache;
 pub mod dns_helper;
 pub mod dns_packet;
@@ -25,14 +26,14 @@ use colored::Colorize;
 use config::parse_config;
 use dns_cache::DNS_Cache;
 use futures::executor::block_on;
+use live_dump::Live_dump;
 use mysql_connection::{create_database, Mysql_connection};
 use pcap::{Active, Capture, Linktype};
 use regex::Regex;
 use skiplist::read_skip_list;
 use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, BufReader, Write};
-use std::net::TcpStream;
+use std::io::{BufReader, Write};
 use std::process::exit;
 use std::str::{self, FromStr};
 use std::sync::mpsc::TryRecvError;
@@ -152,6 +153,7 @@ fn load_asn_database(config: &Config) -> asn_db2::Database {
     asn_database
 }
 
+
 fn poll(
     packet_queue: &Arc<Mutex<VecDeque<Option<Packet_info>>>>,
     config: &Config,
@@ -161,11 +163,9 @@ fn poll(
     let mut output_file: Option<File> = None;
     let mut database_conn: Option<Mysql_connection> = None;
     let mut dns_cache: DNS_Cache = DNS_Cache::new(5);
+    let mut live_dump= Live_dump::new(&config.live_dump_host, config.live_dump_port);
     let mut last_push = Utc::now().timestamp() as u64;
-    let Some(listener) = listen(&config.live_dump_host, config.live_dump_port.try_into().unwrap()) else {
-        panic!("cannot listen on port")
-    };
-    let mut live_dump: Vec<TcpStream> = Vec::new();
+   
     if !config.output.is_empty() && config.output != "-" {
         let mut options = OpenOptions::new();
         output_file = Some(
@@ -188,46 +188,21 @@ fn poll(
         database_conn = Some(x);
     }
     let asn_database = load_asn_database(config);
-    let Ok(_) = listener.set_nonblocking(true) else {
-        panic!("cannot set non-b/locking");
-    };
     loop {
-        loop {
-            match listener.accept() {
-                Ok((socket, addr)) => {
-                    debug!("New connection from {addr}");
-                    live_dump.push(socket);
-                }
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    break;
-                }
-                Err(e) => error!("couldn't get client: {e:?}"),
-            }
-        }
+        live_dump.accept();
+      
         let packet_info = packet_queue.lock().unwrap().pop_front();
         match packet_info {
             Some(p) => match p {
                 Some(mut p1) => {
                     p1.update_asn(&asn_database);
-                    let mut x = Vec::new();
                     if !p1.dns_records.is_empty() {
                         if config.output == "-" {
                             println!("{p1}");
                         }
-                        for (idx, mut stream) in (&live_dump).into_iter().enumerate() {
-                            let tmp_str = &format!("{:#}", &p1);
-                            match stream.write_all(&tmp_str.as_bytes()) {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    debug!("{}", e);
-                                    x.push(idx);
-                                }
-                            }
-                        }
-                    }
-                    for i in x {
-                        debug!("Removing connection {}", i);
-                        live_dump.remove(i);
+                        let tmp_str = &format!("{:#}", &p1);
+                        live_dump.write_all(tmp_str);
+                       
                     }
 
                     if let Some(ref mut of) = output_file {
@@ -405,7 +380,7 @@ fn main() {
                 .unwrap()
                 .timeout(1000)
                 .promisc(config.promisc) // todo make a paramater
-                //                .immediate_mode(true) //seems to brak on ubuntu?
+                //                .immediate_mode(true) //seems to break on ubuntu?
                 .open()
                 .unwrap(),
         );
@@ -418,7 +393,7 @@ fn main() {
     if config.daemon {
         tracing::debug!("Daemonising");
         match daemonize.start() {
-            Ok(()) => {
+            Ok(_) => {
                 tracing::debug!("Daemonised");
                 run(&config, cap, &pcap_path);
             }

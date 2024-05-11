@@ -234,30 +234,36 @@ impl DNS_record {
 impl std::fmt::Display for DNS_record {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if f.alternate() {
+            let mut s = to_unicode(
+                &self.name,
+                unic_idna::Flags {
+                    transitional_processing: false,
+                    verify_dns_length: true,
+                    use_std3_ascii_rules: true,
+                },
+            )
+            .0;
+            if s == self.name {
+                s = "".to_string();
+            } else {
+                s = format!("({s}) ");
+            }
             writeln!(
                 f,
-                "{} ({}) {} {} {} {} {} {} {} {} ({}) {} {}",
+                "  {} {}{} {} {} {} {} {} {} {} ({}) {} {}",
                 snailquote::escape(&self.name),
-                to_unicode(
-                    &self.name,
-                    unic_idna::Flags {
-                        transitional_processing: false,
-                        verify_dns_length: true,
-                        use_std3_ascii_rules: true
-                    }
-                )
-                .0,
-                self.rdata,
-                self.rr_type,
+                s,
                 self.class,
+                self.rr_type,
+                self.rdata,
                 self.ttl,
-                self.count,
                 self.timestamp,
                 self.domain,
+                self.prefix,
                 self.asn,
                 self.asn_owner,
-                self.prefix,
-                self.error
+                self.error,
+                self.count,
             )
         } else {
             write!(
