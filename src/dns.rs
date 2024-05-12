@@ -244,7 +244,7 @@ impl std::fmt::Display for DNS_record {
             )
             .0;
             if s == self.name {
-                s = "".to_string();
+                s = String::new();
             } else {
                 s = format!("({s}) ");
             }

@@ -578,8 +578,7 @@ fn parse_rr_naptr(rdata: &[u8]) -> Result<String, Parse_error> {
     offset += 1;
     let mut re = String::new();
     if re_len > 0 {
-        re.clone_from(&(parse_dns_str(&rdata[offset..offset + re_len])?))
-        //parse_dns_str(&rdata[offset..offset + re_len])?.clone();
+        re.clone_from(&(parse_dns_str(&rdata[offset..offset + re_len])?));
     }
     offset += re_len;
     let (repl, _) = dns_parse_name(rdata, offset)?;

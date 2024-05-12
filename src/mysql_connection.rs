@@ -203,9 +203,9 @@ pub(crate) fn create_database(config: &Config) {
                 panic!("No database configured");
             }
         }*/
-        if let Some(ref mut _db) = Some(x) {
+        if let Some(ref mut db) = Some(x) {
             tracing::debug!("Database created");
-            _db.create_database();
+            db.create_database();
         } else {
             tracing::error!("No database configured");
             panic!("No database configured");

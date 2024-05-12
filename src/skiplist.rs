@@ -35,7 +35,7 @@ pub fn read_skip_list(filename: &str) -> Vec<Regex> {
         parse_skiplist(&file_contents)
     } else {
         tracing::error!("File could not be read {filename}");
-        return Vec::new();
+        Vec::new()
     }
 }
 

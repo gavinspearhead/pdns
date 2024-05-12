@@ -12,7 +12,7 @@ use crate::statistics::Statistics;
 use crate::tcp_connection::TCP_Connections;
 
 pub fn listen(address: &str, port: u16) -> Option<TcpListener> {
-    if address.is_empty() {
+    if address.is_empty() || port == 0 {
          return None;
     }
     let addr = format!("{address}:{port}");
@@ -30,7 +30,7 @@ pub fn listen(address: &str, port: u16) -> Option<TcpListener> {
 }
 
 pub(crate) fn server(
-    listener: TcpListener,
+    listener: &TcpListener,
     stats: &Arc<Mutex<Statistics>>,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
     config: &Config,

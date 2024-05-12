@@ -5,13 +5,13 @@
 #![allow(non_camel_case_types)]
 pub mod config;
 pub mod dns;
-pub mod live_dump;
 pub mod dns_cache;
 pub mod dns_helper;
 pub mod dns_packet;
 pub mod dns_rr;
 pub mod errors;
 pub mod http_server;
+pub mod live_dump;
 pub mod mysql_connection;
 pub mod packet_info;
 pub mod rank;
@@ -153,7 +153,6 @@ fn load_asn_database(config: &Config) -> asn_db2::Database {
     asn_database
 }
 
-
 fn poll(
     packet_queue: &Arc<Mutex<VecDeque<Option<Packet_info>>>>,
     config: &Config,
@@ -165,7 +164,7 @@ fn poll(
     let mut dns_cache: DNS_Cache = DNS_Cache::new(5);
     let mut live_dump= Live_dump::new(&config.live_dump_host, config.live_dump_port);
     let mut last_push = Utc::now().timestamp() as u64;
-   
+
     if !config.output.is_empty() && config.output != "-" {
         let mut options = OpenOptions::new();
         output_file = Some(
@@ -189,8 +188,9 @@ fn poll(
     }
     let asn_database = load_asn_database(config);
     loop {
+    
         live_dump.accept();
-      
+
         let packet_info = packet_queue.lock().unwrap().pop_front();
         match packet_info {
             Some(p) => match p {
@@ -202,7 +202,6 @@ fn poll(
                         }
                         let tmp_str = &format!("{:#}", &p1);
                         live_dump.write_all(tmp_str);
-                       
                     }
 
                     if let Some(ref mut of) = output_file {
@@ -309,7 +308,7 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
             let listener = listen(&config.server, config.port);
             let handle4 = s.spawn(|| {
                 if let Some(l) = listener {
-                    server(l, &stats.clone(), &tcp_list.clone(), &config.clone());
+                    server(&l, &stats.clone(), &tcp_list.clone(), &config.clone());
                 }
             });
             let Some(mut cap) = capin else {

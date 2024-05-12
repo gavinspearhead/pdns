@@ -183,7 +183,7 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String, create_d
         .arg(
             arg!(-P --port <VALUE>)
                 .required(false)
-                .long_help("Port number for the internal web server to listen on"),
+                .long_help("Port number for the internal web server to listen on (0 to disable)"),
         )
         .arg(
             arg!(-r --rrtypes <VALUE>)
@@ -278,7 +278,7 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String, create_d
         .arg(
             arg!(--live_dump_port <VALUE>)
                 .required(false)
-                .long_help("Port number for the live dump to listen on"),
+                .long_help("Port number for the live dump to listen on (0 to disable)"),
         )
         .get_matches();
     let empty_str = String::new();
@@ -374,10 +374,10 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String, create_d
         .get_one::<String>("live_dump_host")
         .unwrap_or(&config.live_dump_host)
         .clone();
-    config.live_dump_port = matches
+    config.live_dump_port = *matches
         .get_one::<u16>("live_dump_port")
         .unwrap_or(&config.live_dump_port)
-        .clone();
+        ;
 
     let rr_types = parse_rrtypes(&matches.get_one("rrtypes").unwrap_or(&empty_str).clone());
     if !rr_types.is_empty() {
