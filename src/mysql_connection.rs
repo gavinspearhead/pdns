@@ -2,6 +2,7 @@ use std::process::exit;
 
 use futures::executor::block_on;
 use sqlx::{mysql::MySqlPoolOptions, MySql, Pool};
+use tracing::debug;
 
 use crate::{
     config::Config,
@@ -28,7 +29,7 @@ impl Mysql_connection {
             .await
         {
             Ok(mysql_pool) => {
-                // println!("Connection to the database is successful!");
+                debug!("Connection to the database is successful!");
                 Mysql_connection { pool: mysql_pool }
             }
             Err(err) => {
@@ -192,17 +193,7 @@ pub(crate) fn create_database(config: &Config) {
             &config.dbport,
             &config.dbname,
         ));
-        //let mut database_conn = Some(x);
-        /*match Some(x) {
-            Some(ref mut _db) => {
-                tracing::debug!("Database created");
-                _db.create_database();
-            }
-            None => {
-                tracing::error!("No database configured");
-                panic!("No database configured");
-            }
-        }*/
+        
         if let Some(ref mut db) = Some(x) {
             tracing::debug!("Database created");
             db.create_database();

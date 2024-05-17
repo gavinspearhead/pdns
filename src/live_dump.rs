@@ -23,7 +23,7 @@ impl Live_dump {
         Live_dump {
             listener: if let Some(x) = listen(addr, port) {
                 debug!("Listening on {addr}:{port}");
-                let Ok(_) = x.set_nonblocking(true) else {
+                let Ok(()) = x.set_nonblocking(true) else {
                     panic!("Cannot set non-blocking on socket");
                 };
                 Some(x)

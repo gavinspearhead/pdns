@@ -139,13 +139,11 @@ impl Packet_info {
                         match x {
                             IpEntry::V4(v4) => {
                                 i.asn = v4.as_number.to_string();
-                                // i.asn_owner = v4.owner.clone();
                                 i.asn_owner.clone_from(&v4.owner);
                                 i.prefix = v4.subnet.to_string();
                             }
                             IpEntry::V6(v6) => {
                                 i.asn = v6.as_number.to_string();
-                                // i.asn_owner = v6.owner.clone();
                                 i.asn_owner.clone_from(&v6.owner);
                                 i.prefix = v6.subnet.to_string();
                             }

@@ -1,6 +1,8 @@
 // TODO
 // - Look at timestamp utc vs local time?
 // parametrize Rank with IP address type
+// make graph data for queries per time
+// filter on livedump
 
 #![allow(non_camel_case_types)]
 pub mod config;
@@ -20,6 +22,8 @@ pub mod statistics;
 pub mod tcp_connection;
 pub mod tcp_data;
 pub mod version;
+//pub mod bucket;
+//use bucket::hourly;
 use chrono::{DateTime, Utc};
 use clap::{arg, Parser};
 use colored::Colorize;
@@ -77,7 +81,6 @@ fn packet_loop<T>(
     let link_type = cap.get_datalink();
     if link_type != Linktype::ETHERNET {
         tracing::error!("Not ethernet {link_type:?}");
-        //     return Err(Parse_error::new( errors::ParseErrorType::Invalid_IP_Version , &format!("{}", &packet[0]>>4)) .into());
         panic!("Not ethernet");
     }
     tracing::debug!("Reading pubsuf list {}", config.public_suffix_file);
@@ -106,7 +109,7 @@ fn packet_loop<T>(
                     packet.header.ts.tv_usec as u32 * 1000,
                 ) {
                     Some(x) => x,
-                    None => Utc::now(), //let mut last_push = Utc::now().timestamp() as u64;
+                    None => Utc::now(), 
                 };
                 packet_info.set_timestamp(ts);
                 let result = parse_eth(
@@ -141,7 +144,6 @@ fn packet_loop<T>(
 
 fn load_asn_database(config: &Config) -> asn_db2::Database {
     tracing::debug!("{}", config.asn_database_file);
-    //let asn_database =
     let Ok(f) = File::open(&config.asn_database_file) else {
         tracing::error!("Cannot open ASN database {} ", &config.asn_database_file);
         exit(-1);
@@ -200,7 +202,7 @@ fn poll(
                         if config.output == "-" {
                             println!("{p1}");
                         }
-                        let tmp_str = &format!("{:#}", &p1);
+                        let tmp_str = &format!("{p1:#}");
                         live_dump.write_all(tmp_str);
                     }
 
@@ -280,7 +282,7 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
                     match c.filter(&config.filter, false) {
                         Ok(()) => {}
                         Err(e) => {
-                            tracing::error!("Cannot apply filter {}: {}", config.filter, e);
+                            tracing::error!("Cannot apply filter {}: {e}", config.filter);
                         }
                     }
                     let handle3 = s.spawn(|| {
@@ -334,6 +336,7 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
 }
 
 fn main() {
+   // hourly();
     let filter = filter::LevelFilter::WARN;
     let (filter, reload_handle) = reload::Layer::new(filter);
     tracing_subscriber::Registry::default()
@@ -392,7 +395,7 @@ fn main() {
     if config.daemon {
         tracing::debug!("Daemonising");
         match daemonize.start() {
-            Ok(_) => {
+            Ok(()) => {
                 tracing::debug!("Daemonised");
                 run(&config, cap, &pcap_path);
             }

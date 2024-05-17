@@ -1,8 +1,6 @@
 use std::fmt::Write as _;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
-
-//use anyhow::Ok;
 use base64::engine::general_purpose;
 use base64::Engine;
 use byteorder::{BigEndian, ByteOrder};
@@ -212,14 +210,14 @@ fn decode_gpos_size(val: u8) -> String {
         }
         return format!("0.{base}");
     }
-    format!("{}{}", base, "0".repeat(exp as usize - 2))
+    format!("{base}{}", "0".repeat(exp as usize - 2))
 }
 
 fn parse_rr_a(rdata: &[u8]) -> Result<String, Parse_error> {
     if rdata.len() != 4 {
         return Err(Parse_error::new(
             ParseErrorType::Invalid_Resource_Record,
-            &format!("{:?}", &rdata),
+            &format!("{rdata:?}"),
         ));
     }
     let addr = parse_ipv4(rdata)?.to_string();
@@ -230,7 +228,7 @@ fn parse_rr_aaaa(rdata: &[u8]) -> Result<String, Parse_error> {
     if rdata.len() != 16 {
         return Err(Parse_error::new(
             ParseErrorType::Invalid_Resource_Record,
-            &format!("{:?}", &rdata),
+            &format!("{rdata:?}"),
         ));
     }
     let addr = parse_ipv6(rdata)?.to_string();
@@ -311,9 +309,9 @@ fn parse_rr_loc(rdata: &[u8]) -> Result<String, Parse_error> {
     let size = dns_read_u8(rdata, 1)?;
     let hor_prec = dns_read_u8(rdata, 2)?;
     let ver_prec = dns_read_u8(rdata, 3)?;
-    let mut lat = dns_read_u32(rdata, 4)? as i64;
-    let mut lon = dns_read_u32(rdata, 8)? as i64;
-    let alt = dns_read_u32(rdata, 12)? as i64;
+    let mut lat = i64::from(dns_read_u32(rdata, 4)?);
+    let mut lon = i64::from(dns_read_u32(rdata, 8)?);
+    let alt = i64::from(dns_read_u32(rdata, 12)?);
     let north: char;
     let east: char;
     let equator: i64 = 1 << 31;

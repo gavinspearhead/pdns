@@ -107,17 +107,6 @@ fn parse_answer(
         .or_insert(1);
 
     offset += 11;
-    /*     println!(
-        "Answer N: {} L:{} RR:{} C:{} TTL:{} DL:{} D:{:x?} R: {} ",
-        name,
-        offset,
-        rrtype.to_str().unwrap(),
-        class.to_str().unwrap(),
-        ttl,
-        datalen,
-        data,
-        rdata
-    );*/
 
     let domain = publicsuffixlist.domain(name.as_bytes());
     let mut domain_str = String::new();
@@ -264,7 +253,6 @@ fn parse_tcp(
     if !(dp == 53 || sp == 53 || dp == 5353 || sp == 5353 || dp == 5355 || sp == 5355) {
         return Err(Parse_error::new(errors::ParseErrorType::Invalid_DNS_Packet, "").into());
     }
-    //println!("TCP!!");
     let hl: u8 = (packet[12] >> 4) * 4;
     let len: u32 = u32::try_from(packet.len() - usize::from(hl))?;
     let flags = packet[13];
@@ -397,7 +385,7 @@ fn parse_ipv4(
         )
         .into());
     }
-    let ihl: u16 = ((packet[0] & 0xf) as u16) * 4;
+    let ihl: u16 = (u16::from(packet[0] & 0xf)) * 4;
     let mut t: [u8; 4] = packet[12..16].try_into()?;
     let src = Ipv4Addr::from(t);
     t = packet[16..20].try_into()?;
@@ -508,7 +496,6 @@ fn parse_ipv6(
             &format!("{}", &packet[0] >> 4),
         )
         .into());
-        //  return Err(format!("Invalid IP version {:x?}", &packet[0] >> 4).into());
     }
     packet_info.set_dest_ip(std::net::IpAddr::V6(dst));
     packet_info.set_source_ip(std::net::IpAddr::V6(src));
@@ -572,6 +559,5 @@ pub(crate) fn parse_eth(
             &format!("{}", &packet[0] >> 4),
         )
         .into())
-        //        return Err(format!("Unknown packet type {:x?}", &packet[12..14]).into());
     }
 }

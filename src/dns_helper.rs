@@ -26,9 +26,8 @@ pub(crate) fn parse_class(class: u16) -> Result<DNS_Class, DNS_error> {
     DNS_Class::find(class)
 }
 
-//pub fn timestame_to_str(timestamp: u32) -> Result<String, Box<dyn std::error::Error>> {
 pub(crate) fn timestame_to_str(timestamp: u32) -> Result<String, Parse_error> {
-    let Some(naive_datetime) = NaiveDateTime::from_timestamp_opt(timestamp as i64, 0) else {
+    let Some(naive_datetime) = NaiveDateTime::from_timestamp_opt(i64::from(timestamp), 0) else {
         return Err(Parse_error::new(
             ParseErrorType::Invalid_timestamp,
             &timestamp.to_string(),
@@ -69,6 +68,7 @@ pub(crate) fn dns_read_u8(packet: &[u8], offset: usize) -> Result<u8, Parse_erro
     };
     Ok(*r)
 }
+
 pub(crate) fn dns_read_u32(packet: &[u8], offset: usize) -> Result<u32, Parse_error> {
     let Some(r) = packet.get(offset..offset + 4) else {
         return Err(Parse_error::new(
@@ -79,6 +79,7 @@ pub(crate) fn dns_read_u32(packet: &[u8], offset: usize) -> Result<u32, Parse_er
     let val = BigEndian::read_u32(r);
     Ok(val)
 }
+
 pub(crate) fn base32hex_encode(input: &[u8]) -> String {
     static BASE32HEX_NOPAD: data_encoding::Encoding = data_encoding::BASE32HEX_NOPAD;
     let mut output = String::new();
