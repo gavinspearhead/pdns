@@ -1,6 +1,7 @@
 use crate::rank::Rank;
 use serde::Serialize;
 use std::collections::HashMap;
+use crate::time_stats::Time_stats;
 
 #[derive(Serialize, Debug, Clone)]
 pub(crate) struct Statistics {
@@ -19,6 +20,9 @@ pub(crate) struct Statistics {
     pub tcp: u128,
     pub topdomain: Rank<String>,
     pub topnx: Rank<String>,
+    pub total_time_stats: Time_stats,
+    pub blocked_time_stats: Time_stats,
+    pub success_time_stats: Time_stats,
 }
 
 impl Statistics {
@@ -39,6 +43,9 @@ impl Statistics {
             tcp: 0,
             topdomain: Rank::new(toplistsize),
             topnx: Rank::new(toplistsize),
+            total_time_stats: Time_stats::new(),
+            success_time_stats: Time_stats::new(),
+            blocked_time_stats: Time_stats::new(),
         }
     }
 

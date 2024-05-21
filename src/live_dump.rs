@@ -56,7 +56,7 @@ impl Live_dump {
 
     pub(crate) fn write_all(&mut self, s: &str) {
         let mut x = Vec::new();
-        for (idx, mut stream) in (&self.streams).iter().enumerate() {
+        for (idx, mut stream) in self.streams.iter().enumerate() {
             match stream.write_all(s.as_bytes()) {
                 Ok(()) => {}
                 Err(e) => {

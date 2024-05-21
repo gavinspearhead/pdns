@@ -45,11 +45,16 @@ fn parse_question(
         .and_modify(|c| *c += 1)
         .or_insert(1);
 
+    stats.total_time_stats.add(packet_info.timestamp, 1);
+
+
     let len = offset - offset_in;
     if rcode == DnsReplyType::NXDOMAIN {
         stats.topnx.add(name.clone());
+        stats.blocked_time_stats.add(packet_info.timestamp, 1);
     } else if rcode == DnsReplyType::NOERROR {
         stats.topdomain.add(name.clone());
+        stats.success_time_stats.add(packet_info.timestamp, 1);
     }
     if rcode != DnsReplyType::NOERROR {
         let rec: DNS_record = DNS_record {

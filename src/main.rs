@@ -23,6 +23,7 @@ pub mod tcp_connection;
 pub mod tcp_data;
 pub mod version;
 //pub mod bucket;
+pub mod time_stats;
 //use bucket::hourly;
 use chrono::{DateTime, Utc};
 use clap::{arg, Parser};
@@ -165,7 +166,7 @@ fn poll(
     let mut database_conn: Option<Mysql_connection> = None;
     let mut dns_cache: DNS_Cache = DNS_Cache::new(5);
     let mut live_dump= Live_dump::new(&config.live_dump_host, config.live_dump_port);
-    let mut last_push = Utc::now().timestamp() as u64;
+    let mut last_push = Utc::now().timestamp();
 
     if !config.output.is_empty() && config.output != "-" {
         let mut options = OpenOptions::new();
@@ -233,13 +234,13 @@ fn poll(
                 }
             }
         }
-        let ct = Utc::now().timestamp() as u64;
-        if ct > last_push + dns_cache.timeout() {
+        let ct = Utc::now().timestamp();
+        if ct > last_push + (dns_cache.timeout() as i64) {
             if let Some(ref mut db) = database_conn {
                 for i in dns_cache.push_all() {
                     db.insert_or_update_record(&i);
                 }
-                last_push = Utc::now().timestamp() as u64;
+                last_push = Utc::now().timestamp();
             }
         }
         match rx.try_recv() {
