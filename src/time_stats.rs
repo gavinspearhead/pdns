@@ -106,13 +106,13 @@ pub(crate) struct Time_stats {
     per_minute: Bucket,
     per_hour: Bucket,
     per_day: Bucket,
-    per_second: Bucket,
+   // per_second: Bucket,
 }
 
 impl Time_stats {
     pub(crate) fn new() -> Time_stats {
         Time_stats {
-            per_second: Bucket::new(60),
+        //    per_second: Bucket::new(60),
             per_minute: Bucket::new(60),
             per_hour: Bucket::new(24),
             per_day: Bucket::new(30),
@@ -120,12 +120,12 @@ impl Time_stats {
     }
 
     pub(crate) fn add(&mut self, time_stamp: DateTime<Utc>, count: u64) {
-        let s = time_stamp.second();
+      //  let s = time_stamp.second();
         let m = time_stamp.minute();
         let h = time_stamp.hour();
         let d = time_stamp.day();
         let mon = time_stamp.month();
-        self.per_second.add(s, count, m);
+      //  self.per_second.add(s, count, m);
         self.per_day.add(d, count, mon);
         self.per_minute.add(m, count, h);
         self.per_hour.add(h, count, d);
