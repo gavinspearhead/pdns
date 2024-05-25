@@ -91,15 +91,8 @@ fn parse_answer(
     if rrtype == DNS_RR_type::OPT {
         return Ok(0);
     }
-    if !config.rr_type.contains(&rrtype) {
-        return Ok(0);
-    }
     let class_val = dns_read_u16(packet, offset + 2)?;
     let class = parse_class(class_val)?;
-    let ttl = dns_read_u32(packet, offset + 4)?;
-    let datalen: usize = dns_read_u16(packet, offset + 8)?.into();
-    let data = &packet[offset + 10..offset + 10 + datalen];
-    let rdata = dns_parse_rdata(data, rrtype, packet, offset + 10)?;
     stats
         .atypes
         .entry(rrtype.to_str())
@@ -111,7 +104,14 @@ fn parse_answer(
         .and_modify(|c| *c += 1)
         .or_insert(1);
 
-    offset += 11;
+    if !config.rr_type.contains(&rrtype) {
+        return Ok(0);
+    }
+    let ttl = dns_read_u32(packet, offset + 4)?;
+    let datalen: usize = dns_read_u16(packet, offset + 8)?.into();
+    let data = &packet[offset + 10..offset + 10 + datalen];
+    let rdata = dns_parse_rdata(data, rrtype, packet, offset + 10)?;
+        offset += 11;
 
     let domain = publicsuffixlist.domain(name.as_bytes());
     let mut domain_str = String::new();
