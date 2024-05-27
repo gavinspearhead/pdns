@@ -1106,7 +1106,7 @@ fn parse_nsec_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, Parse_error> {
     let mut res: Vec<u16> = Vec::new();
     let mut offset = 0;
     while offset < len {
-        let high_byte = (bitmap[offset] as u16) << 8;
+        let high_byte = (u16::from(bitmap[offset])) << 8;
         let size = usize::from(bitmap[offset + 1]);
         for i in 0..size {
             let mut pos: u8 = 0x80;

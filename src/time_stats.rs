@@ -123,8 +123,8 @@ impl Time_stats {
       //  let s = time_stamp.second();
         let m = time_stamp.minute();
         let h = time_stamp.hour();
-        let d = time_stamp.day();
-        let mon = time_stamp.month();
+        let d = time_stamp.day() - 1; //correct because start at 1
+        let mon = time_stamp.month() - 1;
       //  self.per_second.add(s, count, m);
         self.per_day.add(d, count, mon);
         self.per_minute.add(m, count, h);
