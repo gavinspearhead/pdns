@@ -102,7 +102,7 @@ impl DNS_error {
             DNS_Error_Type::Invalid_reply_type => "Invalid Reply type",
             DNS_Error_Type::Invalid_Opcode => "Invalid Opcode",
             DNS_Error_Type::Invalid_Extended_Error_Code => "Invalid Extended Error Code",
-            DNS_Error_Type::Invalid_Extended_Option_Code => "Invalid Extended Error Code",
+            DNS_Error_Type::Invalid_Extended_Option_Code => "Invalid Extended Option Code",
         };
 
         DNS_error {
