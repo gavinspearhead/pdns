@@ -1,5 +1,5 @@
 use std::{
-    borrow::Borrow, io::{BufRead, BufReader, Write}, net::{TcpListener, TcpStream}, ops::Deref, process::exit, sync::{Arc, Mutex}
+    io::{BufRead, BufReader, Write}, net::{TcpListener, TcpStream}, process::exit, sync::{Arc, Mutex}
 };
 
 use tracing::error;

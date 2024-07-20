@@ -1,7 +1,5 @@
 // TODO
-// - Look at timestamp utc vs local time?
 // parametrize Rank with IP address type
-// make graph data for queries per time
 // filter on livedump
 
 #![allow(non_camel_case_types)]
@@ -21,10 +19,8 @@ pub mod skiplist;
 pub mod statistics;
 pub mod tcp_connection;
 pub mod tcp_data;
-pub mod version;
-//pub mod bucket;
 pub mod time_stats;
-//use bucket::hourly;
+pub mod version;
 use chrono::{DateTime, Utc};
 use clap::{arg, Parser};
 use colored::Colorize;
@@ -104,13 +100,13 @@ fn packet_loop<T>(
     loop {
         match cap.next_packet() {
             Ok(packet) => {
-                let mut packet_info = Packet_info::default();
+                let mut packet_info = Packet_info::new();
                 let ts = match DateTime::<Utc>::from_timestamp(
                     packet.header.ts.tv_sec,
                     packet.header.ts.tv_usec as u32 * 1000,
                 ) {
                     Some(x) => x,
-                    None => Utc::now(), 
+                    None => Utc::now(),
                 };
                 packet_info.set_timestamp(ts);
                 let result = parse_eth(
@@ -165,7 +161,7 @@ fn poll(
     let mut output_file: Option<File> = None;
     let mut database_conn: Option<Mysql_connection> = None;
     let mut dns_cache: DNS_Cache = DNS_Cache::new(5);
-    let mut live_dump= Live_dump::new(&config.live_dump_host, config.live_dump_port);
+    let mut live_dump = Live_dump::new(&config.live_dump_host, config.live_dump_port);
     let mut last_push = Utc::now().timestamp();
 
     if !config.output.is_empty() && config.output != "-" {
@@ -191,51 +187,50 @@ fn poll(
     }
     let asn_database = load_asn_database(config);
     loop {
-    
         live_dump.accept();
-
+        live_dump.read_all();
         let packet_info = packet_queue.lock().unwrap().pop_front();
-        match packet_info {
-            Some(p) => match p {
-                Some(mut p1) => {
-                    p1.update_asn(&asn_database);
-                    if !p1.dns_records.is_empty() {
-                        if config.output == "-" {
-                            println!("{p1}");
-                        }
-                        let tmp_str = &format!("{p1:#}");
-                        live_dump.write_all(tmp_str);
+        if let Some(p) = packet_info {
+            if let Some(mut p1) = p {
+                p1.update_asn(&asn_database);
+                if !p1.dns_records.is_empty() {
+                    if config.output == "-" {
+                        println!("{p1}");
                     }
+                    live_dump.write_all(&p1);
+                }
 
-                    if let Some(ref mut of) = output_file {
-                        if config.output_type == "csv" {
-                            of.write_all(p1.to_csv().as_bytes()).expect("Write failed");
-                        } else if config.output_type == "json" {
-                            of.write_all(p1.to_json().as_bytes()).expect("Write failed");
-                        }
-                    };
-                    if let Some(ref _db) = database_conn {
-                        for i in p1.dns_records {
-                            dns_cache.add(&i);
-                        }
+                if let Some(ref mut of) = output_file {
+                    if config.output_type == "csv" {
+                        of.write_all(p1.to_csv().as_bytes()).expect("Write failed");
+                    } else if config.output_type == "json" {
+                        of.write_all(p1.to_json().as_bytes()).expect("Write failed");
                     }
+                };
+                if let Some(ref _db) = database_conn {
+                    for i in p1.dns_records {
+                        dns_cache.add(&i);
+                    }
+                }
 
-                    timeout = time::Duration::from_millis(0);
-                }
-                None => {
-                    tracing::debug!("Terminating poll()");
-                    return;
-                }
-            },
-            None => {
-                thread::sleep(timeout);
-                if timeout.as_millis() < 1000 {
-                    timeout += time::Duration::from_millis(100);
-                }
+                timeout = time::Duration::from_millis(0);
+            } else {
+                tracing::debug!("Terminating poll()");
+                return;
+            }
+
+         
+            
+        } else {
+            thread::sleep(timeout);
+            if timeout.as_millis() < 1000 {
+                timeout += time::Duration::from_millis(100);
             }
         }
+
+       
         let ct = Utc::now().timestamp();
-        if ct > last_push + (dns_cache.timeout() as i64) {
+        if ct > last_push + dns_cache.timeout() {
             if let Some(ref mut db) = database_conn {
                 for i in dns_cache.push_all() {
                     db.insert_or_update_record(&i);
@@ -268,7 +263,7 @@ fn poll(
 fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
     let packet_queue = Arc::new(Mutex::new(VecDeque::new()));
     let tcp_list = Arc::new(Mutex::new(TCP_Connections::new()));
-    let stats = Arc::new(Mutex::new(Statistics::origin(config.toplistsize)));
+    let stats = Arc::new(Mutex::new(Statistics::new(config.toplistsize)));
     let (tcp_tx, tcp_rx) = mpsc::channel();
     let (_pq_tx, pq_rx) = mpsc::channel();
     let skiplist = read_skip_list(&config.skip_list_file);
@@ -337,7 +332,7 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
 }
 
 fn main() {
-   // hourly();
+    // hourly();
     let filter = filter::LevelFilter::WARN;
     let (filter, reload_handle) = reload::Layer::new(filter);
     tracing_subscriber::Registry::default()

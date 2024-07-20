@@ -151,7 +151,7 @@ impl TCP_Connections {
         }
     }
 
-    pub fn check_timeout(&mut self) -> u64 {
+    pub fn check_timeout(&mut self) -> i64 {
         let now = Utc::now().timestamp();
         let mut m_ts = 1;
         let mut keys: Vec<(IpAddr, IpAddr, u16, u16)> = Vec::new();
@@ -167,9 +167,9 @@ impl TCP_Connections {
             self.connections.remove(&k);
         }
         if m_ts > 0 {
-            m_ts as u64
+            m_ts 
         } else {
-            self.timelimit as u64
+            self.timelimit 
         } 
     }
 
@@ -198,7 +198,7 @@ impl TCP_Connections {
                     return None;
                 }
             }
-        } else if (flags & 2 != 0) || (flags & 7 == 0) {
+        } else if (flags & 2 != 0) || (flags.trailing_zeros() >= 3) {
             // SYN flag or no flag
             let mut sn = seqnr;
             if flags & 2 == 2 {
@@ -225,6 +225,6 @@ pub(crate) fn clean_tcp_list(tcp_list: &Arc<Mutex<TCP_Connections>>, rx: mpsc::R
             }
             Err(TryRecvError::Empty) => {}
         }
-        sleep(std::cmp::max(timeout, time::Duration::from_secs(dur)));
+        sleep(std::cmp::max(timeout, time::Duration::from_secs(dur as u64)));
     }
 }

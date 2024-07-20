@@ -1,5 +1,6 @@
 use crate::config::Config;
-use crate::dns_helper::{dns_read_u16, dns_read_u32, parse_class, parse_rrtype};
+use crate::dns::{DNSExtendedError, DNS_Opcodes, EDNS0ptionCodes};
+use crate::dns_helper::{dns_read_u16, dns_read_u32, dns_read_u8, parse_class, parse_rrtype};
 use crate::dns_rr::{dns_parse_name, dns_parse_rdata};
 use crate::packet_info::Packet_info;
 use crate::statistics::Statistics;
@@ -47,7 +48,6 @@ fn parse_question(
 
     stats.total_time_stats.add(packet_info.timestamp, 1);
 
-
     let len = offset - offset_in;
     if rcode == DnsReplyType::NXDOMAIN {
         stats.topnx.add(name.clone());
@@ -70,11 +70,70 @@ fn parse_question(
             asn_owner: String::new(),
             prefix: String::new(),
             error: rcode,
+            extended_error: DNSExtendedError::None,
         };
         packet_info.add_dns_record(rec);
     }
 
     Ok(len + 4)
+}
+
+fn parse_edns(
+    packet_info: &mut Packet_info,
+    packet: &[u8],
+    offset_in: usize,
+    stats: &mut Statistics,
+    config: &Config,
+) -> Result<usize, Box<dyn std::error::Error>> {
+    let payload_size = dns_read_u16(packet, offset_in)?;
+    tracing::debug!("payload size {payload_size}");
+    let e_rcode = dns_read_u8(packet, offset_in + 2)?;
+    tracing::debug!("e code {e_rcode}");
+    let edns_version = dns_read_u8(packet, offset_in + 3)?;
+    tracing::debug!("edns_version {edns_version}");
+    let _z = dns_read_u16(packet, offset_in + 4)?;
+    tracing::debug!("z {_z}");
+    let data_length = dns_read_u16(packet, offset_in + 6)? as usize;
+    if data_length == 0 {
+        return Ok(0);
+    }
+    tracing::debug!("data length {data_length}");
+    let rdata = &packet[offset_in + 8..offset_in + 8 + data_length];
+    let mut offset: usize = 0;
+    while offset < data_length as usize {
+        let option_code = EDNS0ptionCodes::find(dns_read_u16(rdata, offset)?)?;
+        tracing::debug!("optino code {option_code}");
+        let option_length = dns_read_u16(rdata, offset + 2)? as usize;
+        tracing::debug!("option length {option_length}");
+        match option_code {
+            EDNS0ptionCodes::ExtendedDNSError => {
+                // Extended DNS error
+                let info_code = DNSExtendedError::find(dns_read_u16(rdata, offset + 4)?)?;
+                tracing::debug!("info code {info_code}");
+                let info_text =
+                    std::str::from_utf8(&rdata[offset + 6..offset + 4 + option_length])?;
+                tracing::debug!("infotext {info_text}");
+                packet_info.dns_records[0].extended_error = info_code;
+
+                stats
+                    .extended_error
+                    .entry(info_code.to_str())
+                    .and_modify(|c| *c += 1)
+                    .or_insert(1);
+            }
+            EDNS0ptionCodes::NSID => {
+                let nsid = std::str::from_utf8(&rdata[offset + 4..offset + 4 + option_length])?;
+                tracing::debug!("infotext {nsid:?}");
+            }
+            EDNS0ptionCodes::COOKIE => {}
+            _ => {
+                // TODO
+            }
+        }
+        offset += option_length + 4; // need to add the option code and length fields too
+    }
+
+    Ok(0)
 }
 
 fn parse_answer(
@@ -88,7 +147,9 @@ fn parse_answer(
     let (name, mut offset) = dns_parse_name(packet, offset_in)?;
     let rrtype_val = BigEndian::read_u16(&packet[offset..offset + 2]);
     let rrtype = parse_rrtype(rrtype_val)?;
+
     if rrtype == DNS_RR_type::OPT {
+        let _ = parse_edns(packet_info, packet, offset + 2, stats, config)?;
         return Ok(0);
     }
     let class_val = dns_read_u16(packet, offset + 2)?;
@@ -111,7 +172,7 @@ fn parse_answer(
     let datalen: usize = dns_read_u16(packet, offset + 8)?.into();
     let data = &packet[offset + 10..offset + 10 + datalen];
     let rdata = dns_parse_rdata(data, rrtype, packet, offset + 10)?;
-        offset += 11;
+    offset += 11;
 
     let domain = publicsuffixlist.domain(name.as_bytes());
     let mut domain_str = String::new();
@@ -124,7 +185,6 @@ fn parse_answer(
             tracing::debug!("Not found {name}");
         }
     }
-
     let rec: DNS_record = DNS_record {
         rr_type: rrtype.to_str(),
         ttl,
@@ -138,6 +198,7 @@ fn parse_answer(
         asn_owner: String::new(),
         prefix: String::new(),
         error: DnsReplyType::NOERROR,
+        extended_error: DNSExtendedError::None,
     };
     packet_info.add_dns_record(rec);
     offset += datalen as usize - 1;
@@ -171,7 +232,7 @@ fn parse_dns(
     let _ra = (flags >> 7) & 0x0001;
     let rcode = flags & 0x000f;
 
-    if opcode != 0 {
+    if DNS_Opcodes::find(opcode)? != DNS_Opcodes::Query {
         // Query
         tracing::debug!("Skipping DNS packets that are not queries");
         return Ok(());

@@ -5,18 +5,18 @@ use crate::dns::DNS_record;
 #[derive(Debug, Clone)]
 pub(crate) struct DNS_Cache {
     items: HashMap<(String, String, String), DNS_record>,
-    timeout: u64,
+    timeout: i64,
 }
 
 impl DNS_Cache {
-    pub(crate) fn new(time_out: u64) -> DNS_Cache {
+    pub(crate) fn new(time_out: i64) -> DNS_Cache {
         DNS_Cache {
             items: HashMap::new(),
             timeout: time_out,
         }
     }
 
-    pub(crate) fn timeout(&self) -> u64 {
+    pub(crate) fn timeout(&self) -> i64 {
         self.timeout
     }
 

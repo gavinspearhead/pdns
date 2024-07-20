@@ -82,6 +82,9 @@ pub(crate) enum DNS_Error_Type {
     Invalid_RR,
     Invalid_Class,
     Invalid_reply_type,
+    Invalid_Opcode,
+    Invalid_Extended_Error_Code,
+    Invalid_Extended_Option_Code,
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +100,9 @@ impl DNS_error {
             DNS_Error_Type::Invalid_Class => "Invalid Class",
             DNS_Error_Type::Invalid_RR => "Invalid RR Type",
             DNS_Error_Type::Invalid_reply_type => "Invalid Reply type",
+            DNS_Error_Type::Invalid_Opcode => "Invalid Opcode",
+            DNS_Error_Type::Invalid_Extended_Error_Code => "Invalid Extended Error Code",
+            DNS_Error_Type::Invalid_Extended_Option_Code => "Invalid Extended Error Code",
         };
 
         DNS_error {

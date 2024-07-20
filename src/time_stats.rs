@@ -30,7 +30,6 @@ impl Bucket {
         if pos == self.last_post && group == self.last_group {
             self.items[pos] += count;
         } else if group == self.last_group {
-            // println!("group == self.last_group");
             if pos > self.last_post {
                 for i in self.last_post + 1..pos {
                     self.items[i] = 0;
@@ -42,7 +41,6 @@ impl Bucket {
             }
             self.items[pos] = count;
         } else if group == self.last_group + 1 {
-            //println!("group == self.last_group + 1");
             for i in self.last_post + 1..self.items.len() {
                 self.items[i] = 0;
             }

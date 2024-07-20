@@ -554,7 +554,7 @@ fn parse_rr_x25(rdata: &[u8]) -> Result<String, Parse_error> {
             "Invalid X25 format",
         ));
     }
-    let Some(addr) = rdata.get(1..1 + len) else {
+    let Some(addr) = rdata.get(1..=len) else {
         return Err(Parse_error::new(ParseErrorType::Invalid_packet_index, ""));
     };
     let addr1 = parse_dns_str(addr)?;
@@ -838,7 +838,7 @@ fn parse_rr_nid(rdata: &[u8]) -> Result<String, Parse_error> {
 
 fn parse_rr_isdn(rdata: &[u8]) -> Result<String, Parse_error> {
     let addr_len = dns_read_u8(rdata, 0)? as usize;
-    let Some(addr) = rdata.get(1..1 + addr_len) else {
+    let Some(addr) = rdata.get(1..=addr_len) else {
         return Err(Parse_error::new(ParseErrorType::Invalid_packet_index, ""));
     };
     let subaddr_len = dns_read_u8(rdata, 1 + addr_len)? as usize;
@@ -932,6 +932,7 @@ pub(crate) fn dns_parse_rdata(
         || rrtype == DNS_RR_type::NINF0
         || rrtype == DNS_RR_type::AVC
         || rrtype == DNS_RR_type::SPF
+        || rrtype == DNS_RR_type::WALLET
     {
         parse_rr_txt(rdata)
     } else if rrtype == DNS_RR_type::PTR {
@@ -1129,10 +1130,10 @@ fn parse_nsec_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, Parse_error> {
 
 fn parse_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, Parse_error> {
     let mut res: Vec<u16> = Vec::new();
-    for i in 0..bitmap.len() {
+    for (i, item) in bitmap.iter().enumerate() {
         let mut pos: u8 = 0x80;
         for j in 0..8 {
-            if bitmap[i] & pos != 0 {
+            if item & pos != 0 {
                 res.push(match ((8 * i) + j).try_into() {
                     Ok(x) => x,
                     Err(_) => {
@@ -1160,9 +1161,4 @@ fn map_bitmap_to_rr(bitmap: &[u16]) -> Result<String, Parse_error> {
         );
     }
     Ok(res)
-}
-
-fn parse_bitmap_str(bitmap: &[u8]) -> Result<String, Parse_error> {
-    let bitmap = parse_bitmap_vec(bitmap)?;
-    map_bitmap_to_rr(&bitmap)
 }

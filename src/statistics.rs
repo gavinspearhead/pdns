@@ -10,6 +10,7 @@ pub(crate) struct Statistics {
     pub atypes: HashMap<String, u128>,
     pub qclass: HashMap<String, u128>,
     pub aclass: HashMap<String, u128>,
+    pub extended_error: HashMap<String, u128>,
     pub queries: u128,
     pub answers: u128,
     pub additional: u128,
@@ -26,13 +27,14 @@ pub(crate) struct Statistics {
 }
 
 impl Statistics {
-    pub fn origin(toplistsize: usize) -> Statistics {
+    pub fn new(toplistsize: usize) -> Statistics {
         Statistics {
             errors: HashMap::new(),
             qtypes: HashMap::new(),
             atypes: HashMap::new(),
             qclass: HashMap::new(),
             aclass: HashMap::new(),
+            extended_error: HashMap::new(),
             queries: 0,
             answers: 0,
             additional: 0,
@@ -57,6 +59,7 @@ impl Statistics {
         Errors: {:?}
         Sources: {:?}
         Destinations: {:?}
+        Extended Errors: {:?},
         Queries: {}
         Answers: {}
         Additional: {}
@@ -68,6 +71,7 @@ impl Statistics {
             self.errors,
             self.sources,
             self.destinations,
+            self.extended_error,
             self.queries,
             self.answers,
             self.additional,

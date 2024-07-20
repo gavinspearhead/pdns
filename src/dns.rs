@@ -10,11 +10,63 @@ use unic_idna::to_unicode;
 use crate::errors::{DNS_Error_Type, DNS_error, Parse_error};
 
 #[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq, EnumString, AsStaticStr)]
+pub(crate) enum DNS_Opcodes {
+    Query = 0,
+    IQuery = 1,
+    Status = 2,
+    Notify = 4,
+    Update = 5,
+    DSO = 6,
+}
+
+impl DNS_Opcodes {
+    pub(crate) fn to_str(self) -> String {
+        String::from(strum::AsStaticRef::as_static(&self))
+    }
+
+    pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
+        for oc in DNS_Opcodes::iter() {
+            if (oc as u16) == val {
+                return Ok(oc);
+            }
+        }
+        Err(DNS_error::new(
+            DNS_Error_Type::Invalid_Opcode,
+            &format!("{val}"),
+        ))
+    }
+}
+
+
+impl std::fmt::Display for DNS_Opcodes {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_str())
+    }
+}
+
+
+#[cfg(test)]
+mod dns_opcodes_tests {
+    use crate::dns::DNS_Opcodes;
+
+    #[test]
+    fn test_dns_opcodes() {
+        assert_eq!(DNS_Opcodes::Query.to_str(), "Query");
+        assert_eq!(DNS_Opcodes::Update.to_str(), "Update");
+    }
+    #[test]
+    fn test_dns_opcodes1() {
+        assert_eq!(DNS_Opcodes::find(4).unwrap(), DNS_Opcodes::Notify);
+    }
+}
+
+#[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq, EnumString, AsStaticStr)]
 pub(crate) enum DNS_Class {
     IN = 1,
     CS = 2,
     CH = 3,
     HS = 4,
+    NONE = 254,
     ANY = 255,
 }
 
@@ -36,8 +88,15 @@ impl DNS_Class {
     }
 }
 
+impl std::fmt::Display for DNS_Class {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_str())
+    }
+}
+
+
 #[cfg(test)]
-mod tests {
+mod dns_class_tests {
     use crate::dns::DNS_Class;
 
     #[test]
@@ -143,6 +202,7 @@ pub(crate) enum DNS_RR_type {
     UINFO = 100,
     UNSPEC = 103,
     URI = 256,
+    WALLET = 262,
     WKS = 11,
     X25 = 19,
     ZONEMD = 63,
@@ -197,6 +257,109 @@ mod tests1 {
     }
 }
 
+#[derive( Debug, EnumIter, Copy, Clone, AsStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) enum EDNS0ptionCodes {
+    LLQ = 1,
+    UpdateLease = 2,
+    NSID = 3,
+    DAU = 4,
+    DHU = 5,
+    N3U = 6,
+    EdnsClientSubnet = 8,
+    EDNSEXPIRE = 9,
+    COOKIE = 10,
+    EdnsTcpKeepalive = 11,
+    Padding = 12,
+    CHAIN = 13,
+    EdnsKeyTag = 14,
+    ExtendedDNSError = 15,
+    EDNSClientTag = 16,
+    EDNSServerTag = 17,
+    ReportChannel = 18,
+    UmbrellaIdent = 20292,
+    DeviceID = 26946,
+}
+
+
+impl EDNS0ptionCodes {
+    pub(crate) fn to_str(self) -> String {
+        String::from(strum::AsStaticRef::as_static(&self))
+    }
+
+    pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
+        for ee in EDNS0ptionCodes::iter() {
+            if (ee as u16) == val {
+                return Ok(ee);
+            }
+        }
+        Err(DNS_error::new(
+            DNS_Error_Type::Invalid_Extended_Option_Code,
+            &val.to_string(),
+        ))
+    }
+}
+
+impl std::fmt::Display for EDNS0ptionCodes {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_str())
+    }
+}
+
+#[derive( Debug, EnumIter, Copy, Clone, AsStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) enum DNSExtendedError {
+    None = 0xffff,
+    Other = 0,
+    Unsupported_DNSKEY_Algorithm = 1,
+    Unsupported_DS_Digest_Type = 2,
+    Stale_Answer = 3,
+    Forged_Answer = 4,
+    DNSSEC_Indeterminate = 5,
+    DNSSEC_Bogus = 6,
+    Signature_Expired = 7,
+    Signature_Not_Yet_Valid = 8,
+    DNSKEY_Missing = 9,
+    RRSIGs_Missing = 10,
+    No_Zone_Key_Bit_Set = 11,
+    NSEC_Missing = 12,
+    Cached_Error = 13,
+    Not_Ready = 14,
+    Blocked = 15,
+    Censored = 16,
+    Filtered = 17,
+    Prohibited = 18,
+    Stale_NXDOMAIN_Answer = 19,
+    Not_Authoritative = 20,
+    Not_Supported = 21,
+    No_Reachable_Authority = 22,
+    Network_Error = 23,
+    Invalid_Data = 24,
+    Synthesized = 29,
+}
+
+impl DNSExtendedError {
+    pub(crate) fn to_str(self) -> String {
+        String::from(strum::AsStaticRef::as_static(&self))
+    }
+
+    pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
+        for ee in DNSExtendedError::iter() {
+            if (ee as u16) == val {
+                return Ok(ee);
+            }
+        }
+        Err(DNS_error::new(
+            DNS_Error_Type::Invalid_Extended_Error_Code,
+            &val.to_string(),
+        ))
+    }
+}
+
+
+impl std::fmt::Display for DNSExtendedError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_str())
+    }
+}
 #[derive(Debug, Clone)]
 
 pub(crate) struct DNS_record {
@@ -212,24 +375,10 @@ pub(crate) struct DNS_record {
     pub(crate) asn_owner: String,
     pub(crate) prefix: String,
     pub(crate) error: DnsReplyType,
+    pub(crate) extended_error: DNSExtendedError,
 }
 
-impl DNS_record {
-    pub(crate) fn to_str(&self) -> String {
-        format!(
-            "{} {} {} {} {} {} {} {} {}",
-            self.name,
-            self.rr_type,
-            self.class,
-            self.ttl,
-            self.rdata,
-            self.domain,
-            self.asn,
-            self.asn_owner,
-            self.prefix
-        )
-    }
-}
+impl DNS_record {}
 
 impl std::fmt::Display for DNS_record {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -250,7 +399,7 @@ impl std::fmt::Display for DNS_record {
             }
             writeln!(
                 f,
-                "  {} {}{} {} {} {} {} {} {} {} ({}) {} {}",
+                "  {} {}{} {} {} {} {} {} {} {} ({}) {} {} {}",
                 snailquote::escape(&self.name),
                 s,
                 self.class,
@@ -263,10 +412,11 @@ impl std::fmt::Display for DNS_record {
                 self.asn,
                 self.asn_owner,
                 self.error,
+                self.extended_error.to_str(),
                 self.count,
             )
         } else {
-            write!(
+            writeln!(
                 f,
                 "Name: {} ({})
             RData: {}  
@@ -275,7 +425,8 @@ impl std::fmt::Display for DNS_record {
             Domain: {}
             ASN: {}        ASN Owner: {}
             Prefix: {}
-            Error: {}",
+            Error: {},
+            ExtError: {}",
                 snailquote::escape(&self.name),
                 to_unicode(
                     &self.name,
@@ -296,27 +447,9 @@ impl std::fmt::Display for DNS_record {
                 self.asn,
                 self.asn_owner,
                 self.prefix,
-                self.error
+                self.error,
+                self.extended_error
             )
-        }
-    }
-}
-
-impl Default for DNS_record {
-    fn default() -> Self {
-        DNS_record {
-            rr_type: String::new(),
-            ttl: 0,
-            class: String::new(),
-            name: String::new(),
-            rdata: String::new(),
-            count: 0,
-            timestamp: Utc::now(),
-            domain: String::new(),
-            asn: String::new(),
-            asn_owner: String::new(),
-            prefix: String::new(),
-            error: DnsReplyType::NOERROR,
         }
     }
 }

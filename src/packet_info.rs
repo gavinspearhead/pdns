@@ -24,8 +24,12 @@ pub(crate) struct Packet_info {
     pub dns_records: Vec<DNS_record>,
 }
 
-impl Default for Packet_info {
-    fn default() -> Self {
+/*impl Default for Packet_info {
+    
+}
+*/
+impl Packet_info {
+    pub fn new() -> Self {
         Packet_info {
             timestamp: Utc::now(),
             sp: 0,
@@ -39,9 +43,7 @@ impl Default for Packet_info {
             dns_records: Vec::new(),
         }
     }
-}
 
-impl Packet_info {
     pub fn set_timestamp(&mut self, timestamp: DateTime<Utc>) {
         self.timestamp = timestamp;
     }
@@ -70,12 +72,6 @@ impl Packet_info {
         self.dns_records.push(rec);
     }
 
-    pub fn to_str(&self) -> String {
-        format!(
-            "{}:{} => {}:{}\n{:?}",
-            self.s_addr, self.sp, self.d_addr, self.dp, self.dns_records
-        )
-    }
     pub fn to_csv(&self) -> String {
         let mut s = String::new();
         for i in &self.dns_records {

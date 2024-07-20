@@ -88,8 +88,8 @@ impl Mysql_connection {
                     .execute(&self.pool),
             )
         } else {
-            let q = r"INSERT INTO pdns_err (QUERY,RR,MAPTYPE,COUNT,LAST_SEEN,FIRST_SEEN, ERROR_VAL) VALUES (
-                ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?), ?   
+            let q = r"INSERT INTO pdns_err (QUERY,RR,MAPTYPE,COUNT,LAST_SEEN,FIRST_SEEN, ERROR_VAL, EXT_ERROR_VAL) VALUES (
+                ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?), ?, ?   
                 ) ON DUPLICATE KEY UPDATE
                 COUNT = COUNT + ?, 
                 LAST_SEEN = if (LAST_SEEN < FROM_UNIXTIME(?), FROM_UNIXTIME(?), LAST_SEEN),
@@ -105,6 +105,7 @@ impl Mysql_connection {
                     .bind(ts)
                     .bind(ts)
                     .bind(i.error as u16)
+                    .bind(i.extended_error as u16)
                     .bind(i.count)
                     .bind(ts)
                     .bind(ts)
