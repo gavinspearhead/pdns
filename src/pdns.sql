@@ -1,0 +1,41 @@
+CREATE TABLE `pdns` (
+  `ID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `QUERY` varchar(255) NOT NULL DEFAULT '',
+  `MAPTYPE` varchar(16) NOT NULL DEFAULT '',
+  `RR` varchar(10) NOT NULL DEFAULT '',
+  `ANSWER` varchar(255) NOT NULL DEFAULT '',
+  `TTL` bigint(10) unsigned NOT NULL DEFAULT 0,
+  `COUNT` bigint(20) unsigned NOT NULL DEFAULT 1,
+  `FIRST_SEEN` datetime NOT NULL,
+  `LAST_SEEN` datetime NOT NULL,
+  `asn` int(8) DEFAULT NULL,
+  `asn_owner` varchar(256) DEFAULT NULL,
+  `prefix` varchar(128) DEFAULT NULL,
+  `domain` varchar(255) DEFAULT NULL,
+  `zone` int(8) DEFAULT 0,
+  PRIMARY KEY (`ID`),
+  UNIQUE KEY `MARQ` (`MAPTYPE`,`ANSWER`,`RR`,`QUERY`),
+  KEY `query_idx` (`QUERY`),
+  KEY `answer_idx` (`ANSWER`),
+  KEY `LAST_SEEN` (`LAST_SEEN`),
+  KEY `FIRSTSEEN` (`FIRST_SEEN`),
+  KEY `domain_idx` (`domain`),
+  KEY `asn` (`asn`)
+) ENGINE=MyISAM AUTO_INCREMENT=13149550 DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+CREATE TABLE `pdns_err` (
+  `ID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `QUERY` varchar(255) NOT NULL DEFAULT '',
+  `MAPTYPE` varchar(16) NOT NULL DEFAULT '',
+  `RR` varchar(10) NOT NULL DEFAULT '',
+  `ERROR_VAL` int(1) NOT NULL DEFAULT 0,
+  `EXT_ERROR_VAL` int(1) NOT NULL DEFAULT 0,
+  `COUNT` bigint(20) unsigned NOT NULL DEFAULT 1,
+  `FIRST_SEEN` datetime NOT NULL,
+  `LAST_SEEN` datetime NOT NULL,
+  PRIMARY KEY (`ID`),
+  UNIQUE KEY `MARQ` (`MAPTYPE`,`ERROR_VAL`,`RR`,`QUERY`, `EXT_ERROR_VAL`),
+  KEY `query_idx` (`QUERY`),
+  KEY `LAST_SEEN` (`LAST_SEEN`),
+  KEY `FIRSTSEEN` (`FIRST_SEEN`)
+) ENGINE=MyISAM AUTO_INCREMENT=2680 DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
