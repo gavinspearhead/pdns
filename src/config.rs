@@ -90,7 +90,8 @@ pub(crate) fn parse_rrtypes(config_str: &str) -> Vec<DNS_RR_type> {
         return rrtypes;
     }
 
-    let elems = config_str.split(',').map(|x| x.trim());
+    //let elems = config_str.split(',').map(|x| x.trim());
+    let elems = config_str.split(',').map(str::trim);
     for i in elems {
         let a = DNS_RR_type::from_string(i);
         match a {

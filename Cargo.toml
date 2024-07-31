@@ -9,13 +9,14 @@ license = "GPL-3.0-only"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-pcap ={ version = "1.2.0", features = ["all-features"] }
+#pcap ={ version = "1.2", features = ["all-features"] }
+pcap ={ version = "2.0" }
 byteorder = "1"
-chrono = "0.4.31"
-strum = "0.17.1"
-strum_macros = "0.17.1"
-clap = { version = "4.4.11", features = ["derive"] }
-colored = "2.1.0"
+chrono = "0.4"
+strum = "0.17"
+strum_macros = "0.17"
+clap = { version = "4.4", features = ["derive"] }
+colored = "2.1"
 phf = { version = "0.11", features = ["macros"] }
 hex="0.4"
 base64="0.21"
@@ -23,19 +24,19 @@ libc="0.2"
 queues = "1.0.2"
 sqlx = { version = "0.7", features = ["runtime-async-std-native-tls", "mysql", "chrono", "uuid"] }
 futures = "0.3"
-serde = { version = "1.0.126", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
 lazy_static = "1.4"
-serde_json = "1.0.114" 
-data-encoding = "2.5.0"
-daemonize = "0.5.0"
+serde_json = "1.0" 
+data-encoding = "2.5"
+daemonize = "0.5"
 regex = "1.10"
-publicsuffix="2.2.3"
+publicsuffix="2.2"
 syslog = "6.1"
 log = "0.4"
 asn-db2="0.2"
-tracing = "0.1.40"
-tracing-subscriber = "0.3.18"
-tracing-rfc-5424 = "0.1.1"
-syslog-tracing = "0.3.0"
-snailquote = "0.3.1"
-unic-idna = "0.9.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+tracing-rfc-5424 = "0.1"
+syslog-tracing = "0.3"
+snailquote = "0.3"
+unic-idna = "0.9"

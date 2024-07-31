@@ -567,7 +567,7 @@ fn parse_rr_naptr(rdata: &[u8]) -> Result<String, Parse_error> {
     let flag_len = usize::from(dns_read_u8(rdata, 4)?);
     let mut offset: usize = 5;
     let flags = parse_dns_str(&rdata[offset..offset + flag_len])?;
-    offset += usize::from(flag_len);
+    offset += flag_len;
     let srv_len = usize::from(rdata[offset]);
     offset += 1;
     let srv = parse_dns_str(&rdata[offset..offset + srv_len])?;

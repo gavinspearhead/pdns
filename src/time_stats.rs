@@ -101,6 +101,7 @@ mod tests {
 
 #[derive(Serialize, Debug, Clone)]
 pub(crate) struct Time_stats {
+    per_month: Bucket,
     per_minute: Bucket,
     per_hour: Bucket,
     per_day: Bucket,
@@ -113,7 +114,8 @@ impl Time_stats {
         //    per_second: Bucket::new(60),
             per_minute: Bucket::new(60),
             per_hour: Bucket::new(24),
-            per_day: Bucket::new(30),
+            per_day: Bucket::new(31),
+            per_month: Bucket::new(12),
         }
     }
 
@@ -123,7 +125,9 @@ impl Time_stats {
         let h = time_stamp.hour();
         let d = time_stamp.day() - 1; //correct because start at 1
         let mon = time_stamp.month() - 1;
+        let year = time_stamp.year() as u32;
       //  self.per_second.add(s, count, m);
+        self.per_month.add(mon, count, year);
         self.per_day.add(d, count, mon);
         self.per_minute.add(m, count, h);
         self.per_hour.add(h, count, d);
