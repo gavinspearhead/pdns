@@ -6,10 +6,11 @@ authors = ["Gavin Spearhead"]
 description = "Passive DNS"
 license = "GPL-3.0-only"
 
+[profile.release]
+debug = 1
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-#pcap ={ version = "1.2", features = ["all-features"] }
 pcap ={ version = "2.0" }
 byteorder = "1"
 chrono = "0.4"
@@ -21,7 +22,6 @@ phf = { version = "0.11", features = ["macros"] }
 hex="0.4"
 base64="0.21"
 libc="0.2"
-queues = "1.0.2"
 sqlx = { version = "0.7", features = ["runtime-async-std-native-tls", "mysql", "chrono", "uuid"] }
 futures = "0.3"
 serde = { version = "1.0", features = ["derive"] }
@@ -40,3 +40,5 @@ tracing-rfc-5424 = "0.1"
 syslog-tracing = "0.3"
 snailquote = "0.3"
 unic-idna = "0.9"
+serde_with = "3.9.0"
+signal-hook = "0.3.17"

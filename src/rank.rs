@@ -11,6 +11,17 @@ where
     size: usize,
 }
 
+
+impl<T> Default for Rank<T> 
+where
+    T: std::cmp::Eq + std::hash::Hash + std::fmt::Display + serde::Serialize + Default + Clone,
+{
+    fn default() -> Self {
+        Self { rank: HashMap::default(), size: Default::default() }
+    }
+}
+
+
 impl<T> Rank<T>
 where
     T: std::cmp::Eq + std::hash::Hash + std::fmt::Display + serde::Serialize + Default + Clone,
@@ -73,6 +84,7 @@ where
         write!(f, "")
     }
 }
+
 
 impl<T> Serialize for Rank<T>
 where

@@ -5,7 +5,7 @@ use crate::{
     errors::{DNS_error, ParseErrorType, Parse_error},
 };
 use byteorder::{BigEndian, ByteOrder};
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::DateTime;
 
 pub(crate) fn parse_protocol(proto: u8) -> Result<String, Parse_error> {
     match proto {
@@ -27,14 +27,14 @@ pub(crate) fn parse_class(class: u16) -> Result<DNS_Class, DNS_error> {
 }
 
 pub(crate) fn timestame_to_str(timestamp: u32) -> Result<String, Parse_error> {
-    let Some(naive_datetime) = NaiveDateTime::from_timestamp_opt(i64::from(timestamp), 0) else {
+     let Some(dt) = DateTime::from_timestamp(i64::from(timestamp), 0) else {
         return Err(Parse_error::new(
             ParseErrorType::Invalid_timestamp,
             &timestamp.to_string(),
         ));
     };
-    let datetime_again: DateTime<Utc> = DateTime::from_naive_utc_and_offset(naive_datetime, Utc);
-    Ok(datetime_again.to_string())
+
+    Ok(dt.to_string())
 }
 
 pub(crate) fn dns_read_u64(packet: &[u8], offset: usize) -> Result<u64, Parse_error> {

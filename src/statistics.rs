@@ -1,9 +1,17 @@
 use crate::rank::Rank;
-use serde::Serialize;
-use std::collections::HashMap;
 use crate::time_stats::Time_stats;
+use serde::{Deserialize, Serialize};
+use serde_json::Error;
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::BufReader,
+};
+use tracing::debug;
 
-#[derive(Serialize, Debug, Clone)]
+use serde_with::rust::deserialize_ignore_any;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub(crate) struct Statistics {
     pub errors: HashMap<String, u128>,
     pub qtypes: HashMap<String, u128>,
@@ -15,11 +23,15 @@ pub(crate) struct Statistics {
     pub answers: u128,
     pub additional: u128,
     pub authority: u128,
+    #[serde(deserialize_with = "deserialize_ignore_any")]
     pub sources: Rank<String>,
+    #[serde(deserialize_with = "deserialize_ignore_any")]
     pub destinations: Rank<String>,
     pub udp: u128,
     pub tcp: u128,
+    #[serde(deserialize_with = "deserialize_ignore_any")]
     pub topdomain: Rank<String>,
+    #[serde(deserialize_with = "deserialize_ignore_any")]
     pub topnx: Rank<String>,
     pub total_time_stats: Time_stats,
     pub blocked_time_stats: Time_stats,
@@ -27,7 +39,7 @@ pub(crate) struct Statistics {
 }
 
 impl Statistics {
-    pub fn new(toplistsize: usize) -> Statistics {
+    pub(crate) fn new(toplistsize: usize) -> Statistics {
         Statistics {
             errors: HashMap::new(),
             qtypes: HashMap::new(),
@@ -39,6 +51,7 @@ impl Statistics {
             answers: 0,
             additional: 0,
             authority: 0,
+
             sources: Rank::new(toplistsize),
             destinations: Rank::new(toplistsize),
             udp: 0,
@@ -51,33 +64,22 @@ impl Statistics {
         }
     }
 
-    pub fn to_str(&self) -> String {
-        format!(
-            "Statistics:
-        Query types: {:#?}
-        Answer Types: {:#?}
-        Errors: {:?}
-        Sources: {:?}
-        Destinations: {:?}
-        Extended Errors: {:?},
-        Queries: {}
-        Answers: {}
-        Additional: {}
-        Authority: {}
-        UDP: {}
-        TCP: {}",
-            self.qtypes,
-            self.atypes,
-            self.errors,
-            self.sources,
-            self.destinations,
-            self.extended_error,
-            self.queries,
-            self.answers,
-            self.additional,
-            self.authority,
-            self.udp,
-            self.tcp
-        )
+    pub(crate) fn import(filename: &str, toplistsize: usize) -> Statistics {
+        let file = File::open(filename).expect("Cannot open file");
+        let reader = BufReader::new(file);
+
+        let x: Result<Statistics, Error> = serde_json::from_reader(reader);
+        let mut statistics = match x {
+            Ok(y) => y,
+            Err(e) => {
+                debug!("Importinng failed {e}");
+                return Statistics::new(toplistsize);
+            }
+        };
+        statistics.sources = Rank::new(toplistsize);
+        statistics.destinations = Rank::new(toplistsize);
+        statistics.topdomain = Rank::new(toplistsize);
+        statistics.topnx = Rank::new(toplistsize);
+        statistics
     }
 }

@@ -1,6 +1,7 @@
 // TODO
 // parametrize Rank with IP address type
-// filter on livedump
+// improve filter on livedump
+// cleanup database based on time
 
 #![allow(non_camel_case_types)]
 pub mod config;
@@ -31,14 +32,18 @@ use live_dump::Live_dump;
 use mysql_connection::{create_database, Mysql_connection};
 use pcap::{Active, Capture, Linktype};
 use regex::Regex;
+use signal_hook::flag;
 use skiplist::read_skip_list;
 use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
-use std::io::{BufReader, Write};
+use std::io::{BufReader, BufWriter, Write};
+use std::path::Path;
 use std::process::exit;
 use std::str::{self, FromStr};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::TryRecvError;
 use std::sync::{mpsc, Arc, Mutex};
+use std::thread::sleep;
 use std::{thread, time};
 use tcp_connection::{clean_tcp_list, TCP_Connections};
 use tracing::{debug, error};
@@ -63,6 +68,34 @@ enum DNS_Protocol {
 struct Args {
     #[arg(short, long)]
     path: std::path::PathBuf,
+}
+
+fn dump_stats(stats: &Statistics, config: &Config) -> std::io::Result<()> {
+    if config.export_stats.is_empty() {
+        return Ok(());
+    }
+    let filename_base = &config.export_stats;
+    let mut count = 0;
+    loop {
+        let date_as_string = Utc::now().to_rfc3339();
+        let filename = Path::new(filename_base).join(format!("stats-{date_as_string}.json"));
+        match File::create_new(&filename) {
+            Ok(f) => {
+                debug!("Dumping stats to {:?}", &filename);
+                let mut writer = BufWriter::new(f);
+                serde_json::to_writer_pretty(&mut writer, stats)?;
+                writer.flush()?;
+                return Ok(());
+            }
+            Err(e) => {
+                count += 1;
+
+                if count > 5 {
+                    return Err(e);
+                }
+            }
+        }
+    }
 }
 
 fn packet_loop<T>(
@@ -119,11 +152,11 @@ fn packet_loop<T>(
                     &publicsuffixlist,
                 );
                 match result {
-                    Ok(_c) => {
+                    Ok(()) => {
                         packet_queue.lock().unwrap().push_back(Some(packet_info));
                     }
                     Err(error) => {
-                        tracing::debug!("{:?}", error);
+                        tracing::debug!("{error:?}");
                     }
                 }
             }
@@ -212,23 +245,18 @@ fn poll(
                         dns_cache.add(&i);
                     }
                 }
-
                 timeout = time::Duration::from_millis(0);
             } else {
                 tracing::debug!("Terminating poll()");
                 return;
             }
-
-         
-            
         } else {
             thread::sleep(timeout);
-            if timeout.as_millis() < 1000 {
-                timeout += time::Duration::from_millis(100);
+            if timeout.as_millis() < 500 {
+                timeout += time::Duration::from_millis(50);
             }
         }
 
-       
         let ct = Utc::now().timestamp();
         if ct > last_push + dns_cache.timeout() {
             if let Some(ref mut db) = database_conn {
@@ -239,7 +267,7 @@ fn poll(
             }
         }
         match rx.try_recv() {
-            Ok(_e) => {
+            Ok(_) => {
                 if let Some(ref mut db) = database_conn {
                     for i in dns_cache.push_all() {
                         db.insert_or_update_record(&i);
@@ -260,10 +288,36 @@ fn poll(
     }
 }
 
+fn cleanup_task(config: &Config) {
+    if config.database.is_empty() {
+        return;
+    }
+    loop {
+        let x = block_on(Mysql_connection::connect(
+            &config.dbhostname,
+            &config.dbusername,
+            &config.dbpassword,
+            &config.dbport,
+            &config.dbname,
+        ));
+        x.clean_database(config);
+        sleep(time::Duration::from_secs(24 * 3600));
+    }
+}
+
 fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
     let packet_queue = Arc::new(Mutex::new(VecDeque::new()));
     let tcp_list = Arc::new(Mutex::new(TCP_Connections::new()));
-    let stats = Arc::new(Mutex::new(Statistics::new(config.toplistsize)));
+    let stats = if config.import_stats.is_empty() {
+        Arc::new(Mutex::new(Statistics::new(config.toplistsize)))
+    } else {
+        debug!("import stats from : {}", config.import_stats);
+        Arc::new(Mutex::new(Statistics::import(
+            &config.import_stats,
+            config.toplistsize,
+        )))
+    };
+
     let (tcp_tx, tcp_rx) = mpsc::channel();
     let (_pq_tx, pq_rx) = mpsc::channel();
     let skiplist = read_skip_list(&config.skip_list_file);
@@ -272,6 +326,7 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
         let handle2 = s.spawn(|| clean_tcp_list(&tcp_list.clone(), tcp_rx));
 
         if !pcap_path.is_empty() {
+            tracing::debug!("Reading PCAP file e {}", pcap_path);
             let cap = Capture::from_file(pcap_path);
             match cap {
                 Ok(mut c) => {
@@ -313,20 +368,41 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
                 tracing::error!("Something wrong with the capture");
                 panic!("Something wrong with the capture");
             };
+            let handle6 = s.spawn(|| cleanup_task(config));
             tracing::debug!("Filter: {}", config.filter);
             if let Err(e) = cap.filter(&config.filter, false) {
                 tracing::error!("Cannot apply filter {}: {e}", config.filter);
             }
             tracing::debug!("Ready to start packet loop");
             let handle3 = s.spawn(|| {
+                debug!("Starting packet loop");
                 packet_loop(cap, &packet_queue, &tcp_list, &stats, config, &skiplist);
             });
+            let handle5 = s.spawn(|| {
+                debug!("Starting signal loop");
+                let term = Arc::new(AtomicBool::new(false));
+                let kill = Arc::new(AtomicBool::new(false));
+                flag::register(signal_hook::consts::SIGTERM, Arc::clone(&term))
+                    .expect("Cannot set signal handler");
+                flag::register(signal_hook::consts::SIGINT, Arc::clone(&kill))
+                    .expect("Cannot set signal handler");
+                while !term.load(Ordering::Relaxed) && !kill.load(Ordering::Relaxed) {
+                    sleep(time::Duration::from_millis(50));
+                }
+                debug!("{}", stats.lock().unwrap().queries);
+                dump_stats(&stats.lock().unwrap(), config).unwrap();
+                //dump_stats(stats, &config).unwrap();
+                exit(0);
+            });
+
             handle3.join().unwrap();
             // we wait for the main threat to terminate; then cancel the tcp cleanup threat
             let _ = tcp_tx.send(String::from_str("the end").unwrap());
             handle4.join().unwrap();
+            handle6.join().unwrap();
             handle2.join().unwrap();
             handle.join().unwrap();
+            handle5.join().unwrap();
         }
     });
 }
@@ -380,7 +456,7 @@ fn main() {
                 .promisc(config.promisc) // todo make a paramater
                 //                .immediate_mode(true) //seems to break on ubuntu?
                 .open()
-                .unwrap(),
+                .expect("Cannot open capture on {config.interface}"),
         );
     }
     /*let mut options = OpenOptions::new();

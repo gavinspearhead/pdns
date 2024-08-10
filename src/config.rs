@@ -33,8 +33,11 @@ pub(crate) struct Config {
     pub public_suffix_file: String,
     pub asn_database_file: String,
     pub debug: bool,
+    pub import_stats: String,
+    pub export_stats: String,
     pub live_dump_port: u16,
     pub live_dump_host: String,
+    pub clean_interval: u32,
 }
 
 impl Config {
@@ -64,8 +67,11 @@ impl Config {
             public_suffix_file: String::new(),
             asn_database_file: String::new(),
             debug: false,
+            import_stats: String::new(),
+            export_stats: String::new(),
             live_dump_port: 0,
             live_dump_host: String::new(),
+            clean_interval: 0,
         };
         c.rr_type.extend(vec![
             DNS_RR_type::A,
@@ -212,6 +218,11 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String, create_d
                 .long_help("Write output to a database (mysql)"),
         )
         .arg(
+            arg!(-E --clean_interval <VALUE>)
+                .required(false)
+                .long_help("Interval in days after which unused records are removed from the database"),
+        )
+        .arg(
             arg!(-L --toplistsize <VALUE>)
                 .required(false)
                 .long_help("Number of entries in the statistics"),
@@ -255,10 +266,22 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String, create_d
                 .long_help("Put the interface is promiscuous mode when capturing"),
         )
         .arg(
-            arg!(-D - -daemon)
+            arg!(-D --daemon)
                 .required(false)
                 .action(ArgAction::SetTrue)
                 .long_help("Start as a background process (daemon)"),
+        )
+        .arg(
+            arg!(-M --import_stats <VALUE>)
+                .required(false)
+                .default_missing_value("")
+                .long_help("Import stats from json file"),
+        )
+        .arg(
+            arg!(-X --export_stats <VALUE>)
+                .required(false)
+                .default_missing_value("")
+                .long_help("Export stats to the parth in a json file at exit"),
         )
         .arg(
             arg!(-I --pid_file <VALUE>)
@@ -271,7 +294,8 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String, create_d
                 .required(false)
                 .default_missing_value("csv")
                 .long_help("Output format (CSV or JSON)"),
-        ).arg(
+        )
+        .arg(
             arg!(--live_dump_host <VALUE>)
                 .required(false)
                 .long_help("Hostname or IP address for the live dump to liste to"),
@@ -377,8 +401,18 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String, create_d
         .clone();
     config.live_dump_port = *matches
         .get_one::<u16>("live_dump_port")
-        .unwrap_or(&config.live_dump_port)
-        ;
+        .unwrap_or(&config.live_dump_port);
+    config.clean_interval = *matches
+        .get_one::<u32>("clean_interval")
+        .unwrap_or(&config.clean_interval);
+    config.import_stats = matches
+        .get_one::<String>("import_stats")
+        .unwrap_or(&config.import_stats)
+        .clone();
+    config.export_stats = matches
+        .get_one::<String>("export_stats")
+        .unwrap_or(&config.export_stats)
+        .clone();
 
     let rr_types = parse_rrtypes(&matches.get_one("rrtypes").unwrap_or(&empty_str).clone());
     if !rr_types.is_empty() {

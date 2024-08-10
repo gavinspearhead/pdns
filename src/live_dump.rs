@@ -31,8 +31,7 @@ pub(crate) enum Filter_fields {
 
 impl Filter_fields {
     pub(crate) fn to_str(self) -> String {
-        let x = self;
-        String::from(strum::AsStaticRef::as_static(&x))
+        String::from(strum::AsStaticRef::as_static(&self))
     }
 
     pub(crate) fn find(val: &str) -> Result<Self, Box<dyn std::error::Error>> {
@@ -47,7 +46,7 @@ impl Filter_fields {
 
 impl fmt::Display for Filter_fields {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", strum::AsStaticRef::as_static(self))
+        write!(f, "{}", self.to_str())
     }
 }
 
@@ -406,7 +405,7 @@ impl Live_dump_session {
 
         for t in split_str {
             let x = t.trim();
-            debug!("adding filter {}", x);
+            debug!("adding filter {x}");
             if x.is_empty() {
                 continue;
             }

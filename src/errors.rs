@@ -1,5 +1,4 @@
 use std::{error::Error, fmt};
-
 use strum_macros::{AsStaticStr, EnumIter};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, AsStaticStr)]

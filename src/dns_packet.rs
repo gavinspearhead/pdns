@@ -92,7 +92,6 @@ fn parse_edns(
     let edns_version = dns_read_u8(packet, offset_in + 3)?;
     tracing::debug!("edns_version {edns_version}");
     let _z = dns_read_u16(packet, offset_in + 4)?;
-   // tracing::debug!("z {_z}");
     let data_length = dns_read_u16(packet, offset_in + 6)? as usize;
     if data_length == 0 {
         return Ok(0);
