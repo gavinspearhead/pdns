@@ -1,6 +1,9 @@
 use clap::{arg, ArgAction, Command};
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
+use serde_json::Error;
+use tracing::debug;
+
+use std::{ fs::File, io::BufReader, str::FromStr};
 
 use crate::{
     dns::DNS_RR_type,
@@ -38,6 +41,8 @@ pub(crate) struct Config {
     pub live_dump_port: u16,
     pub live_dump_host: String,
     pub clean_interval: u32,
+    pub additional: bool,
+    pub authority: bool,
 }
 
 impl Config {
@@ -72,6 +77,8 @@ impl Config {
             live_dump_port: 0,
             live_dump_host: String::new(),
             clean_interval: 0,
+            authority: true,
+            additional: true
         };
         c.rr_type.extend(vec![
             DNS_RR_type::A,
@@ -142,7 +149,7 @@ mod tests {
     }
 }
 
-pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String, create_db: &mut bool) {
+pub(crate) fn parse_config(mut config: &mut Config, pcap_path: &mut String, create_db: &mut bool) {
     let matches = Command::new(PROGNAME)
         .version(VERSION)
         .author(AUTHOR)
@@ -254,6 +261,30 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String, create_d
                 .long_help("Enable debugging mode"),
         )
         .arg(
+            arg!(--noauthority)
+                .required(false)
+                .action(ArgAction::SetFalse)
+                .long_help("Do not process authority records"),
+        )
+        .arg(
+            arg!(--noadditional)
+                .required(false)
+                .action(ArgAction::SetFalse)
+                .long_help("Do not process addional records"),
+        )
+        .arg(
+            arg!(--authority)
+                .required(false)
+                .action(ArgAction::SetTrue)
+                .long_help("Process authority records"),
+        )
+        .arg(
+            arg!(--additional)
+                .required(false)
+                .action(ArgAction::SetTrue)
+                .long_help("Process addional records"),
+        )
+        .arg(
             arg!(--create_database)
                 .required(false)
                 .action(ArgAction::SetTrue)
@@ -312,7 +343,19 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String, create_d
         .unwrap_or(&String::from_str(&empty_str).unwrap())
         .clone();
     if !config.config_file.is_empty() {
-        let config_str = std::fs::read_to_string(&config.config_file).unwrap_or_default();
+        let file = File::open(&config.config_file).expect("Cannot open file");
+        let reader = BufReader::new(file);
+
+        let x: Result<Config,  Error> = serde_json::from_reader(reader);
+        let mut new_config =  match x {
+            Ok(y) =>  y,
+            Err(e) => {
+                panic!("Importing failed {e}");
+
+            }
+        };
+        *config = new_config.clone();
+        /*let config_str = std::fs::read_to_string(&config.config_file).unwrap_or_default();
         if !config_str.is_empty() {
             match Config::from_str(&config_str) {
                 Ok(x) => {
@@ -324,7 +367,7 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String, create_d
                     panic!("{err_msg}");
                 }
             }
-        }
+        }*/
     }
 
     *create_db = *matches.get_one::<bool>("create_database").unwrap_or(&false);
@@ -413,6 +456,18 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String, create_d
         .get_one::<String>("export_stats")
         .unwrap_or(&config.export_stats)
         .clone();
+    config.additional = *matches
+        .get_one::<bool>("additional")
+        .unwrap_or(&config.additional);
+    config.additional = *matches
+        .get_one::<bool>("noadditional")
+        .unwrap_or(&config.additional);
+    config.authority = *matches
+        .get_one::<bool>("authority")
+        .unwrap_or(&config.authority);
+    config.authority = *matches
+        .get_one::<bool>("noauthority")
+        .unwrap_or(&config.authority);
 
     let rr_types = parse_rrtypes(&matches.get_one("rrtypes").unwrap_or(&empty_str).clone());
     if !rr_types.is_empty() {

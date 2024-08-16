@@ -1,4 +1,4 @@
-use serde::ser::SerializeSeq;
+use serde::ser::SerializeMap;
 use serde::Serialize;
 use std::{cmp::min, collections::HashMap, fmt};
 
@@ -99,11 +99,11 @@ where
             l.push((k, v));
         }
         l.sort_by(|a, b| (b.1).partial_cmp(a.1).unwrap());
-        let mut seq = serializer.serialize_seq(Some(l.len()))?;
+       
+        let mut map = serializer.serialize_map(Some(l.len()))?;
         for i in l {
-            seq.serialize_element(&format!("{}: {}", &i.0, i.1))?;
-            
+            map.serialize_entry(&i.0, i.1)?;
         }
-        seq.end()
+        map.end()
     }
 }

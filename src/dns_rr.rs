@@ -12,8 +12,7 @@ use crate::dns::{
     DNS_RR_type, SVC_Param_Keys,
 };
 use crate::dns_helper::{
-    base32hex_encode, dns_read_u16, dns_read_u32, dns_read_u8, parse_dns_str, parse_ipv4,
-    parse_ipv6, parse_protocol, parse_rrtype, timestame_to_str,
+    base32hex_encode, dns_read_u16, dns_read_u32, dns_read_u64, dns_read_u8, parse_dns_str, parse_ipv4, parse_ipv6, parse_protocol, parse_rrtype, timestame_to_str
 };
 use crate::errors::{ParseErrorType, Parse_error};
 
@@ -38,7 +37,7 @@ fn dns_parse_name_internal(
 ) -> Result<(String, usize), Parse_error> {
     let mut idx = offset_in;
     let mut name = String::new();
-    tracing::debug!("Recursion depth {recursion_depth}");
+    //tracing::debug!("Recursion depth {recursion_depth}");
 
     if recursion_depth > 63 {
         tracing::debug!("Recursion depth exceeded");
@@ -49,7 +48,7 @@ fn dns_parse_name_internal(
 
         if (val & 0xc0) == 0xc0 {
             // it is actually a pointer
-            tracing::debug!("Recursion depth {name} {recursion_depth}");
+            //tracing::debug!("Recursion depth {name} {recursion_depth}");
             let pos = (dns_read_u16(packet, idx)? & 0x3fff) as usize; // slice the of the 2 MSbs
             let (name1, _len) = dns_parse_name_internal(packet, pos, recursion_depth + 1)?;
             return Ok((name + &name1, idx + 2));
@@ -932,9 +931,13 @@ pub(crate) fn dns_parse_rdata(
         || rrtype == DNS_RR_type::NINF0
         || rrtype == DNS_RR_type::AVC
         || rrtype == DNS_RR_type::SPF
+        || rrtype == DNS_RR_type::CLA
         || rrtype == DNS_RR_type::WALLET
     {
         parse_rr_txt(rdata)
+    } else if rrtype == DNS_RR_type::IPN {
+        let ipn = dns_read_u64(packet, offset_in)?;
+        Ok(format!("{ipn}"))
     } else if rrtype == DNS_RR_type::PTR {
         let (ptr, _offset_out) = dns_parse_name(packet, offset_in)?;
         Ok(ptr)

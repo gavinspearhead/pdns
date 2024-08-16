@@ -51,7 +51,6 @@ impl Statistics {
             answers: 0,
             additional: 0,
             authority: 0,
-
             sources: Rank::new(toplistsize),
             destinations: Rank::new(toplistsize),
             udp: 0,

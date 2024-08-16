@@ -114,6 +114,7 @@ impl Filter {
         let oper = match spl.next() {
             Some(x) => match x {
                 "=" => Filter_operator::EQUAL,
+                "==" => Filter_operator::EQUAL,
                 "!=" => Filter_operator::NOT_EQUAL,
                 "^=" => Filter_operator::START_WITH,
                 "$=" => Filter_operator::END_WITH,
@@ -134,6 +135,7 @@ impl Filter {
     }
 
     fn matches(&self, packet_info: &Packet_info) -> bool {
+        debug!("{}", self.expr.0);
         match self.expr.0 {
             Filter_fields::SRC_IP => {
                 let src_addr: IpAddr = match self.expr.2.parse() {
@@ -192,26 +194,34 @@ impl Filter {
                 false
             }
             Filter_fields::REPLY_CODE => {
-                let Ok(rc) = self.expr.2.parse::<u16>() else {
+              //  debug!("AA {} {} {}", self.expr.0, self.expr.1, self.expr.2);
+                let Ok(rc) = self.expr.2.to_uppercase().parse::<DnsReplyType>() else {
+                    debug!("false");
                     return false;
                 };
-                let Ok(c) = DnsReplyType::find(rc) else {
-                    return false;
-                };
+              //  debug!("RC: {}", rc);
+                let c = rc;
+               // let Ok(c) = DnsReplyType::find(rc) else {
+                //    return false;
+                //};
                 if self.expr.1 == Filter_operator::EQUAL {
                     for i in &packet_info.dns_records {
-                        if i.error != c {
-                            return false;
+                        //debug!("{} {} != {}", i.error, c, i.error == c );
+                        //debug!("{}", packet_info);
+                        if i.error == c {
+                            return true;
                         }
                     }
-                    return true;
+                    return false;
                 } else if self.expr.1 == Filter_operator::NOT_EQUAL {
                     for i in &packet_info.dns_records {
-                        if i.error == c {
-                            return false;
+                //        debug!("{} {} != {}", i.error, c, i.error == c );
+                  //      debug!("{}", packet_info);
+                        if i.error != c {
+                            return true;
                         }
                     }
-                    return true;
+                    return false;
                 }
                 false
             }
@@ -257,18 +267,18 @@ impl Filter {
             Filter_fields::CLASS => {
                 if self.expr.1 == Filter_operator::EQUAL {
                     for i in &packet_info.dns_records {
-                        if i.class != self.expr.2 {
-                            return false;
+                        if i.class == self.expr.2 {
+                            return true;
                         }
                     }
-                    return true;
+                    return false;
                 } else if self.expr.1 == Filter_operator::NOT_EQUAL {
                     for i in &packet_info.dns_records {
-                        if i.class == self.expr.2 {
-                            return false;
+                        if i.class != self.expr.2 {
+                            return true;
                         }
                     }
-                    return true;
+                    return false;
                 }
                 false
             }
@@ -502,9 +512,9 @@ impl Live_dump {
         for stream in &mut self.streams {
             let byte_count = match stream.stream.peek(&mut peek_buf) {
                 Ok(x) => {
-                    debug!("Some data on the socket {:x?}", peek_buf);
+                 //   debug!("Some data on the socket {:x?}", peek_buf);
                     let pos = if let Some(p) = peek_buf.iter().position(|r| r == &0xa) {
-                        debug!("fonud a newline {} {}", p, x);
+                //       debug!("fonud a newline {} {}", p, x);
                         if p == 0 {
                             let _ = (&stream.stream).read_exact(&mut buf[0..1]);
                             0
@@ -520,12 +530,12 @@ impl Live_dump {
                 }
                 Err(_) => 0,
             };
-            debug!("{} bytes ready to read", byte_count);
+          //  debug!("{} bytes ready to read", byte_count);
             if byte_count > 0 {
                 match (&stream.stream).read_exact(&mut buf[0..byte_count]) {
                     Ok(()) => {
-                        let line = &String::from_utf8_lossy(&buf[0..byte_count]);
-                        debug!("read string: {}", &line);
+                        let line = &String::from_utf8_lossy(&buf[0..byte_count]).to_lowercase();
+                      //  debug!("read string: {}", &line);
                         if line == "show filters" {
                             let _ = stream.stream.write_all(b"Filters\n");
                             for ftr in &stream.filters {

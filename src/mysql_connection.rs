@@ -189,15 +189,15 @@ impl Mysql_connection {
         if config.clean_interval == 0 {
             return;
         }
-        let current_time = Utc::now() - Duration::days(config.clean_interval as i64);
+        let current_time = Utc::now() - Duration::days(i64::from(config.clean_interval));
         debug!("Cleaning timestamp: {current_time}");
 
         let clean_cmd = "DELETE FROM pdns WHERE LAST_SEEN < ?";
         let clean_cmd1 = "DELETE FROM pdns_err WHERE LAST_SEEN < ?";
         match         
          block_on(
-            sqlx::query(&clean_cmd1)
-                .bind(&current_time)
+            sqlx::query(clean_cmd1)
+                .bind(current_time)
                 .execute(&self.pool),
         ) {
             Ok(_) => {}
@@ -205,8 +205,8 @@ impl Mysql_connection {
         }
         match         
          block_on(
-            sqlx::query(&clean_cmd)
-                .bind(&current_time)
+            sqlx::query(clean_cmd)
+                .bind(current_time)
                 .execute(&self.pool),
         ) {
             Ok(_) => {}

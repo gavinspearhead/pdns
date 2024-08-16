@@ -37,13 +37,11 @@ impl DNS_Opcodes {
     }
 }
 
-
 impl std::fmt::Display for DNS_Opcodes {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_str())
     }
 }
-
 
 #[cfg(test)]
 mod dns_opcodes_tests {
@@ -94,7 +92,6 @@ impl std::fmt::Display for DNS_Class {
     }
 }
 
-
 #[cfg(test)]
 mod dns_class_tests {
     use crate::dns::DNS_Class;
@@ -127,6 +124,7 @@ pub(crate) enum DNS_RR_type {
     CDNSKEY = 60,
     CDS = 59,
     CERT = 37,
+    CLA = 263,
     CNAME = 5,
     CSYNC = 62,
     DHCID = 49,
@@ -144,6 +142,7 @@ pub(crate) enum DNS_RR_type {
     HIP = 55,
     HTTPS = 65,
     IPSECKEY = 45,
+    IPN = 264,
     ISDN = 20,
     IXFR = 251,
     KEY = 25,
@@ -257,14 +256,16 @@ mod tests1 {
     }
 }
 
-#[derive( Debug, EnumIter, Copy, Clone, AsStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug, EnumIter, Copy, Clone, AsStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize,
+)]
 pub(crate) enum EDNS0ptionCodes {
     LLQ = 1,
     UpdateLease = 2,
     NSID = 3,
-    DAU = 4,
-    DHU = 5,
-    N3U = 6,
+    DAU = 5,
+    DHU = 6,
+    N3U = 7,
     EdnsClientSubnet = 8,
     EDNSEXPIRE = 9,
     COOKIE = 10,
@@ -276,10 +277,10 @@ pub(crate) enum EDNS0ptionCodes {
     EDNSClientTag = 16,
     EDNSServerTag = 17,
     ReportChannel = 18,
+    ZoneVersion = 19,
     UmbrellaIdent = 20292,
     DeviceID = 26946,
 }
-
 
 impl EDNS0ptionCodes {
     pub(crate) fn to_str(self) -> String {
@@ -305,7 +306,9 @@ impl std::fmt::Display for EDNS0ptionCodes {
     }
 }
 
-#[derive( Debug, EnumIter, Copy, Clone, AsStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug, EnumIter, Copy, Clone, AsStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize,
+)]
 pub(crate) enum DNSExtendedError {
     None = 0xffff,
     Other = 0,
@@ -333,7 +336,12 @@ pub(crate) enum DNSExtendedError {
     No_Reachable_Authority = 22,
     Network_Error = 23,
     Invalid_Data = 24,
+    Signature_Expired_Before_Valid = 25,
+    Too_Early = 26,
+    Unsupported_NSEC3_Iterations_Value = 27,
+    Unable_To_Conform_To_Policy = 28,
     Synthesized = 29,
+    Invalid_Query_Type = 30,
 }
 
 impl DNSExtendedError {
@@ -353,7 +361,6 @@ impl DNSExtendedError {
         ))
     }
 }
-
 
 impl std::fmt::Display for DNSExtendedError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

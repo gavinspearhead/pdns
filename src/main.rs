@@ -267,15 +267,7 @@ fn poll(
             }
         }
         match rx.try_recv() {
-            Ok(_) => {
-                if let Some(ref mut db) = database_conn {
-                    for i in dns_cache.push_all() {
-                        db.insert_or_update_record(&i);
-                    }
-                }
-                return;
-            }
-            Err(TryRecvError::Disconnected) => {
+            Ok(_) | Err(TryRecvError::Disconnected) => {
                 if let Some(ref mut db) = database_conn {
                     for i in dns_cache.push_all() {
                         db.insert_or_update_record(&i);

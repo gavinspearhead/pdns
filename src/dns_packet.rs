@@ -10,6 +10,7 @@ use errors::Parse_error;
 use publicsuffix::Psl;
 use regex::Regex;
 use skiplist::match_skip_list;
+use tracing::debug;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::{Arc, Mutex};
 use tcp_connection::TCP_Connections;
@@ -290,14 +291,19 @@ fn parse_dns(
     for _i in 0..answers {
         offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist)?;
     }
-    tracing::debug!("Authority {}", authority);
-    for _i in 0..authority {
-        offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist)?;
+    if config.authority {
+        tracing::debug!("Authority {}", authority);
+        for _i in 0..authority {
+            offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist)?;
+        }
     }
-    tracing::debug!("Additional {}", additional);
-    for _i in 0..additional {
-        offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist)?;
+    if config.additional {
+        tracing::debug!("Additional {}", additional);
+        for _i in 0..additional {
+            offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist)?;
+        }
     }
+    debug!("{}", packet_info);
     Ok(())
 }
 
