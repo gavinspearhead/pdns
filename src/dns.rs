@@ -209,8 +209,7 @@ pub(crate) enum DNS_RR_type {
 
 impl DNS_RR_type {
     pub(crate) fn to_str(self) -> String {
-        let x = self;
-        String::from(strum::AsStaticRef::as_static(&x))
+        String::from(strum::AsStaticRef::as_static(&self))
     }
 
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {

@@ -1,7 +1,8 @@
 use crate::config::Config;
 use crate::dns::{DNSExtendedError, DNS_Opcodes, EDNS0ptionCodes};
-use crate::dns_helper::{dns_read_u16, dns_read_u32, dns_read_u8, parse_class, parse_rrtype};
+use crate::dns_helper::{self, dns_read_u16, dns_read_u32, dns_read_u8, parse_class, parse_rrtype};
 use crate::dns_rr::{dns_parse_name, dns_parse_rdata};
+use crate::errors::ParseErrorType;
 use crate::packet_info::Packet_info;
 use crate::statistics::Statistics;
 use byteorder::{BigEndian, ByteOrder};
@@ -10,12 +11,38 @@ use errors::Parse_error;
 use publicsuffix::Psl;
 use regex::Regex;
 use skiplist::match_skip_list;
-use tracing::debug;
-use std::net::{Ipv4Addr, Ipv6Addr};
+use strum::IntoEnumIterator;
+use strum_macros::{AsStaticStr, EnumIter, EnumString};
 use std::sync::{Arc, Mutex};
 use tcp_connection::TCP_Connections;
+use tracing::debug;
 
-use crate::{dns, errors, skiplist, tcp_connection, DNS_Protocol};
+use crate::{dns, errors, skiplist, tcp_connection};
+
+
+#[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq, EnumString, AsStaticStr)]
+pub(crate) enum DNS_Protocol {
+    TCP = 6,
+    UDP = 17,
+}
+
+impl DNS_Protocol {
+    pub(crate) fn to_str(self) -> String {
+        String::from(strum::AsStaticRef::as_static(&self))
+    }
+
+    pub(crate) fn find(val: u16) -> Result<Self, Parse_error> {
+        for oc in DNS_Protocol::iter() {
+            if (oc as u16) == val {
+                return Ok(oc);
+            }
+        }
+        Err(Parse_error::new(
+            ParseErrorType::Unknown_Protocol,
+            &format!("{val}"),
+        ))
+    }
+}
 
 fn parse_question(
     _query: &[u8],
@@ -175,16 +202,16 @@ fn parse_answer(
     offset += 11;
 
     let domain = publicsuffixlist.domain(name.as_bytes());
-    let mut domain_str = String::new();
-    match domain {
+    let domain_str = match domain {
         Some(d) => {
             let x = d.trim().as_bytes().to_vec();
-            domain_str = String::from_utf8(x).unwrap_or_default();
+            String::from_utf8(x).unwrap_or_default()
         }
         None => {
             tracing::debug!("Not found {name}");
+            String::new()
         }
-    }
+    };
     let rec: DNS_record = DNS_record {
         rr_type: rrtype.to_str(),
         ttl,
@@ -226,13 +253,13 @@ fn parse_dns(
     let flags = dns_read_u16(packet, offset)?;
     offset += 2;
     let qr = (flags & 0x8000) >> 15;
-    let opcode = (flags >> 11) & 0x000f;
+    let opcode_val = (flags >> 11) & 0x000f;
     let tr = (flags >> 9) & 0x0001;
     let _rd = (flags >> 8) & 0x0001;
     let _ra = (flags >> 7) & 0x0001;
     let rcode = flags & 0x000f;
-
-    if DNS_Opcodes::find(opcode)? != DNS_Opcodes::Query {
+    let opcode = DNS_Opcodes::find(opcode_val)?;
+    if opcode != DNS_Opcodes::Query {
         // Query
         tracing::debug!("Skipping DNS packets that are not queries");
         return Ok(());
@@ -263,6 +290,11 @@ fn parse_dns(
 
     if qr != 1 {
         // we ignore questions; except for stats
+        stats
+            .opcodes
+            .entry(opcode.to_str())
+            .and_modify(|c| *c += 1)
+            .or_insert(1);
         stats.sources.add(packet_info.s_addr.to_string());
         stats.destinations.add(packet_info.d_addr.to_string());
         return Ok(());
@@ -457,14 +489,12 @@ fn parse_ipv4(
         .into());
     }
     let ihl: u16 = (u16::from(packet[0] & 0xf)) * 4;
-    let mut t: [u8; 4] = packet[12..16].try_into()?;
-    let src = Ipv4Addr::from(t);
-    t = packet[16..20].try_into()?;
-    let dst = Ipv4Addr::from(t);
+    let src = dns_helper::parse_ipv4(&packet[12..16])?;
+    let dst = dns_helper::parse_ipv4(&packet[16..20])?;
     let len: u16 = dns_read_u16(packet, 2)? - ihl;
     let next_header = packet[9];
-    packet_info.set_dest_ip(std::net::IpAddr::V4(dst));
-    packet_info.set_source_ip(std::net::IpAddr::V4(src));
+    packet_info.set_dest_ip(dst);
+    packet_info.set_source_ip(src);
     packet_info.set_ip_len(len);
     parse_tunneling(
         &packet[ihl as usize..],
@@ -556,11 +586,6 @@ fn parse_ipv6(
         )
         .into());
     }
-    let mut t: [u8; 16] = packet[8..24].try_into()?;
-    let src = Ipv6Addr::from(t);
-    let _len: u16 = dns_read_u16(packet, 4)?;
-    t = packet[24..40].try_into()?;
-    let dst = Ipv6Addr::from(t);
     if packet[0] >> 4 != 6 {
         return Err(Parse_error::new(
             errors::ParseErrorType::Invalid_IP_Version,
@@ -568,10 +593,14 @@ fn parse_ipv6(
         )
         .into());
     }
-    packet_info.set_dest_ip(std::net::IpAddr::V6(dst));
-    packet_info.set_source_ip(std::net::IpAddr::V6(src));
 
+    let _len: u16 = dns_read_u16(packet, 4)?;
     let next_header = packet[6];
+
+    let src = dns_helper::parse_ipv6(&packet[8..24])?;
+    let dst = dns_helper::parse_ipv6(&packet[24..40])?;
+    packet_info.set_dest_ip(dst);
+    packet_info.set_source_ip(src);
     parse_tunneling(
         &packet[40..],
         next_header,

@@ -1,9 +1,8 @@
 use clap::{arg, ArgAction, Command};
 use serde::{Deserialize, Serialize};
 use serde_json::Error;
-use tracing::debug;
 
-use std::{ fs::File, io::BufReader, str::FromStr};
+use std::{fs::File, io::BufReader, str::FromStr};
 
 use crate::{
     dns::DNS_RR_type,
@@ -43,6 +42,9 @@ pub(crate) struct Config {
     pub clean_interval: u32,
     pub additional: bool,
     pub authority: bool,
+    pub log_file: String,
+    pub syslog: bool,
+    pub create_db: bool,
 }
 
 impl Config {
@@ -76,9 +78,12 @@ impl Config {
             export_stats: String::new(),
             live_dump_port: 0,
             live_dump_host: String::new(),
+            log_file: String::new(),
             clean_interval: 0,
             authority: true,
-            additional: true
+            additional: true,
+            syslog: true,
+            create_db: false,
         };
         c.rr_type.extend(vec![
             DNS_RR_type::A,
@@ -88,9 +93,6 @@ impl Config {
             DNS_RR_type::MX,
         ]);
         c
-    }
-    pub(crate) fn from_str(config_str: &str) -> Result<Config, serde_json::Error> {
-        serde_json::from_str(config_str)
     }
 }
 
@@ -149,194 +151,210 @@ mod tests {
     }
 }
 
-pub(crate) fn parse_config(mut config: &mut Config, pcap_path: &mut String, create_db: &mut bool) {
-    let matches = Command::new(PROGNAME)
-        .version(VERSION)
-        .author(AUTHOR)
-        .about(DESCRIPTION)
-        .name(DESCRIPTION)
-        .flatten_help(true)
-        .arg(
-            arg!(-c --config <VALUE>)
-                .required(false)
-                .long_help("location of the config file"),
-        )
-        .arg(
-            arg!(-H --dbhostname <VALUE>)
-                .required(false)
-                .long_help("hostname of the database"),
-        )
-        .arg(
-            arg!(-T --dbport <VALUE>)
-                .required(false)
-                .long_help("port number of the database"),
-        )
-        .arg(
-            arg!(-u --dbusername <VALUE>)
-                .required(false)
-                .long_help("username for the database"),
-        )
-        .arg(
-            arg!(-w --dbpassword <VALUE>)
-                .required(false)
-                .long_help("password for the database"),
-        )
-        .arg(
-            arg!(-p --path <VALUE>)
-                .required(false)
-                .long_help("Location of a pcap file to parse"),
-        )
-        .arg(arg!(-S --skip_list_file <VALUE>).required(false).long_help(
-            "location of the file, containing regular expressions with domains to ignore",
-        ))
-        .arg(
-            arg!(-l --listen <VALUE>)
-                .required(false)
-                .long_help("Hostname or IP address for the internal web server to liste no"),
-        )
-        .arg(
-            arg!(-P --port <VALUE>)
-                .required(false)
-                .long_help("Port number for the internal web server to listen on (0 to disable)"),
-        )
-        .arg(
-            arg!(-r --rrtypes <VALUE>)
-                .required(false)
-                .long_help("Comma-separated list of RR types to record"),
-        )
-        .arg(
-            arg!(-i --interface <VALUE>)
-                .required(false)
-                .long_help("Interface to listen on for packet capture"),
-        )
-        .arg(
-            arg!(-f --filter <VALUE>)
-                .required(false)
-                .long_help("BPF filter definition (port 53)"),
-        )
-        .arg(
-            arg!(-o --output <VALUE>)
-                .required(false)
-                .long_help("Write output to a file; - for standard out"),
-        )
-        .arg(
-            arg!(-d --database <VALUE>)
-                .required(false)
-                .long_help("Write output to a database (mysql)"),
-        )
-        .arg(
-            arg!(-E --clean_interval <VALUE>)
-                .required(false)
-                .long_help("Interval in days after which unused records are removed from the database"),
-        )
-        .arg(
-            arg!(-L --toplistsize <VALUE>)
-                .required(false)
-                .long_help("Number of entries in the statistics"),
-        )
-        .arg(
-            arg!(-U --uid <VALUE>)
-                .required(false)
-                .long_help("UID to change to after dropping privileges"),
-        )
-        .arg(
-            arg!(-F --public_suffix_file <VALUE>)
-                .required(false)
-                .long_help("Location of the public suffix file"),
-        )
-        .arg(
-            arg!(-A --asn_database_file <VALUE>)
-                .required(false)
-                .long_help("Location of the ASN database (ip2asn-combined.tsv)"),
-        )
-        .arg(
-            arg!(-g --gid <VALUE>)
-                .required(false)
-                .long_help("GID to change to after dropping privileges"),
-        )
-        .arg(
-            arg!(--debug)
-                .required(false)
-                .action(ArgAction::SetTrue)
-                .long_help("Enable debugging mode"),
-        )
-        .arg(
-            arg!(--noauthority)
-                .required(false)
-                .action(ArgAction::SetFalse)
-                .long_help("Do not process authority records"),
-        )
-        .arg(
-            arg!(--noadditional)
-                .required(false)
-                .action(ArgAction::SetFalse)
-                .long_help("Do not process addional records"),
-        )
-        .arg(
-            arg!(--authority)
-                .required(false)
-                .action(ArgAction::SetTrue)
-                .long_help("Process authority records"),
-        )
-        .arg(
-            arg!(--additional)
-                .required(false)
-                .action(ArgAction::SetTrue)
-                .long_help("Process addional records"),
-        )
-        .arg(
-            arg!(--create_database)
-                .required(false)
-                .action(ArgAction::SetTrue)
-                .long_help("Create a database"),
-        )
-        .arg(
-            arg!(-C --promisc <VALUE>)
-                .required(false)
-                .action(ArgAction::SetTrue)
-                .long_help("Put the interface is promiscuous mode when capturing"),
-        )
-        .arg(
-            arg!(-D --daemon)
-                .required(false)
-                .action(ArgAction::SetTrue)
-                .long_help("Start as a background process (daemon)"),
-        )
-        .arg(
-            arg!(-M --import_stats <VALUE>)
-                .required(false)
-                .default_missing_value("")
-                .long_help("Import stats from json file"),
-        )
-        .arg(
-            arg!(-X --export_stats <VALUE>)
-                .required(false)
-                .default_missing_value("")
-                .long_help("Export stats to the parth in a json file at exit"),
-        )
-        .arg(
-            arg!(-I --pid_file <VALUE>)
-                .required(false)
-                .default_missing_value("/var/run/pdns.pid")
-                .long_help("Location of the PID file"),
-        )
-        .arg(
-            arg!(-t --output_type <VALUE>)
-                .required(false)
-                .default_missing_value("csv")
-                .long_help("Output format (CSV or JSON)"),
-        )
-        .arg(
-            arg!(--live_dump_host <VALUE>)
-                .required(false)
-                .long_help("Hostname or IP address for the live dump to liste to"),
-        )
-        .arg(
-            arg!(--live_dump_port <VALUE>)
-                .required(false)
-                .long_help("Port number for the live dump to listen on (0 to disable)"),
-        )
-        .get_matches();
+pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
+    let matches =
+        Command::new(PROGNAME)
+            .version(VERSION)
+            .author(AUTHOR)
+            .about(DESCRIPTION)
+            .name(DESCRIPTION)
+            .flatten_help(true)
+            .arg(
+                arg!(-c --config <VALUE>)
+                    .required(false)
+                    .long_help("location of the config file"),
+            )
+            .arg(
+                arg!(-H --dbhostname <VALUE>)
+                    .required(false)
+                    .long_help("hostname of the database"),
+            )
+            .arg(
+                arg!(-T --dbport <VALUE>)
+                    .required(false)
+                    .long_help("port number of the database"),
+            )
+            .arg(
+                arg!(-u --dbusername <VALUE>)
+                    .required(false)
+                    .long_help("username for the database"),
+            )
+            .arg(
+                arg!(-w --dbpassword <VALUE>)
+                    .required(false)
+                    .long_help("password for the database"),
+            )
+            .arg(
+                arg!(-p --path <VALUE>)
+                    .required(false)
+                    .long_help("Location of a pcap file to parse"),
+            )
+            .arg(arg!(-S --skip_list_file <VALUE>).required(false).long_help(
+                "location of the file, containing regular expressions with domains to ignore",
+            ))
+            .arg(
+                arg!(-l --listen <VALUE>)
+                    .required(false)
+                    .long_help("Hostname or IP address for the internal web server to liste no"),
+            )
+            .arg(
+                arg!(-P --port <VALUE>).required(false).long_help(
+                    "Port number for the internal web server to listen on (0 to disable)",
+                ),
+            )
+            .arg(
+                arg!(-r --rrtypes <VALUE>)
+                    .required(false)
+                    .long_help("Comma-separated list of RR types to record"),
+            )
+            .arg(
+                arg!(-i --interface <VALUE>)
+                    .required(false)
+                    .long_help("Interface to listen on for packet capture"),
+            )
+            .arg(
+                arg!(-f --filter <VALUE>)
+                    .required(false)
+                    .long_help("BPF filter definition (port 53)"),
+            )
+            .arg(
+                arg!(-o --output <VALUE>)
+                    .required(false)
+                    .long_help("Write output to a file; - for standard out"),
+            )
+            .arg(
+                arg!(-d --database <VALUE>)
+                    .required(false)
+                    .long_help("Write output to a database (mysql)"),
+            )
+            .arg(arg!(-E --clean_interval <VALUE>).required(false).long_help(
+                "Interval in days after which unused records are removed from the database",
+            ))
+            .arg(
+                arg!(-L --toplistsize <VALUE>)
+                    .required(false)
+                    .long_help("Number of entries in the statistics"),
+            )
+            .arg(
+                arg!(-U --uid <VALUE>)
+                    .required(false)
+                    .long_help("UID to change to after dropping privileges"),
+            )
+            .arg(
+                arg!(-F --public_suffix_file <VALUE>)
+                    .required(false)
+                    .long_help("Location of the public suffix file"),
+            )
+            .arg(
+                arg!(-A --asn_database_file <VALUE>)
+                    .required(false)
+                    .long_help("Location of the ASN database (ip2asn-combined.tsv)"),
+            )
+            .arg(
+                arg!(-g --gid <VALUE>)
+                    .required(false)
+                    .long_help("GID to change to after dropping privileges"),
+            )
+            .arg(
+                arg!(--debug)
+                    .required(false)
+                    .action(ArgAction::SetTrue)
+                    .long_help("Enable debugging mode"),
+            )
+            .arg(
+                arg!(--noauthority)
+                    .required(false)
+                    .action(ArgAction::SetFalse)
+                    .long_help("Do not process authority records"),
+            )
+            .arg(
+                arg!(--noadditional)
+                    .required(false)
+                    .action(ArgAction::SetFalse)
+                    .long_help("Do not process addional records"),
+            )
+            .arg(
+                arg!(--authority)
+                    .required(false)
+                    .action(ArgAction::SetTrue)
+                    .long_help("Process authority records"),
+            )
+            .arg(
+                arg!(--additional)
+                    .required(false)
+                    .action(ArgAction::SetTrue)
+                    .long_help("Process addional records"),
+            )
+            .arg(
+                arg!(--create_database)
+                    .required(false)
+                    .action(ArgAction::SetTrue)
+                    .long_help("Create a database"),
+            )
+            .arg(
+                arg!(-C - -promisc)
+                    .required(false)
+                    .action(ArgAction::SetTrue)
+                    .long_help("Put the interface is promiscuous mode when capturing"),
+            )
+            .arg(
+                arg!(-D - -daemon)
+                    .required(false)
+                    .action(ArgAction::SetTrue)
+                    .long_help("Start as a background process (daemon)"),
+            )
+            .arg(
+                arg!(-M --import_stats <VALUE>)
+                    .required(false)
+                    .default_missing_value("")
+                    .long_help("Import stats from json file"),
+            )
+            .arg(
+                arg!(-X --export_stats <VALUE>)
+                    .required(false)
+                    .default_missing_value("")
+                    .long_help("Export stats to the parth in a json file at exit"),
+            )
+            .arg(
+                arg!(-I --pid_file <VALUE>)
+                    .required(false)
+                    .default_missing_value("/var/run/pdns.pid")
+                    .long_help("Location of the PID file"),
+            )
+            .arg(
+                arg!(-t --output_type <VALUE>)
+                    .required(false)
+                    .default_missing_value("csv")
+                    .long_help("Output format (CSV or JSON)"),
+            )
+            .arg(
+                arg!(--live_dump_host <VALUE>)
+                    .required(false)
+                    .long_help("Hostname or IP address for the live dump to liste to"),
+            )
+            .arg(
+                arg!(--live_dump_port <VALUE>)
+                    .required(false)
+                    .long_help("Port number for the live dump to listen on (0 to disable)"),
+            )
+            .arg(
+                arg!(--log_file <VALUE>)
+                    .required(false)
+                    .long_help("Log to the file specified"),
+            )
+            .arg(
+                arg!(--syslog)
+                    .required(false)
+                    .action(ArgAction::SetTrue)
+                    .long_help("Log to syslog"),
+            )
+            .arg(
+                arg!(--nosyslog)
+                    .required(false)
+                    .action(ArgAction::SetFalse)
+                    .long_help("Do not log to syslog"),
+            )
+            .get_matches();
     let empty_str = String::new();
     config.config_file = matches
         .get_one::<String>("config")
@@ -346,12 +364,11 @@ pub(crate) fn parse_config(mut config: &mut Config, pcap_path: &mut String, crea
         let file = File::open(&config.config_file).expect("Cannot open file");
         let reader = BufReader::new(file);
 
-        let x: Result<Config,  Error> = serde_json::from_reader(reader);
-        let mut new_config =  match x {
-            Ok(y) =>  y,
+        let x: Result<Config, Error> = serde_json::from_reader(reader);
+        let new_config = match x {
+            Ok(y) => y,
             Err(e) => {
                 panic!("Importing failed {e}");
-
             }
         };
         *config = new_config.clone();
@@ -370,7 +387,7 @@ pub(crate) fn parse_config(mut config: &mut Config, pcap_path: &mut String, crea
         }*/
     }
 
-    *create_db = *matches.get_one::<bool>("create_database").unwrap_or(&false);
+    config.create_db = *matches.get_one::<bool>("create_database").unwrap_or(&false);
 
     config.server = matches
         .get_one::<String>("listen")
@@ -379,7 +396,6 @@ pub(crate) fn parse_config(mut config: &mut Config, pcap_path: &mut String, crea
     config.port = matches
         .get_one::<String>("port")
         .unwrap_or(&format!("{}", config.port))
-        // .clone()
         .parse::<u16>()
         .unwrap();
     matches
@@ -389,6 +405,10 @@ pub(crate) fn parse_config(mut config: &mut Config, pcap_path: &mut String, crea
     config.interface = matches
         .get_one::<String>("interface")
         .unwrap_or(&config.interface)
+        .clone();
+    config.log_file = matches
+        .get_one::<String>("log_file")
+        .unwrap_or(&config.log_file)
         .clone();
     config.filter = matches
         .get_one::<String>("filter")
@@ -456,18 +476,12 @@ pub(crate) fn parse_config(mut config: &mut Config, pcap_path: &mut String, crea
         .get_one::<String>("export_stats")
         .unwrap_or(&config.export_stats)
         .clone();
-    config.additional = *matches
-        .get_one::<bool>("additional")
-        .unwrap_or(&config.additional);
-    config.additional = *matches
-        .get_one::<bool>("noadditional")
-        .unwrap_or(&config.additional);
-    config.authority = *matches
-        .get_one::<bool>("authority")
-        .unwrap_or(&config.authority);
-    config.authority = *matches
-        .get_one::<bool>("noauthority")
-        .unwrap_or(&config.authority);
+    config.syslog = *matches.get_one::<bool>("syslog").unwrap_or(&config.syslog);
+    config.syslog = *matches.get_one::<bool>("nosyslog").unwrap_or(&config.syslog);
+    config.additional = *matches.get_one::<bool>("additional").unwrap_or(&config.additional);
+    config.additional = *matches.get_one::<bool>("noadditional").unwrap_or(&config.additional);
+    config.authority = *matches.get_one::<bool>("authority").unwrap_or(&config.authority);
+    config.authority = *matches.get_one::<bool>("noauthority").unwrap_or(&config.authority);
 
     let rr_types = parse_rrtypes(&matches.get_one("rrtypes").unwrap_or(&empty_str).clone());
     if !rr_types.is_empty() {

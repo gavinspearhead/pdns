@@ -17,11 +17,10 @@ chrono = "0.4"
 strum = "0.17"
 strum_macros = "0.17"
 clap = { version = "4.4", features = ["derive"] }
-colored = "2.1"
 hex="0.4"
 base64="0.21"
 libc="0.2"
-sqlx = { version = "0.7", features = ["runtime-async-std-native-tls", "mysql", "chrono", "uuid"] }
+sqlx = { version = "0.8", features = ["runtime-async-std-native-tls", "mysql", "chrono", "uuid"] }
 futures = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0" 
@@ -39,3 +38,5 @@ snailquote = "0.3"
 unic-idna = "0.9"
 serde_with = "3.9.0"
 signal-hook = "0.3.17"
+tracing-appender = "0.2.3"
+tracing-log = "0.2.0"

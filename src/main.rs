@@ -1,7 +1,7 @@
 // TODO
 // parametrize Rank with IP address type
 // improve filter on livedump
-// cleanup database based on time
+// add dns opcodes to stats
 
 #![allow(non_camel_case_types)]
 pub mod config;
@@ -24,7 +24,6 @@ pub mod time_stats;
 pub mod version;
 use chrono::{DateTime, Utc};
 use clap::{arg, Parser};
-use colored::Colorize;
 use config::parse_config;
 use dns_cache::DNS_Cache;
 use futures::executor::block_on;
@@ -50,19 +49,15 @@ use tracing::{debug, error};
 use tracing_rfc_5424::layer::Layer;
 use tracing_rfc_5424::transport::UnixSocket;
 use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::{filter, fmt, prelude::*, reload}; // Needed to get `with()`
+use tracing_subscriber::{filter, fmt, prelude::*, reload};
 
 use crate::config::Config;
 use crate::dns_packet::parse_eth;
 use crate::http_server::{listen, server};
 use crate::packet_info::Packet_info;
 use crate::statistics::Statistics;
+use crate::version::{PROGNAME, VERSION};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum DNS_Protocol {
-    TCP,
-    UDP,
-}
 
 #[derive(Parser, Clone, Debug, PartialEq)]
 struct Args {
@@ -110,26 +105,26 @@ fn packet_loop<T>(
 {
     let link_type = cap.get_datalink();
     if link_type != Linktype::ETHERNET {
-        tracing::error!("Not ethernet {link_type:?}");
-        panic!("Not ethernet");
+        error!("Not ethernet {link_type:?}");
+        exit(-1);
     }
-    tracing::debug!("Reading pubsuf list {}", config.public_suffix_file);
+    debug!("Reading pubsuf list {}", config.public_suffix_file);
     let publicsuffixlist: publicsuffix::List =
         if let Ok(c) = fs::read_to_string(&config.public_suffix_file) {
             if let Ok(d) = c.as_str().parse() {
                 d
             } else {
-                tracing::error!(
+                error!(
                     "Cannot parse public suffic file: {}",
                     config.public_suffix_file
                 );
                 exit(-1);
             }
         } else {
-            tracing::error!("Cannot read file {}", config.public_suffix_file);
+            error!("Cannot read file {}", config.public_suffix_file);
             exit(-1);
         };
-    tracing::debug!("Starting loop");
+    debug!("Starting loop");
     loop {
         match cap.next_packet() {
             Ok(packet) => {
@@ -173,13 +168,13 @@ fn packet_loop<T>(
 }
 
 fn load_asn_database(config: &Config) -> asn_db2::Database {
-    tracing::debug!("{}", config.asn_database_file);
+    debug!("{}", config.asn_database_file);
     let Ok(f) = File::open(&config.asn_database_file) else {
-        tracing::error!("Cannot open ASN database {} ", &config.asn_database_file);
+        error!("Cannot open ASN database {} ", &config.asn_database_file);
         exit(-1);
     };
     let Ok(asn_database) = asn_db2::Database::from_reader(BufReader::new(f)) else {
-        tracing::error!("Cannot read ASN database {}", &config.asn_database_file);
+        error!("Cannot read ASN database {}", &config.asn_database_file);
         exit(-1);
     };
     asn_database
@@ -199,13 +194,13 @@ fn poll(
 
     if !config.output.is_empty() && config.output != "-" {
         let mut options = OpenOptions::new();
-        output_file = Some(
-            options
-                .append(true)
-                .create(true)
-                .open(&config.output)
-                .expect("Cannot open file"),
-        );
+        output_file = match options.append(true).create(true).open(&config.output) {
+            Ok(x) => Some(x),
+            Err(e) => {
+                error!("Cannot open file {} {e}", config.output);
+                exit(-1);
+            }
+        };
     }
 
     if !config.database.is_empty() {
@@ -235,9 +230,21 @@ fn poll(
 
                 if let Some(ref mut of) = output_file {
                     if config.output_type == "csv" {
-                        of.write_all(p1.to_csv().as_bytes()).expect("Write failed");
+                        match of.write_all(p1.to_csv().as_bytes()) {
+                            Ok(()) => {}
+                            Err(e) => {
+                                error!("Write csv output failed, {e}");
+                                exit(-1);
+                            }
+                        }
                     } else if config.output_type == "json" {
-                        of.write_all(p1.to_json().as_bytes()).expect("Write failed");
+                        match of.write_all(p1.to_json().as_bytes()) {
+                            Ok(()) => {}
+                            Err(e) => {
+                                error!("Write json output failed, {e}");
+                                exit(-1);
+                            }
+                        }
                     }
                 };
                 if let Some(ref _db) = database_conn {
@@ -247,7 +254,7 @@ fn poll(
                 }
                 timeout = time::Duration::from_millis(0);
             } else {
-                tracing::debug!("Terminating poll()");
+                debug!("Terminating poll()");
                 return;
             }
         } else {
@@ -297,18 +304,14 @@ fn cleanup_task(config: &Config) {
     }
 }
 
-fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
+fn run(
+    config: &Config,
+    capin: Option<Capture<Active>>,
+    pcap_path: &str,
+    stats: &Arc<Mutex<Statistics>>,
+) {
     let packet_queue = Arc::new(Mutex::new(VecDeque::new()));
     let tcp_list = Arc::new(Mutex::new(TCP_Connections::new()));
-    let stats = if config.import_stats.is_empty() {
-        Arc::new(Mutex::new(Statistics::new(config.toplistsize)))
-    } else {
-        debug!("import stats from : {}", config.import_stats);
-        Arc::new(Mutex::new(Statistics::import(
-            &config.import_stats,
-            config.toplistsize,
-        )))
-    };
 
     let (tcp_tx, tcp_rx) = mpsc::channel();
     let (_pq_tx, pq_rx) = mpsc::channel();
@@ -318,14 +321,15 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
         let handle2 = s.spawn(|| clean_tcp_list(&tcp_list.clone(), tcp_rx));
 
         if !pcap_path.is_empty() {
-            tracing::debug!("Reading PCAP file e {}", pcap_path);
+            debug!("Reading PCAP file e {}", pcap_path);
             let cap = Capture::from_file(pcap_path);
             match cap {
                 Ok(mut c) => {
                     match c.filter(&config.filter, false) {
                         Ok(()) => {}
                         Err(e) => {
-                            tracing::error!("Cannot apply filter {}: {e}", config.filter);
+                            error!("Cannot apply filter {}: {e}", config.filter);
+                            exit(-1);
                         }
                     }
                     let handle3 = s.spawn(|| {
@@ -345,11 +349,12 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
                     handle2.join().unwrap();
                 }
                 Err(e) => {
-                    panic!("{}", format!("{e:?}").red());
+                    error!("{e:?}");
+                    exit(-1);
                 }
             }
         } else if !config.interface.is_empty() {
-            tracing::debug!("Listening on interface {}", config.interface);
+            debug!("Listening on interface {}", config.interface);
             let listener = listen(&config.server, config.port);
             let handle4 = s.spawn(|| {
                 if let Some(l) = listener {
@@ -357,15 +362,16 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
                 }
             });
             let Some(mut cap) = capin else {
-                tracing::error!("Something wrong with the capture");
-                panic!("Something wrong with the capture");
+                error!("Something wrong with the capture");
+                exit(-1);
             };
             let handle6 = s.spawn(|| cleanup_task(config));
-            tracing::debug!("Filter: {}", config.filter);
+            debug!("Filter: {}", config.filter);
             if let Err(e) = cap.filter(&config.filter, false) {
-                tracing::error!("Cannot apply filter {}: {e}", config.filter);
+                error!("Cannot apply filter {}: {e}", config.filter);
+                exit(-1);
             }
-            tracing::debug!("Ready to start packet loop");
+            debug!("Ready to start packet loop");
             let handle3 = s.spawn(|| {
                 debug!("Starting packet loop");
                 packet_loop(cap, &packet_queue, &tcp_list, &stats, config, &skiplist);
@@ -374,16 +380,25 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
                 debug!("Starting signal loop");
                 let term = Arc::new(AtomicBool::new(false));
                 let kill = Arc::new(AtomicBool::new(false));
-                flag::register(signal_hook::consts::SIGTERM, Arc::clone(&term))
-                    .expect("Cannot set signal handler");
-                flag::register(signal_hook::consts::SIGINT, Arc::clone(&kill))
-                    .expect("Cannot set signal handler");
+                match flag::register(signal_hook::consts::SIGTERM, Arc::clone(&term)) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        error!("Cannot set signal handler {e}");
+                        exit(-1);
+                    }
+                };
+                match flag::register(signal_hook::consts::SIGINT, Arc::clone(&kill)) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        error!("Cannot set signal handler {e}");
+                        exit(-1);
+                    }
+                }
                 while !term.load(Ordering::Relaxed) && !kill.load(Ordering::Relaxed) {
                     sleep(time::Duration::from_millis(50));
                 }
                 debug!("{}", stats.lock().unwrap().queries);
                 dump_stats(&stats.lock().unwrap(), config).unwrap();
-                //dump_stats(stats, &config).unwrap();
                 exit(0);
             });
 
@@ -400,76 +415,130 @@ fn run(config: &Config, capin: Option<Capture<Active>>, pcap_path: &str) {
 }
 
 fn main() {
-    // hourly();
+    let mut pcap_path = String::new();
+    let mut config: Config = Config::new();
+    let layers = vec![fmt::Layer::default().boxed()];
     let filter = filter::LevelFilter::WARN;
     let (filter, reload_handle) = reload::Layer::new(filter);
-    tracing_subscriber::Registry::default()
+    let (tracing_layers, reload_handle1) = reload::Layer::new(layers);
+
+    tracing_subscriber::registry()
         .with(filter)
-        .with(fmt::Layer::default())
-        .with(Layer::with_transport(
-            UnixSocket::new("/var/run/systemd/journal/syslog").unwrap(),
-        ))
-        //  .with(Layer::with_transport(UdpTransport::new("127.0.0.1:514").unwrap()))
+        .with(tracing_layers)
         .init();
-    let mut config = Config::new();
-    let mut pcap_path = String::new();
-    let mut create_db: bool = false;
-    parse_config(&mut config, &mut pcap_path, &mut create_db);
+    parse_config(&mut config, &mut pcap_path);
+
     if config.debug {
         let _ = reload_handle.modify(|filter| *filter = filter::LevelFilter::DEBUG);
     }
 
-    if create_db {
+    debug!("Config is: {:?}", config);
+    debug!("Log file is: {}", config.log_file);
+    if !config.log_file.is_empty() {
+        debug!("Logging to {}", config.log_file);
+        let _ = reload_handle1.modify(|layers| {
+            let file = match OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(&config.log_file)
+            {
+                Ok(f) => f,
+                Err(e) => {
+                    error!("Cannot create file {} {e}", config.log_file);
+                    exit(-1);
+                }
+            };
+            let layer = tracing_subscriber::fmt::layer().with_writer(file).boxed();
+            (*layers).push(layer);
+        });
+    }
+
+    if config.syslog {
+        let _ = reload_handle1.modify(|layers| {
+            (*layers).push(
+                Layer::with_transport(UnixSocket::new("/var/run/systemd/journal/syslog").unwrap())
+                    .boxed(),
+            );
+        });
+    }
+
+    debug!("Starting {PROGNAME} {VERSION}");
+
+    if config.create_db {
         create_database(&config);
         exit(0);
     }
-    let stdout = File::open("/dev/null").expect("Cannot open /dev/null");
-    let stderr = File::open("/dev/null").expect("Cannot open /dev/null");
-    //let stdout = File::open("/tmp/pdns.out").unwrap();
-    //let stderr = File::open("/tmp/pdns.err").unwrap();
-    let daemonize = daemonize::Daemonize::new()
-        .pid_file("/var/run/pdns.pid") // Every method except `new` and `start`
-        .chown_pid_file(true) // is optional, see `Daemonize` documentation
-        .working_directory("/tmp") // for default behaviour.
-        .user(config.uid.as_str())
-        .group(config.gid.as_str()) // Group name
-        .umask(0o777) // Set umask, `0o027` by default.
-        .stdout(stdout) // Redirect stdout to `/tmp/daemon.out`.
-        .stderr(stderr) // Redirect stderr to `/tmp/daemon.err`.
-        //.privileged_action(|| "Executed before drop privileges")
-        ;
+
     let mut cap = None;
     if !config.interface.is_empty() {
         // do it here otherwise PCAP hangs on open if we do it after daemonizing
-        cap = Some(
-            Capture::from_device(config.interface.as_str())
-                .unwrap()
-                .timeout(1000)
-                .promisc(config.promisc) // todo make a paramater
-                //                .immediate_mode(true) //seems to break on ubuntu?
-                .open()
-                .expect("Cannot open capture on {config.interface}"),
-        );
+        debug!("Interface: {}", config.interface);
+        cap = match Capture::from_device(config.interface.as_str())
+            .unwrap()
+            .timeout(1000)
+            .promisc(config.promisc) // todo make a paramater
+            //                .immediate_mode(true) //seems to break on ubuntu?
+            .open()
+        {
+            Ok(x) => Some(x),
+            Err(e) => {
+                error!(
+                    "Cannot open capture on interface '{}' {e}",
+                    &config.interface
+                );
+                exit(-1);
+            }
+        };
     }
     /*let mut options = OpenOptions::new();
     std::fs::write(
         "config.json",
         serde_json::to_string_pretty(&config).unwrap(),
     );*/
+    let stats = if config.import_stats.is_empty() {
+        Arc::new(Mutex::new(Statistics::new(config.toplistsize)))
+    } else {
+        debug!("import stats from : {}", config.import_stats);
+        Arc::new(Mutex::new(
+            match Statistics::import(&config.import_stats, config.toplistsize) {
+                Ok(x) => x,
+                Err(e) => {
+                    error!("Cannot import file '{}' {e}", config.import_stats);
+                    exit(-1);
+                }
+            },
+        ))
+    };
+
     if config.daemon {
-        tracing::debug!("Daemonising");
+        let stdout = File::open("/dev/null").expect("Cannot open /dev/null");
+        let stderr = File::open("/dev/null").expect("Cannot open /dev/null");
+        //let stdout = File::open("/tmp/pdns.out").unwrap();
+        //let stderr = File::open("/tmp/pdns.err").unwrap();
+        let daemonize = daemonize::Daemonize::new()
+        .pid_file("/var/run/pdns.pid") // Every method except `new` and `start`
+        .chown_pid_file(true) // is optional, see `Daemonize` documentation
+        .working_directory("/tmp") // for default behaviour.
+        .user(config.uid.as_str())
+        .group(config.gid.as_str()) // Group name
+        .umask(0o077) // Set umask, `0o027` by default.
+        .stdout(stdout) // Redirect stdout to `/tmp/daemon.out`.
+        .stderr(stderr) // Redirect stderr to `/tmp/daemon.err`.
+        //.privileged_action(|| "Executed before drop privileges")
+        ;
+        debug!("Daemonising");
         match daemonize.start() {
             Ok(()) => {
-                tracing::debug!("Daemonised");
-                run(&config, cap, &pcap_path);
+                debug!("Daemonised");
+                run(&config, cap, &pcap_path, &stats);
             }
             Err(e) => {
-                tracing::error!("Error daemonising {e}");
+                error!("Error daemonising {e}");
                 exit(-1);
             }
         }
     } else {
-        tracing::debug!("NOT Daemonising");
-        run(&config, cap, &pcap_path);
+        debug!("NOT Daemonising");
+        run(&config, cap, &pcap_path, &stats);
     }
 }

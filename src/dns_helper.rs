@@ -7,16 +7,6 @@ use crate::{
 use byteorder::{BigEndian, ByteOrder};
 use chrono::DateTime;
 
-pub(crate) fn parse_protocol(proto: u8) -> Result<String, Parse_error> {
-    match proto {
-        17 => Ok("UDP".into()),
-        6 => Ok("TCP".into()),
-        _ => Err(Parse_error::new(
-            ParseErrorType::Unknown_Protocol,
-            &proto.to_string(),
-        )),
-    }
-}
 
 pub(crate) fn parse_rrtype(rrtype: u16) -> Result<DNS_RR_type, DNS_error> {
     DNS_RR_type::find(rrtype)

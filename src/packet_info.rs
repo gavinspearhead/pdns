@@ -5,10 +5,8 @@ use std::{
     net::{IpAddr, Ipv4Addr},
 };
 
-use crate::{
-    dns::{DNS_RR_type, DNS_record},
-    DNS_Protocol,
-};
+use crate::dns::{DNS_RR_type, DNS_record};
+use crate::dns_packet::DNS_Protocol;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Packet_info {
@@ -25,7 +23,7 @@ pub(crate) struct Packet_info {
 }
 
 /*impl Default for Packet_info {
-    
+
 }
 */
 impl Packet_info {

@@ -125,7 +125,6 @@ impl TCP_Connections {
                 &format!("{src}:{dp} => {dst}:{dp}"),
             )
             .into());
-            //            return Err("connection not found".into());
         };
         Ok(c.get_data())
     }

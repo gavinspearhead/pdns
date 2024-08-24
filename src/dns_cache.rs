@@ -46,6 +46,6 @@ impl fmt::Display for DNS_Cache {
         for v in self.items.values() {
             write!(f, "{v}").expect("Cannot write output format ");
         }
-         write!(f, "")
+        write!(f, "")
     }
 }

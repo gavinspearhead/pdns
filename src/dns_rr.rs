@@ -1,9 +1,9 @@
-use std::fmt::Write as _;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::str::FromStr;
 use base64::engine::general_purpose;
 use base64::Engine;
 use byteorder::{BigEndian, ByteOrder};
+use std::fmt::Write as _;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::str::FromStr;
 use strum::AsStaticRef;
 
 use crate::dns::{
@@ -12,9 +12,15 @@ use crate::dns::{
     DNS_RR_type, SVC_Param_Keys,
 };
 use crate::dns_helper::{
-    base32hex_encode, dns_read_u16, dns_read_u32, dns_read_u64, dns_read_u8, parse_dns_str, parse_ipv4, parse_ipv6, parse_protocol, parse_rrtype, timestame_to_str
+    base32hex_encode, dns_read_u16, dns_read_u32, dns_read_u64, dns_read_u8, parse_dns_str,
+    parse_ipv4, parse_ipv6, parse_rrtype, timestame_to_str,
 };
 use crate::errors::{ParseErrorType, Parse_error};
+use crate::dns_packet::DNS_Protocol;
+
+
+const MAX_DOMAIN_NAME_LENGTH: usize = 253;
+const MAX_RECURSION_DEPTH: usize = 63;
 
 pub(crate) fn dns_parse_name(packet: &[u8], offset: usize) -> Result<(String, usize), Parse_error> {
     let (mut name, offset_out) = dns_parse_name_internal(packet, offset, 0)?;
@@ -22,7 +28,7 @@ pub(crate) fn dns_parse_name(packet: &[u8], offset: usize) -> Result<(String, us
         String::from('.')
     } else {
         name = name.trim_end_matches('.').to_string();
-        if name.len() > 253 {
+        if name.len() > MAX_DOMAIN_NAME_LENGTH {
             return Err(Parse_error::new(ParseErrorType::Invalid_Domain_name, &name));
         }
         name
@@ -39,7 +45,7 @@ fn dns_parse_name_internal(
     let mut name = String::new();
     //tracing::debug!("Recursion depth {recursion_depth}");
 
-    if recursion_depth > 63 {
+    if recursion_depth > MAX_RECURSION_DEPTH {
         tracing::debug!("Recursion depth exceeded");
         return Err(Parse_error::new(ParseErrorType::Invalid_packet_index, ""));
     }
@@ -209,7 +215,7 @@ fn decode_gpos_size(val: u8) -> String {
         }
         return format!("0.{base}");
     }
-    format!("{base}{}", "0".repeat(exp as usize - 2))
+    format!("{base}{}", "0".repeat((exp - 2) as usize))
 }
 
 fn parse_rr_a(rdata: &[u8]) -> Result<String, Parse_error> {
@@ -633,7 +639,7 @@ fn parse_rr_wks(rdata: &[u8]) -> Result<String, Parse_error> {
     let addr_str = parse_ipv4(address)?;
     Ok(format!(
         "{addr_str} {} {}",
-        parse_protocol(protocol)?,
+        DNS_Protocol::find(protocol.into())?.to_str(),
         parse_bitmap_vec(bitmap)?
             .iter()
             .fold(String::new(), |a, &n| a + &n.to_string() + " ")
@@ -873,6 +879,7 @@ fn parse_rr_amtrelay(packet: &[u8], rdata: &[u8], offset_in: usize) -> Result<St
     }
     Ok(format!("{precedence} {dbit} {rtype} {relay}"))
 }
+
 fn parse_rr_a6(packet: &[u8], rdata: &[u8], offset_in: usize) -> Result<String, Parse_error> {
     let prefix_len = dns_read_u8(rdata, 0)? as usize;
     let len: usize = (128 - prefix_len) / 8;

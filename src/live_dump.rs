@@ -97,24 +97,10 @@ impl Filter {
             return Err("not found".into());
         };
 
-        /*let field = match spl.next() {
-            Some(x) => match Filter_fields::find(x) {
-                Ok(x) => x,
-                Err(e) => {
-                    debug!("Not found");
-                    return Err(e);
-                }
-            },
-            None => {
-                debug!("No more parts");
-                return Err("not found".into());
-            }
-        };*/
         debug!("Field: {:?}", field);
         let oper = match spl.next() {
             Some(x) => match x {
-                "=" => Filter_operator::EQUAL,
-                "==" => Filter_operator::EQUAL,
+                "=" | "==" => Filter_operator::EQUAL,
                 "!=" => Filter_operator::NOT_EQUAL,
                 "^=" => Filter_operator::START_WITH,
                 "$=" => Filter_operator::END_WITH,

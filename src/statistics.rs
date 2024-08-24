@@ -1,13 +1,11 @@
 use crate::rank::Rank;
 use crate::time_stats::Time_stats;
 use serde::{Deserialize, Serialize};
-use serde_json::Error;
 use std::{
     collections::HashMap,
     fs::File,
     io::BufReader,
 };
-use tracing::debug;
 
 use serde_with::rust::deserialize_ignore_any;
 
@@ -18,6 +16,7 @@ pub(crate) struct Statistics {
     pub atypes: HashMap<String, u128>,
     pub qclass: HashMap<String, u128>,
     pub aclass: HashMap<String, u128>,
+    pub opcodes: HashMap<String, u128>,
     pub extended_error: HashMap<String, u128>,
     pub queries: u128,
     pub answers: u128,
@@ -46,6 +45,7 @@ impl Statistics {
             atypes: HashMap::new(),
             qclass: HashMap::new(),
             aclass: HashMap::new(),
+            opcodes: HashMap::new(),
             extended_error: HashMap::new(),
             queries: 0,
             answers: 0,
@@ -63,22 +63,14 @@ impl Statistics {
         }
     }
 
-    pub(crate) fn import(filename: &str, toplistsize: usize) -> Statistics {
-        let file = File::open(filename).expect("Cannot open file");
+    pub(crate) fn import(filename: &str, toplistsize: usize) ->Result<Statistics, Box<dyn std::error::Error>> {
+        let file = File::open(filename)? ;
         let reader = BufReader::new(file);
-
-        let x: Result<Statistics, Error> = serde_json::from_reader(reader);
-        let mut statistics = match x {
-            Ok(y) => y,
-            Err(e) => {
-                debug!("Importinng failed {e}");
-                return Statistics::new(toplistsize);
-            }
-        };
+        let mut statistics:Statistics = serde_json::from_reader(reader)?;
         statistics.sources = Rank::new(toplistsize);
         statistics.destinations = Rank::new(toplistsize);
         statistics.topdomain = Rank::new(toplistsize);
         statistics.topnx = Rank::new(toplistsize);
-        statistics
+        Ok(statistics)
     }
 }
