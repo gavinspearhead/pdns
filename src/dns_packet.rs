@@ -290,6 +290,8 @@ fn parse_answer(
     debug!("rrtype {rrtype}");
     if rrtype == DNS_RR_type::OPT {
         let len = parse_edns(packet_info, packet, offset + 2, stats, config)?;
+        offset += len as usize - 1;
+        let len = offset + 2 - offset_in;
         return Ok(len);
     }
     let class_val = dns_read_u16(packet, offset + 2)?;
@@ -309,7 +311,8 @@ fn parse_answer(
     let datalen: usize = dns_read_u16(packet, offset + 8)?.into();
 
     if !config.rr_type.contains(&rrtype) {
-        return Ok(datalen + 12);
+        let len = (offset - offset_in) + 10 + datalen;
+        return Ok(len);
     }
 
     let data = &packet[offset + 10..offset + 10 + datalen];
@@ -342,8 +345,9 @@ fn parse_answer(
         extended_error: DNSExtendedError::None,
     };
     packet_info.add_dns_record(rec);
-    offset += datalen as usize - 1;
-    Ok(datalen + 12)
+    offset += datalen - 1;
+    let len = offset - offset_in;
+    Ok(len)
 }
 
 fn parse_dns(
