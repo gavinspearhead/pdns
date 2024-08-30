@@ -27,6 +27,17 @@ pub(crate) fn timestame_to_str(timestamp: u32) -> Result<String, Parse_error> {
     Ok(dt.to_string())
 }
 
+pub(crate) fn dns_read_u128(packet: &[u8], offset: usize) -> Result<u128, Parse_error> {
+    let Some(r) = packet.get(offset..offset + 16) else {
+        return Err(Parse_error::new(
+            ParseErrorType::Invalid_packet_index,
+            &offset.to_string(),
+        ));
+    };
+    let val = BigEndian::read_u128(r);
+    Ok(val)
+}
+
 pub(crate) fn dns_read_u64(packet: &[u8], offset: usize) -> Result<u64, Parse_error> {
     let Some(r) = packet.get(offset..offset + 8) else {
         return Err(Parse_error::new(

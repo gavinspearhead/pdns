@@ -1,11 +1,7 @@
 use crate::rank::Rank;
 use crate::time_stats::Time_stats;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    fs::File,
-    io::BufReader,
-};
+use std::{collections::HashMap, fs::File, io::BufReader};
 
 use serde_with::rust::deserialize_ignore_any;
 
@@ -63,10 +59,13 @@ impl Statistics {
         }
     }
 
-    pub(crate) fn import(filename: &str, toplistsize: usize) ->Result<Statistics, Box<dyn std::error::Error>> {
-        let file = File::open(filename)? ;
+    pub(crate) fn import(
+        filename: &str,
+        toplistsize: usize,
+    ) -> Result<Statistics, Box<dyn std::error::Error>> {
+        let file = File::open(filename)?;
         let reader = BufReader::new(file);
-        let mut statistics:Statistics = serde_json::from_reader(reader)?;
+        let mut statistics: Statistics = serde_json::from_reader(reader)?;
         statistics.sources = Rank::new(toplistsize);
         statistics.destinations = Rank::new(toplistsize);
         statistics.topdomain = Rank::new(toplistsize);

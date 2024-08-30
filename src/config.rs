@@ -9,7 +9,8 @@ use crate::{
     version::{AUTHOR, DESCRIPTION, PROGNAME, VERSION},
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub(crate) struct Config {
     pub rr_type: Vec<crate::dns::DNS_RR_type>,
     pub interface: String,

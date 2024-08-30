@@ -306,9 +306,20 @@ impl std::fmt::Display for EDNS0ptionCodes {
 }
 
 #[derive(
-    Debug, EnumIter, Copy, Clone, AsStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize,
+    Debug,
+    EnumIter,
+    Copy,
+    Clone,
+    AsStaticStr,
+    EnumString,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Default,
 )]
 pub(crate) enum DNSExtendedError {
+    #[default]
     None = 0xffff,
     Other = 0,
     Unsupported_DNSKEY_Algorithm = 1,
@@ -461,9 +472,20 @@ impl std::fmt::Display for DNS_record {
 }
 
 #[derive(
-    Debug, EnumIter, Copy, Clone, AsStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize,
+    Debug,
+    EnumIter,
+    Copy,
+    Clone,
+    AsStaticStr,
+    EnumString,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Default,
 )]
 pub(crate) enum DnsReplyType {
+    #[default]
     NOERROR = 0,
     FORMERROR = 1,
     SERVFAIL = 2,
@@ -624,19 +646,26 @@ pub(crate) fn sshfp_fp_type(u: u8) -> Result<&'static str, Parse_error> {
 
 pub(crate) fn dnssec_algorithm(u: u8) -> Result<&'static str, Parse_error> {
     match u {
-        0 => Ok("Reserved"),
+        0 | 9 | 11 | 123_u8..=251_u8 => Ok("Reserved"),
         1 => Ok("RSA/MD5"),
+        2 => Ok("DH"),
         3 => Ok("DSA/SHA1"),
         5 => Ok("RSA/SHA1"),
         6 => Ok("DSA-NSEC3-SHA1"),
         7 => Ok("RSASHA1-NSEC3-SHA1"),
         8 => Ok("RSA/SHA2-256"),
         10 => Ok("RSA/SHA2-512"),
-        12 => Ok("GOST"),
+        12 => Ok("ECC-GOST"),
         13 => Ok("ECDSA/SHA2-256"),
         14 => Ok("ECDSA/SHA2-384"),
         15 => Ok("Ed25519"),
         16 => Ok("Ed448"),
+        17 => Ok("SM2SM3"),
+        23 => Ok("ECC-GOST12"),
+        252 => Ok("Indirect"),
+        253 => Ok("PrivateDNS"),
+        254 => Ok("PrivateOID"),
+
         _ => Err(Parse_error::new(
             crate::errors::ParseErrorType::Invalid_Parameter,
             "Unknown algorithm",
@@ -651,6 +680,8 @@ pub(crate) fn dnssec_digest(u: u8) -> Result<&'static str, Parse_error> {
         2 => Ok("SHA2-256"),
         3 => Ok("GOST R 34.10-2001"),
         4 => Ok("SHA2-384"),
+        5 => Ok("GOST R 34.11-2012"),
+        6 => Ok("SM3"),
         _ => Err(Parse_error::new(
             crate::errors::ParseErrorType::Invalid_Parameter,
             "Unknown digest",

@@ -153,8 +153,8 @@ impl fmt::Display for Packet_info {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(
             f,
-            "{}:{} => {}:{}",
-            self.s_addr, self.sp, self.d_addr, self.dp
+            "{}:{} => {}:{} ({})",
+            self.s_addr, self.sp, self.d_addr, self.dp, self.protocol
         )
         .expect("Cannot write output format ");
         for i in &self.dns_records {
