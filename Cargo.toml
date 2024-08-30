@@ -11,7 +11,7 @@ debug = 1
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-pcap ={ version = "2.0" }
+pcap ={ version = "2.1" }
 byteorder = "1"
 chrono = "0.4"
 strum = "0.17"
@@ -19,7 +19,7 @@ strum_macros = "0.17"
 clap = { version = "4.4", features = ["derive"] }
 hex="0.4"
 base64="0.21"
-libc="0.2"
+#libc="0.2"
 sqlx = { version = "0.8", features = ["runtime-async-std-native-tls", "mysql", "chrono", "uuid"] }
 futures = "0.3"
 serde = { version = "1.0", features = ["derive"] }

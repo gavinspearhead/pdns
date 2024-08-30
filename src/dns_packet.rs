@@ -273,7 +273,7 @@ fn parse_edns(
         offset += option_length + 4; // need to add the option code and length fields too
     }
 
-    Ok(8+data_length)
+    Ok(8 + data_length)
 }
 
 fn parse_answer(
@@ -305,22 +305,24 @@ fn parse_answer(
         .and_modify(|c| *c += 1)
         .or_insert(1);
 
-    if !config.rr_type.contains(&rrtype) {
-        return Ok(0);
-    }
     let ttl = dns_read_u32(packet, offset + 4)?;
     let datalen: usize = dns_read_u16(packet, offset + 8)?.into();
+
+    if !config.rr_type.contains(&rrtype) {
+        return Ok(datalen + 12);
+    }
+
     let data = &packet[offset + 10..offset + 10 + datalen];
     let rdata = dns_parse_rdata(data, rrtype, packet, offset + 10)?;
     offset += 11;
 
     let domain = publicsuffixlist.domain(name.as_bytes());
-    
+
     let domain_str = if let Some(d) = domain {
         let x = d.trim().as_bytes().to_vec();
         String::from_utf8(x).unwrap_or_default()
     } else {
-        tracing::debug!("Not found {name}");
+        debug!("Not found {name}");
         String::new()
     };
 
@@ -341,8 +343,7 @@ fn parse_answer(
     };
     packet_info.add_dns_record(rec);
     offset += datalen as usize - 1;
-    let len = offset - offset_in;
-    Ok(len)
+    Ok(datalen + 12)
 }
 
 fn parse_dns(
