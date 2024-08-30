@@ -149,7 +149,9 @@ fn parse_edns(
                 let info_text =
                     std::str::from_utf8(&rdata[offset + 6..offset + 4 + option_length])?;
                 debug!("infotext {info_text}");
-                packet_info.dns_records[0].extended_error = info_code;
+                if packet_info.dns_records.len() > 0 {
+                    packet_info.dns_records[0].extended_error = info_code;
+                }
 
                 stats
                     .extended_error
