@@ -131,7 +131,7 @@ fn parse_edns(
     let _z = dns_read_u16(packet, offset_in + 4)?;
     let data_length = dns_read_u16(packet, offset_in + 6)? as usize;
     if data_length == 0 {
-        return Ok(0);
+        return Ok(8);
     }
     tracing::debug!("data length {data_length}");
     let rdata = &packet[offset_in + 8..offset_in + 8 + data_length];
@@ -273,7 +273,7 @@ fn parse_edns(
         offset += option_length + 4; // need to add the option code and length fields too
     }
 
-    Ok(0)
+    Ok(8+data_length)
 }
 
 fn parse_answer(
@@ -289,8 +289,8 @@ fn parse_answer(
     let rrtype = parse_rrtype(rrtype_val)?;
     debug!("rrtype {rrtype}");
     if rrtype == DNS_RR_type::OPT {
-        let _ = parse_edns(packet_info, packet, offset + 2, stats, config)?;
-        return Ok(0);
+        let len = parse_edns(packet_info, packet, offset + 2, stats, config)?;
+        return Ok(len);
     }
     let class_val = dns_read_u16(packet, offset + 2)?;
     let class = parse_class(class_val)?;
@@ -433,20 +433,20 @@ fn parse_dns(
     }
     tracing::debug!("Answers {}", answers);
     for _i in 0..answers {
-        debug!("answer {_i} of {answers}");
+        debug!("answer {_i} of {answers} offset {offset}");
         offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist)?;
     }
     if config.authority {
         tracing::debug!("Authority {}", authority);
         for _i in 0..authority {
-            debug!("authority {_i} of {authority}");
+            debug!("authority {_i} of {authority} offset {offset}");
             offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist)?;
         }
     }
     if config.additional {
         tracing::debug!("Additional {}", additional);
         for _i in 0..additional {
-            debug!("additional {_i} of {additional}");
+            debug!("additional {_i} of {additional} offset {offset}");
             offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist)?;
         }
     }
