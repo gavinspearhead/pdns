@@ -1,10 +1,11 @@
 use crate::config::Config;
-use crate::dns::{dnssec_algorithm, dnssec_digest, DNSExtendedError, DNS_Opcodes, EDNS0ptionCodes};
+use crate::dns::{dnssec_algorithm, dnssec_digest, DNS_Opcodes};
 use crate::dns_helper::{
     self, dns_read_u128, dns_read_u16, dns_read_u32, dns_read_u64, dns_read_u8, parse_class,
     parse_rrtype,
 };
 use crate::dns_rr::{dns_parse_name, dns_parse_rdata};
+use crate::edns::{DNSExtendedError, EDNS0ptionCodes};
 use crate::errors::ParseErrorType;
 use crate::packet_info::Packet_info;
 use crate::statistics::Statistics;
@@ -15,13 +16,11 @@ use publicsuffix::Psl;
 use regex::Regex;
 use skiplist::match_skip_list;
 use std::fmt;
-use std::sync::{Arc, Mutex};
 use strum::IntoEnumIterator;
 use strum_macros::{AsStaticStr, EnumIter, EnumString};
-use tcp_connection::TCP_Connections;
 use tracing::debug;
 
-use crate::{dns, errors, skiplist, tcp_connection};
+use crate::{dns, errors, skiplist};
 
 #[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq, EnumString, AsStaticStr)]
 pub(crate) enum DNS_Protocol {
@@ -123,17 +122,17 @@ fn parse_edns(
     _config: &Config,
 ) -> Result<usize, Box<dyn std::error::Error>> {
     let payload_size = dns_read_u16(packet, offset_in)?;
-    tracing::debug!("payload size {payload_size}");
+    debug!("payload size {payload_size}");
     let e_rcode = dns_read_u8(packet, offset_in + 2)?;
-    tracing::debug!("e code {e_rcode}");
+    debug!("e code {e_rcode}");
     let edns_version = dns_read_u8(packet, offset_in + 3)?;
-    tracing::debug!("edns_version {edns_version}");
+    debug!("edns_version {edns_version}");
     let _z = dns_read_u16(packet, offset_in + 4)?;
     let data_length = dns_read_u16(packet, offset_in + 6)? as usize;
     if data_length == 0 {
         return Ok(8);
     }
-    tracing::debug!("data length {data_length}");
+    debug!("data length {data_length}");
     let rdata = &packet[offset_in + 8..offset_in + 8 + data_length];
     let mut offset: usize = 0;
     while offset < data_length as usize {
@@ -270,6 +269,18 @@ fn parse_edns(
                     debug!("Key tag: {}", key_tag);
                 }
             }
+            EDNS0ptionCodes::UpdateLease => {
+                let lease = dns_read_u32(rdata, offset + 4)?;
+                debug!("Lease: {lease}");
+                if option_length == 8 {
+                    let key_lease = dns_read_u32(rdata, offset + 4)?;
+                    debug!("Key Lease: {key_lease}");
+                }
+            }
+            EDNS0ptionCodes::ReportChannel => {
+                let (name, _offset) = dns_parse_name(rdata, offset + 4)?;
+                debug!("Report channel: {name}");
+            }
             _ => {}
         }
         offset += option_length + 4; // need to add the option code and length fields too
@@ -317,9 +328,10 @@ fn parse_answer(
         return Ok(len);
     }
 
-    let data = &packet[offset + 10..offset + 10 + datalen];
-    let rdata = dns_parse_rdata(data, rrtype, packet, offset + 10)?;
-    offset += 11;
+    offset += 10;
+    let data = &packet[offset..offset + datalen];
+    let rdata = dns_parse_rdata(data, rrtype, packet, offset)?;
+    offset += 1;
 
     let domain = publicsuffixlist.domain(name.as_bytes());
 
@@ -352,7 +364,7 @@ fn parse_answer(
     Ok(len)
 }
 
-fn parse_dns(
+pub(crate) fn parse_dns(
     packet_in: &[u8],
     packet_info: &mut Packet_info,
     stats: &mut Statistics,
@@ -438,348 +450,25 @@ fn parse_dns(
             skip_list,
         )?;
     }
-    tracing::debug!("Answers {}", answers);
+   // tracing::debug!("Answers {}", answers);
     for _i in 0..answers {
-        debug!("answer {_i} of {answers} offset {offset}");
+       // debug!("answer {_i} of {answers} offset {offset}");
         offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist)?;
     }
     if config.authority {
-        tracing::debug!("Authority {}", authority);
+       // tracing::debug!("Authority {}", authority);
         for _i in 0..authority {
-            debug!("authority {_i} of {authority} offset {offset}");
+         //   debug!("authority {_i} of {authority} offset {offset}");
             offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist)?;
         }
     }
     if config.additional {
-        tracing::debug!("Additional {}", additional);
+      //  tracing::debug!("Additional {}", additional);
         for _i in 0..additional {
-            debug!("additional {_i} of {additional} offset {offset}");
+          //  debug!("additional {_i} of {additional} offset {offset}");
             offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist)?;
         }
     }
     debug!("{}", packet_info);
     Ok(())
-}
-
-fn parse_tcp(
-    packet: &[u8],
-    packet_info: &mut Packet_info,
-    stats: &mut Statistics,
-    tcp_list: &Arc<Mutex<TCP_Connections>>,
-    config: &Config,
-    skip_list: &[Regex],
-    publicsuffixlist: &publicsuffix::List,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if packet.len() < 20 {
-        return Err(Parse_error::new(errors::ParseErrorType::Invalid_TCP_Header, "").into());
-    }
-    let sp: u16 = dns_read_u16(packet, 0)?;
-    let dp: u16 = dns_read_u16(packet, 2)?;
-    if !(dp == 53 || sp == 53 || dp == 5353 || sp == 5353 || dp == 5355 || sp == 5355) {
-        return Err(Parse_error::new(errors::ParseErrorType::Invalid_DNS_Packet, "").into());
-    }
-    let hl: u8 = (packet[12] >> 4) * 4;
-    let len: u32 = u32::try_from(packet.len() - usize::from(hl))?;
-    let flags = packet[13];
-    let _wsize = dns_read_u16(packet, 14)?;
-    let seqnr = dns_read_u32(packet, 4)?;
-
-    packet_info.set_dest_port(dp);
-    packet_info.set_source_port(sp);
-    packet_info.set_data_len(len);
-
-    let Some(dnsdata) = packet.get((hl as usize)..) else {
-        return Err(Parse_error::new(errors::ParseErrorType::Invalid_TCP_Packet, "").into());
-    };
-    let r = tcp_list.lock().unwrap().process_data(
-        sp,
-        dp,
-        packet_info.s_addr,
-        packet_info.d_addr,
-        seqnr,
-        dnsdata,
-        packet_info.timestamp,
-        flags,
-    );
-    if let Some(d) = r {
-        stats.tcp += 1;
-        return parse_dns(
-            d.data(),
-            packet_info,
-            stats,
-            config,
-            skip_list,
-            publicsuffixlist,
-        );
-    };
-
-    Ok(())
-}
-
-fn parse_udp(
-    packet: &[u8],
-    packet_info: &mut Packet_info,
-    stats: &mut Statistics,
-    config: &Config,
-    skip_list: &[Regex],
-    publicsuffixlist: &publicsuffix::List,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if packet.len() < 8 {
-        return Err(Parse_error::new(errors::ParseErrorType::Invalid_UDP_Header, "").into());
-    }
-    let sp: u16 = dns_read_u16(packet, 0)?;
-    let dp: u16 = dns_read_u16(packet, 2)?;
-    let len: u16 = dns_read_u16(packet, 4)?;
-    packet_info.set_dest_port(dp);
-    packet_info.set_source_port(sp);
-    packet_info.set_data_len(u32::from(len) - 8);
-
-    if dp == 53 || sp == 53 || dp == 5353 || sp == 5353 || dp == 5355 || sp == 5355 {
-        stats.udp += 1;
-        parse_dns(
-            &packet[8..],
-            packet_info,
-            stats,
-            config,
-            skip_list,
-            publicsuffixlist,
-        )
-    } else {
-        Err(Parse_error::new(
-            errors::ParseErrorType::Invalid_DNS_Packet,
-            &format!("{dp} {sp}"),
-        )
-        .into())
-    }
-}
-
-fn parse_ip_data(
-    packet: &[u8],
-    protocol: u8,
-    packet_info: &mut Packet_info,
-    stats: &mut Statistics,
-    tcp_list: &Arc<Mutex<TCP_Connections>>,
-    config: &Config,
-    skip_list: &[Regex],
-    publicsuffixlist: &publicsuffix::List,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if protocol == 6 {
-        packet_info.set_protocol(DNS_Protocol::TCP);
-        // TCP
-        parse_tcp(
-            packet,
-            packet_info,
-            stats,
-            tcp_list,
-            config,
-            skip_list,
-            publicsuffixlist,
-        )
-    } else if protocol == 17 {
-        packet_info.set_protocol(DNS_Protocol::UDP);
-        //  UDP
-        parse_udp(
-            packet,
-            packet_info,
-            stats,
-            config,
-            skip_list,
-            publicsuffixlist,
-        )
-    } else {
-        Ok(())
-    }
-}
-
-fn parse_ipv4(
-    packet: &[u8],
-    packet_info: &mut Packet_info,
-    stats: &mut Statistics,
-    tcp_list: &Arc<Mutex<TCP_Connections>>,
-    config: &Config,
-    skip_list: &[Regex],
-    publicsuffixlist: &publicsuffix::List,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if packet.len() < 20 {
-        return Err(Parse_error::new(errors::ParseErrorType::Invalid_IPv6_Header, "").into());
-    }
-    if packet[0] >> 4 != 4 {
-        return Err(Parse_error::new(
-            errors::ParseErrorType::Invalid_IP_Version,
-            &format!("{:x}", &packet[0] >> 4),
-        )
-        .into());
-    }
-    let ihl: u16 = (u16::from(packet[0] & 0xf)) * 4;
-    let src = dns_helper::parse_ipv4(&packet[12..16])?;
-    let dst = dns_helper::parse_ipv4(&packet[16..20])?;
-    let len: u16 = dns_read_u16(packet, 2)? - ihl;
-    let next_header = packet[9];
-    packet_info.set_dest_ip(dst);
-    packet_info.set_source_ip(src);
-    packet_info.set_ip_len(len);
-    parse_tunneling(
-        &packet[ihl as usize..],
-        next_header,
-        packet_info,
-        stats,
-        tcp_list,
-        config,
-        skip_list,
-        publicsuffixlist,
-    )
-}
-
-fn parse_tunneling(
-    packet: &[u8],
-    next_header: u8,
-    packet_info: &mut Packet_info,
-    stats: &mut Statistics,
-    tcp_list: &Arc<Mutex<TCP_Connections>>,
-    config: &Config,
-    skip_list: &[Regex],
-    publicsuffixlist: &publicsuffix::List,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if next_header == 4 {
-        // IPIP
-        if packet.len() < 20 {
-            return Err(Parse_error::new(
-                errors::ParseErrorType::Packet_Too_Small,
-                &format!("{}", packet.len()),
-            )
-            .into());
-            //ip packets are always >= 20 bytes
-        }
-        let ip_ver = packet[0] >> 4;
-        if ip_ver == 4 {
-            return parse_ipv4(
-                packet,
-                packet_info,
-                stats,
-                tcp_list,
-                config,
-                skip_list,
-                publicsuffixlist,
-            );
-        } else if ip_ver == 6 {
-            return parse_ipv6(
-                packet,
-                packet_info,
-                stats,
-                tcp_list,
-                config,
-                skip_list,
-                publicsuffixlist,
-            );
-        } else {
-            return Err(Parse_error::new(
-                errors::ParseErrorType::Invalid_IP_Version,
-                &format!("{ip_ver}"),
-            )
-            .into());
-        }
-    } else {
-        parse_ip_data(
-            packet,
-            next_header,
-            packet_info,
-            stats,
-            tcp_list,
-            config,
-            skip_list,
-            publicsuffixlist,
-        )
-    }
-}
-
-fn parse_ipv6(
-    packet: &[u8],
-    packet_info: &mut Packet_info,
-    stats: &mut Statistics,
-    tcp_list: &Arc<Mutex<TCP_Connections>>,
-    config: &Config,
-    skip_list: &[Regex],
-    publicsuffixlist: &publicsuffix::List,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if packet.len() < 40 {
-        return Err(Parse_error::new(
-            errors::ParseErrorType::Invalid_IPv6_Header,
-            &format!("{}", packet.len()),
-        )
-        .into());
-    }
-    if packet[0] >> 4 != 6 {
-        return Err(Parse_error::new(
-            errors::ParseErrorType::Invalid_IP_Version,
-            &format!("{}", &packet[0] >> 4),
-        )
-        .into());
-    }
-
-    let _len: u16 = dns_read_u16(packet, 4)?;
-    let next_header = packet[6];
-
-    let src = dns_helper::parse_ipv6(&packet[8..24])?;
-    let dst = dns_helper::parse_ipv6(&packet[24..40])?;
-    packet_info.set_dest_ip(dst);
-    packet_info.set_source_ip(src);
-    parse_tunneling(
-        &packet[40..],
-        next_header,
-        packet_info,
-        stats,
-        tcp_list,
-        config,
-        skip_list,
-        publicsuffixlist,
-    )
-}
-
-pub(crate) fn parse_eth(
-    packet: &[u8],
-    packet_info: &mut Packet_info,
-    stats: &mut Statistics,
-    tcp_list: &Arc<Mutex<TCP_Connections>>,
-    config: &Config,
-    skip_list: &[Regex],
-    publicsuffixlist: &publicsuffix::List,
-) -> Result<(), Box<dyn std::error::Error>> {
-    packet_info.frame_len = u32::try_from(packet.len())?;
-    let mut offset = 12;
-    let mut eth_type_field = dns_read_u16(packet, offset)?;
-    offset += 2;
-
-    if eth_type_field == 0x8100 {
-        offset += 2;
-        eth_type_field = dns_read_u16(packet, offset)?;
-        offset += 2;
-    }
-
-    if eth_type_field == 0x0800 {
-        parse_ipv4(
-            &packet[offset..],
-            packet_info,
-            stats,
-            tcp_list,
-            config,
-            skip_list,
-            publicsuffixlist,
-        )
-    } else if eth_type_field == 0x86dd {
-        parse_ipv6(
-            &packet[offset..],
-            packet_info,
-            stats,
-            tcp_list,
-            config,
-            skip_list,
-            publicsuffixlist,
-        )
-    } else {
-        Err(Parse_error::new(
-            errors::ParseErrorType::Invalid_IP_Version,
-            &format!("{}", &packet[0] >> 4),
-        )
-        .into())
-    }
 }

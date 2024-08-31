@@ -44,7 +44,7 @@ impl DNS_Cache {
 impl fmt::Display for DNS_Cache {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for v in self.items.values() {
-            write!(f, "{v}").expect("Cannot write output format ");
+            write!(f, "{v}").expect("Cannot write output format");
         }
         write!(f, "")
     }

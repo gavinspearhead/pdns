@@ -10,10 +10,12 @@ pub mod dns_cache;
 pub mod dns_helper;
 pub mod dns_packet;
 pub mod dns_rr;
+pub mod edns;
 pub mod errors;
 pub mod http_server;
 pub mod live_dump;
 pub mod mysql_connection;
+pub mod network_packet;
 pub mod packet_info;
 pub mod rank;
 pub mod skiplist;
@@ -22,6 +24,7 @@ pub mod tcp_connection;
 pub mod tcp_data;
 pub mod time_stats;
 pub mod version;
+
 use chrono::{DateTime, Utc};
 use clap::{arg, Parser};
 use config::parse_config;
@@ -52,12 +55,11 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{filter, fmt, prelude::*, reload};
 
 use crate::config::Config;
-use crate::dns_packet::parse_eth;
 use crate::http_server::{listen, server};
+use crate::network_packet::parse_eth;
 use crate::packet_info::Packet_info;
 use crate::statistics::Statistics;
 use crate::version::{PROGNAME, VERSION};
-
 
 #[derive(Parser, Clone, Debug, PartialEq)]
 struct Args {

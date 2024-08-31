@@ -7,7 +7,6 @@ use crate::{
 use byteorder::{BigEndian, ByteOrder};
 use chrono::DateTime;
 
-
 pub(crate) fn parse_rrtype(rrtype: u16) -> Result<DNS_RR_type, DNS_error> {
     DNS_RR_type::find(rrtype)
 }
@@ -17,7 +16,7 @@ pub(crate) fn parse_class(class: u16) -> Result<DNS_Class, DNS_error> {
 }
 
 pub(crate) fn timestame_to_str(timestamp: u32) -> Result<String, Parse_error> {
-     let Some(dt) = DateTime::from_timestamp(i64::from(timestamp), 0) else {
+    let Some(dt) = DateTime::from_timestamp(i64::from(timestamp), 0) else {
         return Err(Parse_error::new(
             ParseErrorType::Invalid_timestamp,
             &timestamp.to_string(),
@@ -49,6 +48,17 @@ pub(crate) fn dns_read_u64(packet: &[u8], offset: usize) -> Result<u64, Parse_er
     Ok(val)
 }
 
+pub(crate) fn dns_read_u32(packet: &[u8], offset: usize) -> Result<u32, Parse_error> {
+    let Some(r) = packet.get(offset..offset + 4) else {
+        return Err(Parse_error::new(
+            ParseErrorType::Invalid_packet_index,
+            &offset.to_string(),
+        ));
+    };
+    let val = BigEndian::read_u32(r);
+    Ok(val)
+}
+
 pub(crate) fn dns_read_u16(packet: &[u8], offset: usize) -> Result<u16, Parse_error> {
     let Some(r) = packet.get(offset..offset + 2) else {
         return Err(Parse_error::new(
@@ -61,24 +71,13 @@ pub(crate) fn dns_read_u16(packet: &[u8], offset: usize) -> Result<u16, Parse_er
 }
 
 pub(crate) fn dns_read_u8(packet: &[u8], offset: usize) -> Result<u8, Parse_error> {
-    let Some(r) = packet.get(offset) else {
+    let Some(&r) = packet.get(offset) else {
         return Err(Parse_error::new(
             ParseErrorType::Invalid_packet_index,
             &offset.to_string(),
         ));
     };
-    Ok(*r)
-}
-
-pub(crate) fn dns_read_u32(packet: &[u8], offset: usize) -> Result<u32, Parse_error> {
-    let Some(r) = packet.get(offset..offset + 4) else {
-        return Err(Parse_error::new(
-            ParseErrorType::Invalid_packet_index,
-            &offset.to_string(),
-        ));
-    };
-    let val = BigEndian::read_u32(r);
-    Ok(val)
+    Ok(r)
 }
 
 pub(crate) fn base32hex_encode(input: &[u8]) -> String {
