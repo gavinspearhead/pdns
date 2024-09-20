@@ -72,7 +72,7 @@ pub(crate) fn handle_connection(
         // stream.write_all(response.as_bytes()).unwrap();
     } else if req[1] == "/version" {
         let s_str = VERSION;
-        let len = s_str;
+        let len = s_str.len();
         response = format!("{status_line}\r\nContent-Length: {len}\r\n\r\n{s_str}\r\n");
     } else if req[1] == "/topdomains" {
         let top_domains = &stats.lock().unwrap().topdomain.clone();
