@@ -1,20 +1,45 @@
 use asn_db2::{Database, IpEntry};
 use chrono::{DateTime, Utc};
 use std::{
-    fmt,
-    net::{IpAddr, Ipv4Addr},
+    collections::VecDeque, fmt, net::{IpAddr, Ipv4Addr}, sync::{Arc, Mutex}
 };
 
 use crate::dns::{DNS_RR_type, DNS_record};
 use crate::dns_packet::DNS_Protocol;
 
+
+#[derive(Debug, Clone)]
+pub(crate) struct Packet_Queue {
+    queue: Arc<Mutex<VecDeque<Option<Packet_info>>>>,
+}
+
+impl Packet_Queue {
+    pub (crate) fn new() -> Packet_Queue {
+        Packet_Queue {
+            queue: Arc::new(Mutex::new(VecDeque::new())),
+        }
+    }
+    pub(crate) fn push_back(&self, packet_info: Option<Packet_info>) {
+        self.queue.lock().unwrap().push_back(packet_info);
+    }
+    pub (crate) fn pop_front(&self) -> Option<Option<Packet_info>>
+    {
+        self.queue.lock().unwrap().pop_front()
+    }
+
+}
+/*impl Default for Packet_info {
+
+}
+*/
+
 #[derive(Debug, Clone)]
 pub(crate) struct Packet_info {
     pub timestamp: DateTime<Utc>,
-    pub sp: u16, // source port
-    pub dp: u16, // destination port
     pub s_addr: IpAddr,
     pub d_addr: IpAddr,
+    pub sp: u16, // source port
+    pub dp: u16, // destination port
     pub ip_len: u16,
     pub frame_len: u32,
     pub data_len: u32,
@@ -22,18 +47,15 @@ pub(crate) struct Packet_info {
     pub dns_records: Vec<DNS_record>,
 }
 
-/*impl Default for Packet_info {
 
-}
-*/
 impl Packet_info {
     pub fn new() -> Self {
         Packet_info {
             timestamp: Utc::now(),
             sp: 0,
             dp: 0,
-            s_addr: std::net::IpAddr::V4(Ipv4Addr::UNSPECIFIED),
-            d_addr: std::net::IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+            s_addr: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+            d_addr: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
             ip_len: 0,
             frame_len: 0,
             data_len: 0,
@@ -125,7 +147,7 @@ impl Packet_info {
         }
     }
 
-    pub fn update_asn(&mut self, asn_db: &asn_db2::Database) {
+    pub fn update_asn(&mut self, asn_db: &Database) {
         for i in &mut self.dns_records {
             if let Ok(rr_type) = DNS_RR_type::from_string(&i.rr_type) {
                 if rr_type == DNS_RR_type::A || rr_type == DNS_RR_type::AAAA {

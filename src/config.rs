@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Error;
 
 use std::{fs::File, io::BufReader, str::FromStr};
-
+use tracing::error;
 use crate::{
     dns::DNS_RR_type,
     version::{AUTHOR, DESCRIPTION, PROGNAME, VERSION},
@@ -12,7 +12,7 @@ use crate::{
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub(crate) struct Config {
-    pub rr_type: Vec<crate::dns::DNS_RR_type>,
+    pub rr_type: Vec<DNS_RR_type>,
     pub interface: String,
     pub filter: String,
     pub output: String,
@@ -40,7 +40,7 @@ pub(crate) struct Config {
     pub export_stats: String,
     pub live_dump_port: u16,
     pub live_dump_host: String,
-    pub clean_interval: u32,
+    pub clean_interval: i64,
     pub additional: bool,
     pub authority: bool,
     pub log_file: String,
@@ -51,7 +51,7 @@ pub(crate) struct Config {
 impl Config {
     pub(crate) fn new() -> Config {
         let mut c = Config {
-            rr_type: Vec::<crate::dns::DNS_RR_type>::new(),
+            rr_type: Vec::<DNS_RR_type>::new(),
             interface: String::new(),
             filter: String::new(),
             output: String::new(),
@@ -98,25 +98,19 @@ impl Config {
 }
 
 pub(crate) fn parse_rrtypes(config_str: &str) -> Vec<DNS_RR_type> {
-    let mut rrtypes: Vec<DNS_RR_type> = Vec::new();
     if config_str.is_empty() {
-        return rrtypes;
+        return Vec::new();
     } else if config_str == "*" {
-        rrtypes = DNS_RR_type::to_vec();
-        return rrtypes;
+        return DNS_RR_type::to_vec();
     }
 
-    //let elems = config_str.split(',').map(|x| x.trim());
+    let mut rrtypes: Vec<DNS_RR_type> = Vec::new();
     let elems = config_str.split(',').map(str::trim);
     for i in elems {
-        let a = DNS_RR_type::from_string(i);
-        match a {
-            Ok(p) => {
-                rrtypes.push(p);
-            }
-            Err(_e) => {
-                tracing::error!("Invalid RR type: {i}");
-            }
+        if let Ok(a) = DNS_RR_type::from_string(i) {
+            rrtypes.push(a);
+        } else {
+            error!("Invalid RR type: {i}");
         }
     }
     rrtypes
@@ -331,7 +325,7 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
             .arg(
                 arg!(--live_dump_host <VALUE>)
                     .required(false)
-                    .long_help("Hostname or IP address for the live dump to liste to"),
+                    .long_help("Hostname or IP address for the live dump to listen on"),
             )
             .arg(
                 arg!(--live_dump_port <VALUE>)
@@ -364,7 +358,6 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
     if !config.config_file.is_empty() {
         let file = File::open(&config.config_file).expect("Cannot open file");
         let reader = BufReader::new(file);
-
         let x: Result<Config, Error> = serde_json::from_reader(reader);
         let new_config = match x {
             Ok(y) => y,
@@ -373,19 +366,6 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
             }
         };
         *config = new_config.clone();
-        /*let config_str = std::fs::read_to_string(&config.config_file).unwrap_or_default();
-        if !config_str.is_empty() {
-            match Config::from_str(&config_str) {
-                Ok(x) => {
-                    x.clone_into(config);
-                }
-                Err(e) => {
-                    let err_msg =
-                        format!("Failed to parse config file: {} {}", config.config_file, e);
-                    panic!("{err_msg}");
-                }
-            }
-        }*/
     }
 
     config.create_db = *matches.get_one::<bool>("create_database").unwrap_or(&false);
@@ -467,7 +447,7 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
         .get_one::<u16>("live_dump_port")
         .unwrap_or(&config.live_dump_port);
     config.clean_interval = *matches
-        .get_one::<u32>("clean_interval")
+        .get_one::<i64>("clean_interval")
         .unwrap_or(&config.clean_interval);
     config.import_stats = matches
         .get_one::<String>("import_stats")

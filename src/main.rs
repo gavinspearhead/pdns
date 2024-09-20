@@ -1,7 +1,6 @@
 // TODO
 // parametrize Rank with IP address type
 // improve filter on livedump
-// add dns opcodes to stats
 
 #![allow(non_camel_case_types)]
 pub mod config;
@@ -32,11 +31,10 @@ use dns_cache::DNS_Cache;
 use futures::executor::block_on;
 use live_dump::Live_dump;
 use mysql_connection::{create_database, Mysql_connection};
+use packet_info::Packet_Queue;
 use pcap::{Active, Capture, Linktype};
-use regex::Regex;
 use signal_hook::flag;
-use skiplist::read_skip_list;
-use std::collections::VecDeque;
+use skiplist::Skip_List;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufReader, BufWriter, Write};
 use std::path::Path;
@@ -97,11 +95,11 @@ fn dump_stats(stats: &Statistics, config: &Config) -> std::io::Result<()> {
 
 fn packet_loop<T>(
     mut cap: Capture<T>,
-    packet_queue: &Arc<Mutex<VecDeque<Option<Packet_info>>>>,
+    packet_queue: &Packet_Queue,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
     stats: &Arc<Mutex<Statistics>>,
     config: &Config,
-    skip_list: &[Regex],
+    skiplist: &Skip_List,
 ) where
     T: pcap::Activated,
 {
@@ -131,13 +129,10 @@ fn packet_loop<T>(
         match cap.next_packet() {
             Ok(packet) => {
                 let mut packet_info = Packet_info::new();
-                let ts = match DateTime::<Utc>::from_timestamp(
+                let ts = DateTime::<Utc>::from_timestamp(
                     packet.header.ts.tv_sec,
                     packet.header.ts.tv_usec as u32 * 1000,
-                ) {
-                    Some(x) => x,
-                    None => Utc::now(),
-                };
+                ).unwrap_or_else(Utc::now);
                 packet_info.set_timestamp(ts);
                 let result = parse_eth(
                     packet.data,
@@ -145,15 +140,16 @@ fn packet_loop<T>(
                     &mut stats.lock().unwrap(),
                     tcp_list,
                     config,
-                    skip_list,
+                    skiplist,
                     &publicsuffixlist,
                 );
                 match result {
                     Ok(()) => {
-                        packet_queue.lock().unwrap().push_back(Some(packet_info));
+                        //packet_queue .queue .lock() .unwrap() .push_back(Some(packet_info));
+                        packet_queue.push_back(Some(packet_info));
                     }
                     Err(error) => {
-                        tracing::debug!("{error:?}");
+                        debug!("{error:?}");
                     }
                 }
             }
@@ -162,7 +158,7 @@ fn packet_loop<T>(
             }
             Err(e) => {
                 error!("Packet capture error: {e}");
-                packet_queue.lock().unwrap().push_back(None);
+                packet_queue.push_back(None);
                 break;
             }
         }
@@ -182,11 +178,7 @@ fn load_asn_database(config: &Config) -> asn_db2::Database {
     asn_database
 }
 
-fn poll(
-    packet_queue: &Arc<Mutex<VecDeque<Option<Packet_info>>>>,
-    config: &Config,
-    rx: mpsc::Receiver<String>,
-) {
+fn poll(packet_queue: &Packet_Queue, config: &Config, rx: mpsc::Receiver<String>) {
     let mut timeout = time::Duration::from_millis(0);
     let mut output_file: Option<File> = None;
     let mut database_conn: Option<Mysql_connection> = None;
@@ -219,7 +211,7 @@ fn poll(
     loop {
         live_dump.accept();
         live_dump.read_all();
-        let packet_info = packet_queue.lock().unwrap().pop_front();
+        let packet_info = packet_queue.pop_front();
         if let Some(p) = packet_info {
             if let Some(mut p1) = p {
                 p1.update_asn(&asn_database);
@@ -232,20 +224,14 @@ fn poll(
 
                 if let Some(ref mut of) = output_file {
                     if config.output_type == "csv" {
-                        match of.write_all(p1.to_csv().as_bytes()) {
-                            Ok(()) => {}
-                            Err(e) => {
-                                error!("Write csv output failed, {e}");
-                                exit(-1);
-                            }
+                        if let Err(e) = of.write_all(p1.to_csv().as_bytes()) {
+                            error!("Write csv output failed, {e}");
+                            exit(-1);
                         }
                     } else if config.output_type == "json" {
-                        match of.write_all(p1.to_json().as_bytes()) {
-                            Ok(()) => {}
-                            Err(e) => {
-                                error!("Write json output failed, {e}");
-                                exit(-1);
-                            }
+                        if let Err(e) = of.write_all(p1.to_json().as_bytes()) {
+                            error!("Write json output failed, {e}");
+                            exit(-1);
                         }
                     }
                 };
@@ -260,7 +246,7 @@ fn poll(
                 return;
             }
         } else {
-            thread::sleep(timeout);
+            sleep(timeout);
             if timeout.as_millis() < 500 {
                 timeout += time::Duration::from_millis(50);
             }
@@ -308,16 +294,17 @@ fn cleanup_task(config: &Config) {
 
 fn run(
     config: &Config,
-    capin: Option<Capture<Active>>,
+    cap_in: Option<Capture<Active>>,
     pcap_path: &str,
     stats: &Arc<Mutex<Statistics>>,
 ) {
-    let packet_queue = Arc::new(Mutex::new(VecDeque::new()));
+    let packet_queue = Packet_Queue::new();
     let tcp_list = Arc::new(Mutex::new(TCP_Connections::new()));
 
     let (tcp_tx, tcp_rx) = mpsc::channel();
     let (_pq_tx, pq_rx) = mpsc::channel();
-    let skiplist = read_skip_list(&config.skip_list_file);
+    let mut skiplist = Skip_List::new();
+    skiplist.read_skip_list(&config.skip_list_file);
     thread::scope(|s| {
         let handle = s.spawn(|| poll(&packet_queue.clone(), config, pq_rx));
         let handle2 = s.spawn(|| clean_tcp_list(&tcp_list.clone(), tcp_rx));
@@ -351,7 +338,7 @@ fn run(
                     handle2.join().unwrap();
                 }
                 Err(e) => {
-                    error!("{e:?}");
+                    error!("Error reading PCAP file: {e:?}");
                     exit(-1);
                 }
             }
@@ -363,7 +350,7 @@ fn run(
                     server(&l, &stats.clone(), &tcp_list.clone(), &config.clone());
                 }
             });
-            let Some(mut cap) = capin else {
+            let Some(mut cap) = cap_in else {
                 error!("Something wrong with the capture");
                 exit(-1);
             };
@@ -382,19 +369,13 @@ fn run(
                 debug!("Starting signal loop");
                 let term = Arc::new(AtomicBool::new(false));
                 let kill = Arc::new(AtomicBool::new(false));
-                match flag::register(signal_hook::consts::SIGTERM, Arc::clone(&term)) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        error!("Cannot set signal handler {e}");
-                        exit(-1);
-                    }
+                if let Err(e) = flag::register(signal_hook::consts::SIGTERM, Arc::clone(&term)) {
+                    error!("Cannot set signal handler SIGTERM {e}");
+                    exit(-1);
                 };
-                match flag::register(signal_hook::consts::SIGINT, Arc::clone(&kill)) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        error!("Cannot set signal handler {e}");
-                        exit(-1);
-                    }
+                if let Err(e) = flag::register(signal_hook::consts::SIGINT, Arc::clone(&kill)) {
+                    error!("Cannot set signal handler SIGINT {e}");
+                    exit(-1);
                 }
                 while !term.load(Ordering::Relaxed) && !kill.load(Ordering::Relaxed) {
                     sleep(time::Duration::from_millis(50));
@@ -435,7 +416,6 @@ fn main() {
     }
 
     debug!("Config is: {:?}", config);
-    debug!("Log file is: {}", config.log_file);
     if !config.log_file.is_empty() {
         debug!("Logging to {}", config.log_file);
         let _ = reload_handle1.modify(|layers| {

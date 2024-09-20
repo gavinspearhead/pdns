@@ -4,9 +4,9 @@ use crate::dns_helper::{
 };
 use crate::dns_packet::{parse_dns, DNS_Protocol};
 use crate::packet_info::Packet_info;
+use crate::skiplist::Skip_List;
 use crate::statistics::Statistics;
 use errors::Parse_error;
-use regex::Regex;
 use std::sync::{Arc, Mutex};
 use tcp_connection::TCP_Connections;
 
@@ -19,7 +19,7 @@ fn parse_tcp(
     stats: &mut Statistics,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
     config: &Config,
-    skip_list: &[Regex],
+    skip_list: &Skip_List,
     publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < 20 {
@@ -73,7 +73,7 @@ fn parse_udp(
     packet_info: &mut Packet_info,
     stats: &mut Statistics,
     config: &Config,
-    skip_list: &[Regex],
+    skip_list: &Skip_List,
     publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < 8 {
@@ -112,7 +112,7 @@ fn parse_ip_data(
     stats: &mut Statistics,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
     config: &Config,
-    skip_list: &[Regex],
+    skip_list: &Skip_List,
     publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if protocol == 6 {
@@ -149,7 +149,7 @@ fn parse_ipv4(
     stats: &mut Statistics,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
     config: &Config,
-    skip_list: &[Regex],
+    skip_list: &Skip_List,
     publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < 20 {
@@ -189,7 +189,7 @@ fn parse_tunneling(
     stats: &mut Statistics,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
     config: &Config,
-    skip_list: &[Regex],
+    skip_list: &Skip_List,
     publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if next_header == 4 {
@@ -204,7 +204,7 @@ fn parse_tunneling(
         }
         let ip_ver = packet[0] >> 4;
         if ip_ver == 4 {
-            return parse_ipv4(
+            parse_ipv4(
                 packet,
                 packet_info,
                 stats,
@@ -212,7 +212,7 @@ fn parse_tunneling(
                 config,
                 skip_list,
                 publicsuffixlist,
-            );
+            )
         } else if ip_ver == 6 {
             return parse_ipv6(
                 packet,
@@ -250,7 +250,7 @@ fn parse_ipv6(
     stats: &mut Statistics,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
     config: &Config,
-    skip_list: &[Regex],
+    skip_list:&Skip_List, 
     publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < 40 {
@@ -293,7 +293,7 @@ pub(crate) fn parse_eth(
     stats: &mut Statistics,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
     config: &Config,
-    skip_list: &[Regex],
+    skip_list: &Skip_List,
     publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
     packet_info.frame_len = u32::try_from(packet.len())?;

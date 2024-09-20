@@ -16,7 +16,7 @@ impl DNS_Cache {
         }
     }
 
-    pub(crate) fn timeout(&self) -> i64 {
+    pub(crate)  fn timeout(&self) -> i64 {
         self.timeout
     }
 

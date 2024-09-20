@@ -1,16 +1,17 @@
+use std::error::Error;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 use strum::IntoEnumIterator;
-use strum_macros::EnumString;
-use strum_macros::{AsStaticStr, EnumIter};
+use strum_macros::{EnumString, IntoStaticStr};
+use strum_macros::{ EnumIter};
 use unic_idna::to_unicode;
 
 use crate::edns::DNSExtendedError;
 use crate::errors::{DNS_Error_Type, DNS_error, Parse_error};
 
-#[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq, EnumString, AsStaticStr)]
+#[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq, EnumString, IntoStaticStr)]
 pub(crate) enum DNS_Opcodes {
     Query = 0,
     IQuery = 1,
@@ -21,8 +22,8 @@ pub(crate) enum DNS_Opcodes {
 }
 
 impl DNS_Opcodes {
-    pub(crate) fn to_str(self) -> String {
-        String::from(strum::AsStaticRef::as_static(&self))
+    pub(crate) fn to_str(self) -> &'static str {
+        self.into()
     }
 
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
@@ -38,7 +39,7 @@ impl DNS_Opcodes {
     }
 }
 
-impl std::fmt::Display for DNS_Opcodes {
+impl fmt::Display for DNS_Opcodes {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_str())
     }
@@ -59,7 +60,7 @@ mod dns_opcodes_tests {
     }
 }
 
-#[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq, EnumString, AsStaticStr)]
+#[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq, EnumString, IntoStaticStr)]
 pub(crate) enum DNS_Class {
     IN = 1,
     CS = 2,
@@ -70,8 +71,8 @@ pub(crate) enum DNS_Class {
 }
 
 impl DNS_Class {
-    pub(crate) fn to_str(self) -> String {
-        String::from(strum::AsStaticRef::as_static(&self))
+    pub(crate) fn to_str(self) -> &'static str {
+        self.into()
     }
 
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
@@ -87,7 +88,7 @@ impl DNS_Class {
     }
 }
 
-impl std::fmt::Display for DNS_Class {
+impl fmt::Display for DNS_Class {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_str())
     }
@@ -108,7 +109,7 @@ mod dns_class_tests {
 }
 
 #[derive(
-    Debug, EnumIter, Copy, Clone, AsStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize,
+    Debug, EnumIter, Copy, Clone, IntoStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize,
 )]
 pub(crate) enum DNS_RR_type {
     A = 1,
@@ -174,6 +175,7 @@ pub(crate) enum DNS_RR_type {
     NSEC3PARAM = 51,
     NSEC = 47,
     NULL = 10,
+    NXNAME = 128,
     NXT = 30,
     OPENPGPKEY = 61,
     OPT = 41,
@@ -209,8 +211,8 @@ pub(crate) enum DNS_RR_type {
 }
 
 impl DNS_RR_type {
-    pub(crate) fn to_str(self) -> String {
-        String::from(strum::AsStaticRef::as_static(&self))
+    pub(crate) fn to_str(self) -> &'static str {
+        self.into()
     }
 
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
@@ -276,7 +278,7 @@ pub(crate) struct DNS_record {
 
 impl DNS_record {}
 
-impl std::fmt::Display for DNS_record {
+impl fmt::Display for DNS_record {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if f.alternate() {
             let mut s = to_unicode(
@@ -355,7 +357,7 @@ impl std::fmt::Display for DNS_record {
     EnumIter,
     Copy,
     Clone,
-    AsStaticStr,
+    IntoStaticStr,
     EnumString,
     PartialEq,
     Eq,
@@ -388,8 +390,8 @@ pub(crate) enum DnsReplyType {
 }
 
 impl DnsReplyType {
-    pub(crate) fn to_str(self) -> String {
-        String::from(strum::AsStaticRef::as_static(&self))
+    pub(crate) fn to_str(self) -> &'static str {
+        self.into()
     }
 
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
@@ -405,7 +407,7 @@ impl DnsReplyType {
     }
 }
 
-impl std::fmt::Display for DnsReplyType {
+impl fmt::Display for DnsReplyType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_str())
     }
@@ -433,8 +435,8 @@ mod tests2 {
     }
 }
 
-pub(crate) fn dns_reply_type(u: u16) -> Result<String, Box<dyn std::error::Error>> {
-    Ok(DnsReplyType::find(u)?.to_str())
+pub(crate) fn dns_reply_type(u: u16) -> Result<&'static str, Box<dyn Error>> {
+    Ok(DnsReplyType::find(u)?.to_str()) /*/.parse().unwrap())*/
 }
 
 pub(crate) fn tlsa_cert_usage(u: u8) -> Result<&'static str, Parse_error> {
@@ -609,7 +611,7 @@ pub(crate) fn cert_type_str(t: u16) -> Result<&'static str, Parse_error> {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, EnumIter, AsStaticStr)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, EnumIter, IntoStaticStr)]
 pub(crate) enum SVC_Param_Keys {
     mandatory = 0,
     alpn = 1,
@@ -631,5 +633,15 @@ impl SVC_Param_Keys {
             DNS_Error_Type::Invalid_RR,
             &format!("{val}"),
         ))
+    }
+    pub (crate) fn to_str(self) -> &'static str {
+        self.into()
+    }
+
+}
+
+impl fmt::Display for SVC_Param_Keys {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_str())
     }
 }

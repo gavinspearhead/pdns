@@ -11,12 +11,12 @@ use std::{
     thread::sleep,
     time,
 };
-use strum_macros::{AsStaticStr, EnumIter};
+use strum_macros::{EnumIter};
 use tracing::debug;
 
 use crate::tcp_data::Tcp_data;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, AsStaticStr)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter )]
 pub(crate) enum TCP_Connections_Error_Type {
     NotFound,
 }
@@ -117,7 +117,7 @@ impl TCP_Connections {
         dp: u16,
         src: IpAddr,
         dst: IpAddr,
-    ) -> Result<&Tcp_data, Box<dyn std::error::Error>> {
+    ) -> Result<&Tcp_data, Box<dyn Error>> {
         let Some(c) = self.connections.get(&(src, dst, sp, dp)) else {
             debug!("Connection not found {src}:{sp} => {dst}:{dp}");
             return Err(TcpConnection_error::new(
@@ -135,7 +135,7 @@ impl TCP_Connections {
         dp: u16,
         src: IpAddr,
         dst: IpAddr,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn Error>> {
         //  println!("Removing key {} {} {} {} ", src, dst, sp, dp);
         match self.connections.remove(&(src, dst, sp, dp)) {
             None => {
@@ -186,15 +186,15 @@ impl TCP_Connections {
         if (flags & 1 != 0) || (flags & 4 != 0) {
             // FIN flag or reset
             self.add_data(sp, dp, src, dst, seqnr, data);
-            match self.get_data(sp, dp, src, dst) {
+            return match self.get_data(sp, dp, src, dst) {
                 Ok(x) => {
                     let y = x.clone();
                     let _ = self.remove(sp, dp, src, dst);
-                    return Some(y);
+                    Some(y)
                 }
                 Err(_e) => {
                     let _ = self.remove(sp, dp, src, dst);
-                    return None;
+                    None
                 }
             }
         } else if (flags & 2 != 0) || (flags.trailing_zeros() >= 3) {

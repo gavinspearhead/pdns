@@ -5,32 +5,33 @@ use crate::dns_helper::{
     parse_rrtype,
 };
 use crate::dns_rr::{dns_parse_name, dns_parse_rdata};
-use crate::edns::{DNSExtendedError, EDNS0ptionCodes};
+use crate::edns::{DNSExtendedError, EDNSOptionCodes};
 use crate::errors::ParseErrorType;
 use crate::packet_info::Packet_info;
+use crate::skiplist::Skip_List;
 use crate::statistics::Statistics;
 use byteorder::{BigEndian, ByteOrder};
 use dns::{dns_reply_type, DNS_RR_type, DNS_record, DnsReplyType};
 use errors::Parse_error;
 use publicsuffix::Psl;
-use regex::Regex;
-use skiplist::match_skip_list;
 use std::fmt;
 use strum::IntoEnumIterator;
-use strum_macros::{AsStaticStr, EnumIter, EnumString};
-use tracing::debug;
+use strum_macros::{ EnumIter, EnumString, IntoStaticStr};
+use tracing::{debug, error};
 
-use crate::{dns, errors, skiplist};
+use crate::{dns, errors };
 
-#[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq, EnumString, AsStaticStr)]
+#[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq, EnumString, IntoStaticStr)]
 pub(crate) enum DNS_Protocol {
     TCP = 6,
     UDP = 17,
+    SCTP = 132,
+
 }
 
 impl DNS_Protocol {
-    pub(crate) fn to_str(self) -> String {
-        String::from(strum::AsStaticRef::as_static(&self))
+    pub(crate) fn to_str(self) -> &'static str {
+        self.into()
     }
 
     pub(crate) fn find(val: u16) -> Result<Self, Parse_error> {
@@ -60,10 +61,10 @@ fn parse_question(
     stats: &mut Statistics,
     _config: &Config,
     rcode: DnsReplyType,
-    skip_list: &[Regex],
+    skip_list: &Skip_List
 ) -> Result<usize, Box<dyn std::error::Error>> {
     let (name, offset) = dns_parse_name(packet, offset_in)?;
-    if match_skip_list(&name, skip_list) {
+    if skip_list.match_skip_list(&name) {
         return Err(format!("skipped: {name}").into());
     }
     let rrtype_val = dns_read_u16(packet, offset)?;
@@ -72,13 +73,13 @@ fn parse_question(
     let class = parse_class(class_val)?;
     stats
         .qtypes
-        .entry(rrtype.to_str())
+        .entry(rrtype.to_str().parse().unwrap_or_default())
         .and_modify(|c| *c += 1)
         .or_insert(1);
 
     stats
         .qclass
-        .entry(class.to_str())
+        .entry(class.to_str().parse().unwrap_or_default())
         .and_modify(|c| *c += 1)
         .or_insert(1);
 
@@ -94,9 +95,9 @@ fn parse_question(
     }
     if rcode != DnsReplyType::NOERROR {
         let rec: DNS_record = DNS_record {
-            rr_type: rrtype.to_str(),
+            rr_type: rrtype.to_str().parse().unwrap_or_default(),
             ttl: 0,
-            class: class.to_str(),
+            class: class.to_str().parse().unwrap_or_default(),
             name,
             rdata: String::new(),
             count: 1,
@@ -128,20 +129,20 @@ fn parse_edns(
     let edns_version = dns_read_u8(packet, offset_in + 3)?;
     debug!("edns_version {edns_version}");
     let _z = dns_read_u16(packet, offset_in + 4)?;
-    let data_length = dns_read_u16(packet, offset_in + 6)? as usize;
+    let data_length = usize::from(dns_read_u16(packet, offset_in + 6)?) ;
     if data_length == 0 {
         return Ok(8);
     }
     debug!("data length {data_length}");
     let rdata = &packet[offset_in + 8..offset_in + 8 + data_length];
     let mut offset: usize = 0;
-    while offset < data_length as usize {
-        let option_code = EDNS0ptionCodes::find(dns_read_u16(rdata, offset)?)?;
-        tracing::debug!("option code {option_code}");
+    while offset < data_length {
+        let option_code = EDNSOptionCodes::find(dns_read_u16(rdata, offset)?)?;
+        debug!("option code {option_code}");
         let option_length = dns_read_u16(rdata, offset + 2)? as usize;
-        tracing::debug!("option length {option_length}");
+        debug!("option length {option_length}");
         match option_code {
-            EDNS0ptionCodes::ExtendedDNSError => {
+            EDNSOptionCodes::ExtendedDNSError => {
                 // Extended DNS error
                 let info_code = DNSExtendedError::find(dns_read_u16(rdata, offset + 4)?)?;
                 debug!("info code {info_code}");
@@ -154,28 +155,28 @@ fn parse_edns(
 
                 stats
                     .extended_error
-                    .entry(info_code.to_str())
+                    .entry(info_code.to_str().parse().unwrap_or_default())
                     .and_modify(|c| *c += 1)
                     .or_insert(1);
             }
-            EDNS0ptionCodes::CHAIN => {
+            EDNSOptionCodes::CHAIN => {
                 let chain = dns_parse_name(rdata, offset + 4)?;
                 debug!("Chain {}", chain.0);
             }
-            EDNS0ptionCodes::NSID => {
+            EDNSOptionCodes::NSID => {
                 let nsid = std::str::from_utf8(&rdata[offset + 4..offset + 4 + option_length])?;
                 debug!("infotext {nsid:?}");
             }
-            EDNS0ptionCodes::EdnsTcpKeepalive => {
+            EDNSOptionCodes::EdnsTcpKeepalive => {
                 if option_length == 2 {
                     let timeout = dns_read_u16(rdata, offset + 4)?;
                     debug!("TCP Keepalive {timeout}");
                 }
             }
-            EDNS0ptionCodes::EDNSEXPIRE => {
+            EDNSOptionCodes::EDNSEXPIRE => {
                 debug!("Expire set");
             }
-            EDNS0ptionCodes::EdnsClientSubnet => {
+            EDNSOptionCodes::EdnsClientSubnet => {
                 let family = dns_read_u16(rdata, offset + 4)?;
                 let source_prefix_len = dns_read_u8(rdata, offset + 6)?;
                 let scope_prefix_len = dns_read_u8(rdata, offset + 7)?;
@@ -184,24 +185,26 @@ fn parse_edns(
                 if family == 1 {
                     // ipv4
                     let mut addr_: [u8; 4] = [0; 4];
-                    addr_[..addr.len()].copy_from_slice(&addr);
+                    addr_[..addr.len()].copy_from_slice(addr);
                     let v4addr = dns_helper::parse_ipv4(&addr_)?;
                     debug!("{v4addr}/{source_prefix_len}/{scope_prefix_len} (IPv4)");
                 } else if family == 2 {
                     // ipv6
                     let mut addr_: [u8; 16] = [0; 16];
-                    addr_[..addr.len()].copy_from_slice(&addr);
+                    addr_[..addr.len()].copy_from_slice(addr);
                     let v6addr = dns_helper::parse_ipv6(&addr_)?;
                     debug!("{v6addr}/{source_prefix_len}/{scope_prefix_len} (IPv6)");
+                } else {
+                    error!("Unknown address family {family}");
                 }
             }
-            EDNS0ptionCodes::Padding => {
+            EDNSOptionCodes::Padding => {
                 debug!(
                     "Padding {option_length} bytes: {:x?} ",
                     &rdata[offset + 4..]
                 );
             }
-            EDNS0ptionCodes::COOKIE => {
+            EDNSOptionCodes::COOKIE => {
                 if option_length == 24 {
                     let client_cookie = dns_read_u64(rdata, offset + 4)?;
                     let server_cookie = dns_read_u128(rdata, offset + 4 + 8)?;
@@ -211,28 +214,28 @@ fn parse_edns(
                     debug!("client_cookie {client_cookie:x}");
                 }
             }
-            EDNS0ptionCodes::DAU => {
+            EDNSOptionCodes::DAU => {
                 offset += 4;
                 for i in 0..option_length {
                     let alg = dns_read_u8(rdata, offset + i)?;
                     debug!("DNS Signing Algorithm: {}", dnssec_algorithm(alg)?);
                 }
             }
-            EDNS0ptionCodes::DHU => {
+            EDNSOptionCodes::DHU => {
                 offset += 4;
                 for i in 0..option_length {
                     let alg = dns_read_u8(rdata, offset + i)?;
                     debug!("DS Hash Algorithm: {}", dnssec_digest(alg)?);
                 }
             }
-            EDNS0ptionCodes::N3U => {
+            EDNSOptionCodes::N3U => {
                 offset += 4;
                 for i in 0..option_length {
                     let alg = dns_read_u8(rdata, offset + i)?;
                     debug!("NSEC3 Hash Algorithm: {}", dnssec_digest(alg)?);
                 }
             }
-            EDNS0ptionCodes::LLQ => {
+            EDNSOptionCodes::LLQ => {
                 let llq_ver = dns_read_u16(rdata, offset + 4)?;
                 let llq_opcode = dns_read_u16(rdata, offset + 6)?;
                 let llq_error = dns_read_u16(rdata, offset + 8)?;
@@ -243,7 +246,7 @@ fn parse_edns(
                     llq_ver, llq_opcode, llq_error, llq_id, llq_lease
                 );
             }
-            EDNS0ptionCodes::ZoneVersion => {
+            EDNSOptionCodes::ZoneVersion => {
                 let label_conut = dns_read_u8(rdata, offset + 4)?;
                 let version_type = dns_read_u8(rdata, offset + 5)?;
                 let Some(version) = rdata.get(offset + 6..) else {
@@ -254,22 +257,22 @@ fn parse_edns(
                     label_conut, version_type, &version
                 );
             }
-            EDNS0ptionCodes::EDNSClientTag => {
+            EDNSOptionCodes::EDNSClientTag => {
                 let client_tag = dns_read_u16(rdata, offset + 4)?;
                 debug!("Client Tag: {}", client_tag);
             }
-            EDNS0ptionCodes::EDNSServerTag => {
+            EDNSOptionCodes::EDNSServerTag => {
                 let server_tag = dns_read_u16(rdata, offset + 4)?;
                 debug!("Server Tag: {}", server_tag);
             }
-            EDNS0ptionCodes::EdnsKeyTag => {
+            EDNSOptionCodes::EdnsKeyTag => {
                 offset += 4;
                 for i in 0..option_length / 2 {
                     let key_tag = dns_read_u16(packet, offset + 2 * i)?;
                     debug!("Key tag: {}", key_tag);
                 }
             }
-            EDNS0ptionCodes::UpdateLease => {
+            EDNSOptionCodes::UpdateLease => {
                 let lease = dns_read_u32(rdata, offset + 4)?;
                 debug!("Lease: {lease}");
                 if option_length == 8 {
@@ -277,7 +280,7 @@ fn parse_edns(
                     debug!("Key Lease: {key_lease}");
                 }
             }
-            EDNS0ptionCodes::ReportChannel => {
+            EDNSOptionCodes::ReportChannel => {
                 let (name, _offset) = dns_parse_name(rdata, offset + 4)?;
                 debug!("Report channel: {name}");
             }
@@ -285,7 +288,6 @@ fn parse_edns(
         }
         offset += option_length + 4; // need to add the option code and length fields too
     }
-
     Ok(8 + data_length)
 }
 
@@ -296,14 +298,18 @@ fn parse_answer(
     stats: &mut Statistics,
     config: &Config,
     publicsuffixlist: &publicsuffix::List,
+    skip_list: &Skip_List
 ) -> Result<usize, Box<dyn std::error::Error>> {
     let (name, mut offset) = dns_parse_name(packet, offset_in)?;
+    if skip_list.match_skip_list(&name) {
+        return Err(format!("skipped: {name}").into());
+    }
     let rrtype_val = BigEndian::read_u16(&packet[offset..offset + 2]);
     let rrtype = parse_rrtype(rrtype_val)?;
     debug!("rrtype {rrtype}");
     if rrtype == DNS_RR_type::OPT {
         let len = parse_edns(packet_info, packet, offset + 2, stats, config)?;
-        offset += len as usize - 1;
+        offset += len - 1;
         let len = offset + 2 - offset_in;
         return Ok(len);
     }
@@ -311,12 +317,12 @@ fn parse_answer(
     let class = parse_class(class_val)?;
     stats
         .atypes
-        .entry(rrtype.to_str())
+        .entry(rrtype.to_str().parse().unwrap_or_default())
         .and_modify(|c| *c += 1)
         .or_insert(1);
     stats
         .aclass
-        .entry(class.to_str())
+        .entry(class.to_str().parse().unwrap_or_default())
         .and_modify(|c| *c += 1)
         .or_insert(1);
 
@@ -344,9 +350,9 @@ fn parse_answer(
     };
 
     let rec: DNS_record = DNS_record {
-        rr_type: rrtype.to_str(),
+        rr_type: rrtype.to_str().parse().unwrap_or_default(),
         ttl,
-        class: class.to_str(),
+        class: class.to_str().parse().unwrap_or_default(),
         name,
         rdata,
         count: 1,
@@ -369,7 +375,7 @@ pub(crate) fn parse_dns(
     packet_info: &mut Packet_info,
     stats: &mut Statistics,
     config: &Config,
-    skip_list: &[Regex],
+    skip_list: &Skip_List,
     publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut offset = 0;
@@ -392,18 +398,18 @@ pub(crate) fn parse_dns(
     let opcode = DNS_Opcodes::find(opcode_val)?;
     if opcode != DNS_Opcodes::Query {
         // Query
-        tracing::debug!("Skipping DNS packets that are not queries");
+        debug!("Skipping DNS packets that are not queries");
         return Ok(());
     }
 
     if tr != 0 {
-        tracing::debug!("Skipping truncated DNS packets");
+        debug!("Skipping truncated DNS packets");
         return Ok(());
     }
 
     let questions = dns_read_u16(packet, offset)?;
     if questions == 0 {
-        tracing::debug!("Empty questions section... skipping");
+        debug!("Empty questions section... skipping");
         return Ok(());
     }
 
@@ -423,7 +429,7 @@ pub(crate) fn parse_dns(
         // we ignore questions; except for stats
         stats
             .opcodes
-            .entry(opcode.to_str())
+            .entry(opcode.to_str().parse().unwrap_or_default())
             .and_modify(|c| *c += 1)
             .or_insert(1);
         stats.sources.add(packet_info.s_addr.to_string());
@@ -453,20 +459,20 @@ pub(crate) fn parse_dns(
    // tracing::debug!("Answers {}", answers);
     for _i in 0..answers {
        // debug!("answer {_i} of {answers} offset {offset}");
-        offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist)?;
+        offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist, skip_list)?;
     }
     if config.authority {
        // tracing::debug!("Authority {}", authority);
         for _i in 0..authority {
          //   debug!("authority {_i} of {authority} offset {offset}");
-            offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist)?;
+            offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist, skip_list)?;
         }
     }
     if config.additional {
       //  tracing::debug!("Additional {}", additional);
         for _i in 0..additional {
           //  debug!("additional {_i} of {additional} offset {offset}");
-            offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist)?;
+            offset += parse_answer(packet_info, packet, offset, stats, config, publicsuffixlist, skip_list)?;
         }
     }
     debug!("{}", packet_info);

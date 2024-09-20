@@ -1,16 +1,16 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use strum::IntoEnumIterator;
-use strum_macros::EnumString;
-use strum_macros::{AsStaticStr, EnumIter};
+use strum_macros::{ EnumString, IntoStaticStr};
+use strum_macros::{EnumIter};
 
 use crate::errors::{DNS_Error_Type, DNS_error };
 
-
 #[derive(
-    Debug, EnumIter, Copy, Clone, AsStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize,
+    Debug,IntoStaticStr, EnumIter, Copy, Clone, EnumString, PartialEq, Eq, Serialize, Deserialize,
 )]
-pub(crate) enum EDNS0ptionCodes {
+
+pub(crate) enum EDNSOptionCodes {
     LLQ = 1,
     UpdateLease = 2,
     NSID = 3,
@@ -33,13 +33,13 @@ pub(crate) enum EDNS0ptionCodes {
     DeviceID = 26946,
 }
 
-impl EDNS0ptionCodes {
-    pub(crate) fn to_str(self) -> String {
-        String::from(strum::AsStaticRef::as_static(&self))
+impl EDNSOptionCodes {
+    pub(crate) fn to_str(self) -> &'static str {
+        self.into()
     }
 
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
-        for ee in EDNS0ptionCodes::iter() {
+        for ee in EDNSOptionCodes::iter() {
             if (ee as u16) == val {
                 return Ok(ee);
             }
@@ -51,7 +51,7 @@ impl EDNS0ptionCodes {
     }
 }
 
-impl std::fmt::Display for EDNS0ptionCodes {
+impl fmt::Display for EDNSOptionCodes {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_str())
     }
@@ -62,7 +62,7 @@ impl std::fmt::Display for EDNS0ptionCodes {
     EnumIter,
     Copy,
     Clone,
-    AsStaticStr,
+    IntoStaticStr,
     EnumString,
     PartialEq,
     Eq,
@@ -107,8 +107,8 @@ pub(crate) enum DNSExtendedError {
 }
 
 impl DNSExtendedError {
-    pub(crate) fn to_str(self) -> String {
-        String::from(strum::AsStaticRef::as_static(&self))
+    pub(crate) fn to_str(self) -> &'static str {
+        self.into()
     }
 
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
@@ -124,7 +124,7 @@ impl DNSExtendedError {
     }
 }
 
-impl std::fmt::Display for DNSExtendedError {
+impl fmt::Display for DNSExtendedError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_str())
     }

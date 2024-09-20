@@ -5,7 +5,7 @@ use std::{cmp::min, collections::HashMap, fmt};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Rank<T>
 where
-    T: std::cmp::Eq + std::hash::Hash + std::fmt::Display + serde::Serialize + Default + Clone,
+    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize + Default + Clone,
 {
     rank: HashMap<T, usize>,
     size: usize,
@@ -14,7 +14,7 @@ where
 
 impl<T> Default for Rank<T> 
 where
-    T: std::cmp::Eq + std::hash::Hash + std::fmt::Display + serde::Serialize + Default + Clone,
+    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize + Default + Clone,
 {
     fn default() -> Self {
         Self { rank: HashMap::default(), size: Default::default() }
@@ -24,7 +24,7 @@ where
 
 impl<T> Rank<T>
 where
-    T: std::cmp::Eq + std::hash::Hash + std::fmt::Display + serde::Serialize + Default + Clone,
+    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize + Default + Clone,
 {
     pub fn new(size_in: usize) -> Rank<T> {
         Rank {
@@ -70,14 +70,14 @@ where
 
 impl<T> fmt::Display for Rank<T>
 where
-    T: std::cmp::Eq + std::hash::Hash + std::fmt::Display + serde::Serialize + Default + Clone,
+    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize + Default + Clone,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut l = Vec::new();
         for (k, v) in &self.rank {
             l.push((k, v));
         }
-        l.sort_by(|a, b| (b.1).partial_cmp(a.1).unwrap());
+        l.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap());
         for (k, v) in &l {
             writeln!(f, "{k}: {v}").expect("Cannot write output format ");
         }
@@ -88,7 +88,7 @@ where
 
 impl<T> Serialize for Rank<T>
 where
-    T: std::cmp::Eq + std::hash::Hash + std::fmt::Display + serde::Serialize + Default + Clone,
+    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize + Default + Clone,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -98,7 +98,7 @@ where
         for (k, v) in &self.rank {
             l.push((k, v));
         }
-        l.sort_by(|a, b| (b.1).partial_cmp(a.1).unwrap());
+        l.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap());
        
         let mut map = serializer.serialize_map(Some(l.len()))?;
         for i in l {

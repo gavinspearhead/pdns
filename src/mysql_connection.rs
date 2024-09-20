@@ -35,8 +35,8 @@ impl Mysql_connection {
                 Mysql_connection { pool: mysql_pool }
             }
             Err(err) => {
-                tracing::error!("Failed to connect to the database: {:?}", err);
-                std::process::exit(1);
+                error!("Failed to connect to the database: {:?}", err);
+                exit(1);
             }
         }
     }
@@ -56,7 +56,7 @@ impl Mysql_connection {
                 asn_owner = if (asn_owner is null and LENGTH(?) > 0, ?, asn_owner) ,
                 prefix = if (prefix is null and LENGTH(?) > 0, ?, prefix) 
                 ";
-            tracing::debug!("{} {} {} {}", i.name, i.rr_type, i.rdata, i.count);
+            debug!("{} {} {} {}", i.name, i.rr_type, i.rdata, i.count);
             block_on(
                 sqlx::query(q)
                     .bind(&i.name)
@@ -97,7 +97,7 @@ impl Mysql_connection {
                 LAST_SEEN = if (LAST_SEEN < FROM_UNIXTIME(?), FROM_UNIXTIME(?), LAST_SEEN),
                 FIRST_SEEN = if (FIRST_SEEN > FROM_UNIXTIME(?), FROM_UNIXTIME(?), FIRST_SEEN) 
                 ";
-            tracing::debug!("{} {} {} {}", i.name, i.rr_type, i.error as u16, i.count);
+            debug!("{} {} {} {}", i.name, i.rr_type, i.error as u16, i.count);
             block_on(
                 sqlx::query(q)
                     .bind(&i.name)
@@ -118,10 +118,10 @@ impl Mysql_connection {
         };
         match q_res {
             Ok(x) => {
-                tracing::debug!("Success {x:?}");
+                debug!("Success {x:?}");
             }
             Err(e) => {
-                tracing::error!("Error: {e}");
+                error!("Error: {e}");
             }
         }
     }
@@ -152,10 +152,10 @@ impl Mysql_connection {
       ";
         match block_on(sqlx::query(create_cmd).execute(&self.pool)) {
             Ok(x) => {
-                tracing::debug!("Success {x:?}");
+                debug!("Success {x:?}");
             }
             Err(e) => {
-                tracing::error!("Error: {e}");
+                error!("Error: {e}");
                 exit(-1);
             }
         }
@@ -177,40 +177,38 @@ impl Mysql_connection {
       ";
         match block_on(sqlx::query(create_cmd1).execute(&self.pool)) {
             Ok(x) => {
-                tracing::debug!("Success {x:?}");
+                debug!("Success {x:?}");
             }
             Err(e) => {
-                tracing::error!("Error: {e}");
+                error!("Error: {e}");
                 exit(-1);
             }
         }
     }
     pub(crate) fn clean_database(self, config: &Config) {
-        if config.clean_interval == 0 {
+        if config.clean_interval <= 0 {
             return;
         }
-        let current_time = Utc::now() - Duration::days(i64::from(config.clean_interval));
+        let current_time = Utc::now() - Duration::days(config.clean_interval);
         debug!("Cleaning timestamp: {current_time}");
 
         let clean_cmd = "DELETE FROM pdns WHERE LAST_SEEN < ?";
-        let clean_cmd1 = "DELETE FROM pdns_err WHERE LAST_SEEN < ?";
-        match         
-         block_on(
-            sqlx::query(clean_cmd1)
-                .bind(current_time)
-                .execute(&self.pool),
-        ) {
-            Ok(_) => {}
-            Err(e) => { error!("Cannot execute cleanup query: {e}")}
-        }
-        match         
-         block_on(
+        if let Err(e) = block_on(
             sqlx::query(clean_cmd)
                 .bind(current_time)
                 .execute(&self.pool),
         ) {
-            Ok(_) => {}
-            Err(e) => { error!("Cannot execute cleanup query: {e}")}
+            error!("Cannot execute cleanup query: {e}");
+        }
+
+        let clean_cmd1 = "DELETE FROM pdns_err WHERE LAST_SEEN < ?";
+
+        if let Err(e) = block_on(
+            sqlx::query(clean_cmd1)
+                .bind(current_time)
+                .execute(&self.pool),
+        ) {
+            error!("Cannot execute cleanup query: {e}");
         }
     }
 }
@@ -226,10 +224,10 @@ pub(crate) fn create_database(config: &Config) {
         ));
 
         if let Some(ref mut db) = Some(x) {
-            tracing::debug!("Database created");
+            debug!("Database created");
             db.create_database();
         } else {
-            tracing::error!("No database configured");
+            error!("No database configured");
             panic!("No database configured");
         }
     }

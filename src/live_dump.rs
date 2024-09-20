@@ -9,11 +9,11 @@ use std::{
     net::{TcpListener, TcpStream},
 };
 use strum::IntoEnumIterator;
-use strum_macros::{AsStaticStr, EnumIter, EnumString};
+use strum_macros::{AsRefStr, EnumIter, EnumString, IntoStaticStr};
 use tracing::{debug, error};
 
 #[derive(
-    Debug, EnumIter, Copy, Clone, AsStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize,
+    Debug, EnumIter,  Clone, IntoStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize, AsRefStr
 )]
 pub(crate) enum Filter_fields {
     SRC_IP,
@@ -30,14 +30,15 @@ pub(crate) enum Filter_fields {
 }
 
 impl Filter_fields {
-    pub(crate) fn to_str(self) -> String {
-        String::from(strum::AsStaticRef::as_static(&self))
+    pub(crate) fn to_str(self) -> &'static str {
+        self.into()
     }
 
     pub(crate) fn find(val: &str) -> Result<Self, Box<dyn std::error::Error>> {
         for field in Filter_fields::iter() {
-            if (strum::AsStaticRef::as_static(&field)) == val.to_ascii_uppercase() {
-                return Ok(field);
+            if (field.as_ref()) == val.to_ascii_uppercase() {
+                let result = field.clone();
+                return Ok(result);
             }
         }
         Err("Not found".into())
@@ -46,12 +47,12 @@ impl Filter_fields {
 
 impl fmt::Display for Filter_fields {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_str())
+        write!(f, "{}", self.as_ref())
     }
 }
 
 #[derive(
-    Debug, EnumIter, Copy, Clone, AsStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize,
+    Debug, EnumIter, Clone, IntoStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize, AsRefStr
 )]
 enum Filter_operator {
     EQUAL,
@@ -60,10 +61,9 @@ enum Filter_operator {
     END_WITH,
     CONTAINS,
 }
-
 impl fmt::Display for Filter_operator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", strum::AsStaticRef::as_static(self))
+        write!(f, "{}", self.as_ref())
     }
 }
 type SimpleExpr = (Filter_fields, Filter_operator, String);
@@ -228,21 +228,21 @@ impl Filter {
                     return true;
                 } else if self.expr.1 == Filter_operator::START_WITH {
                     for i in &packet_info.dns_records {
-                        if !(i.name.starts_with(&self.expr.2)) {
+                        if !i.name.starts_with(&self.expr.2) {
                             return false;
                         }
                     }
                     return true;
                 } else if self.expr.1 == Filter_operator::END_WITH {
                     for i in &packet_info.dns_records {
-                        if !(i.name.ends_with(&self.expr.2)) {
+                        if !i.name.ends_with(&self.expr.2) {
                             return false;
                         }
                     }
                     return true;
                 } else if self.expr.1 == Filter_operator::CONTAINS {
                     for i in &packet_info.dns_records {
-                        if !(i.name.contains(&self.expr.2)) {
+                        if !i.name.contains(&self.expr.2) {
                             return false;
                         }
                     }
@@ -324,21 +324,21 @@ impl Filter {
                     return true;
                 } else if self.expr.1 == Filter_operator::START_WITH {
                     for i in &packet_info.dns_records {
-                        if !(i.domain.starts_with(&self.expr.2)) {
+                        if !i.domain.starts_with(&self.expr.2) {
                             return false;
                         }
                     }
                     return true;
                 } else if self.expr.1 == Filter_operator::END_WITH {
                     for i in &packet_info.dns_records {
-                        if !(i.domain.ends_with(&self.expr.2)) {
+                        if !i.domain.ends_with(&self.expr.2) {
                             return false;
                         }
                     }
                     return true;
                 } else if self.expr.1 == Filter_operator::CONTAINS {
                     for i in &packet_info.dns_records {
-                        if !(i.domain.contains(&self.expr.2)) {
+                        if !i.domain.contains(&self.expr.2) {
                             return false;
                         }
                     }
@@ -477,12 +477,9 @@ impl Live_dump {
         let tmp_str = &format!("{p1:#}");
         for (idx, stream) in self.streams.iter().enumerate() {
             if stream.matches(p1) {
-                match (&stream.stream).write_all(tmp_str.as_bytes()) {
-                    Ok(()) => {}
-                    Err(e) => {
-                        debug!("{e}");
-                        x.push(idx);
-                    }
+                if let Err(e) =  (&stream.stream).write_all(tmp_str.as_bytes()) {
+                    debug!("{e}");
+                    x.push(idx);
                 }
             }
         }
@@ -498,9 +495,7 @@ impl Live_dump {
         for stream in &mut self.streams {
             let byte_count = match stream.stream.peek(&mut peek_buf) {
                 Ok(x) => {
-                 //   debug!("Some data on the socket {:x?}", peek_buf);
                     let pos = if let Some(p) = peek_buf.iter().position(|r| r == &0xa) {
-                //       debug!("fonud a newline {} {}", p, x);
                         if p == 0 {
                             let _ = (&stream.stream).read_exact(&mut buf[0..1]);
                             0
@@ -516,12 +511,10 @@ impl Live_dump {
                 }
                 Err(_) => 0,
             };
-          //  debug!("{} bytes ready to read", byte_count);
             if byte_count > 0 {
                 match (&stream.stream).read_exact(&mut buf[0..byte_count]) {
                     Ok(()) => {
                         let line = &String::from_utf8_lossy(&buf[0..byte_count]).to_lowercase();
-                      //  debug!("read string: {}", &line);
                         if line == "show filters" {
                             let _ = stream.stream.write_all(b"Filters\n");
                             for ftr in &stream.filters {

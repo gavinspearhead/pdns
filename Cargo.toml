@@ -1,6 +1,6 @@
 [package]
 name = "pdns"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 authors = ["Gavin Spearhead"]
 description = "Passive DNS"
@@ -14,11 +14,11 @@ debug = 1
 pcap ={ version = "2.1" }
 byteorder = "1"
 chrono = "0.4"
-strum = "0.17"
-strum_macros = "0.17"
+strum = "0.26"
+strum_macros = "0.26"
 clap = { version = "4.4", features = ["derive"] }
 hex="0.4"
-base64="0.21"
+base64="0.22"
 #libc="0.2"
 sqlx = { version = "0.8", features = ["runtime-async-std-native-tls", "mysql", "chrono", "uuid"] }
 futures = "0.3"
@@ -28,7 +28,7 @@ data-encoding = "2.5"
 daemonize = "0.5"
 regex = "1.10"
 publicsuffix="2.2"
-syslog = "6.1"
+syslog = "7.0"
 log = "0.4"
 asn-db2="0.2"
 tracing = "0.1"

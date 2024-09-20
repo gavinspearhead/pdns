@@ -105,7 +105,7 @@ pub(crate) fn parse_ipv4(data: &[u8]) -> Result<IpAddr, Parse_error> {
         }
     };
     let addr = Ipv4Addr::from(r);
-    Ok(std::net::IpAddr::V4(addr))
+    Ok(IpAddr::V4(addr))
 }
 
 pub(crate) fn parse_ipv6(data: &[u8]) -> Result<IpAddr, Parse_error> {
@@ -116,7 +116,7 @@ pub(crate) fn parse_ipv6(data: &[u8]) -> Result<IpAddr, Parse_error> {
         }
     };
     let addr = Ipv6Addr::from(r);
-    Ok(std::net::IpAddr::V6(addr))
+    Ok(IpAddr::V6(addr))
 }
 
 #[cfg(test)]

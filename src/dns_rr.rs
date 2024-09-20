@@ -4,8 +4,7 @@ use byteorder::{BigEndian, ByteOrder};
 use std::fmt::Write as _;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
-use strum::AsStaticRef;
-
+use tracing::debug;
 use crate::dns::{
     cert_type_str, dnssec_algorithm, dnssec_digest, ipsec_alg, key_algorithm, key_protocol,
     sshfp_algorithm, sshfp_fp_type, tlsa_algorithm, tlsa_cert_usage, tlsa_selector, zonemd_digest,
@@ -41,20 +40,16 @@ fn dns_parse_name_internal(
     offset_in: usize,
     recursion_depth: usize,
 ) -> Result<(String, usize), Parse_error> {
-    let mut idx = offset_in;
-    let mut name = String::new();
-    //tracing::debug!("Recursion depth {recursion_depth}");
-
     if recursion_depth > MAX_RECURSION_DEPTH {
-        tracing::debug!("Recursion depth exceeded");
+        debug!("Recursion depth exceeded");
         return Err(Parse_error::new(ParseErrorType::Invalid_packet_index, ""));
     }
+    let mut idx = offset_in;
+    let mut name = String::new();
     while dns_read_u8(packet, idx)? != 0 {
         let val = dns_read_u8(packet, idx)?; // read the first byte of the pointer
-
         if (val & 0xc0) == 0xc0 {
             // it is actually a pointer
-            //tracing::debug!("Recursion depth {name} {recursion_depth}");
             let pos = (dns_read_u16(packet, idx)? & 0x3fff) as usize; // slice the of the 2 MSbs
             let (name1, _len) = dns_parse_name_internal(packet, pos, recursion_depth + 1)?;
             return Ok((name + &name1, idx + 2));
@@ -69,10 +64,10 @@ fn dns_parse_name_internal(
                 ));
             };
             name.push_str(match std::str::from_utf8(label) {
+                Ok(t) => t,
                 Err(_) => {
                     return Err(Parse_error::new(ParseErrorType::Invalid_packet_index, ""));
                 }
-                Ok(t) => t,
             });
             name.push('.');
             idx += label_len;
@@ -100,20 +95,10 @@ fn parse_rr_https(rdata: &[u8]) -> Result<String, Parse_error> {
                 res += "mandatory=";
                 while pos < svc_param_len {
                     let man_val = dns_read_u16(rdata, offset + pos + 4)?;
-                    res += &format!(
-                        "{},",
-                        match SVC_Param_Keys::find(man_val) {
-                            Ok(x) => {
-                                x.as_static()
-                            }
-                            Err(_) => {
-                                return Err(Parse_error::new(
-                                    ParseErrorType::Invalid_Parameter,
-                                    "",
-                                ));
-                            }
-                        }
-                    );
+                    let Ok(x) =SVC_Param_Keys::find(man_val) else {
+                        return Err(Parse_error::new( ParseErrorType::Invalid_Parameter, "", ));
+                    };
+                    res += &format!( "{x},");
                     pos += 2;
                 }
                 let Ok(mut res1) = String::from_str(res.trim_end_matches(',')) else {
@@ -152,20 +137,12 @@ fn parse_rr_https(rdata: &[u8]) -> Result<String, Parse_error> {
                 let mut pos: usize = 0;
                 while pos + 4 <= svc_param_len {
                     let loc = offset + 4 + pos;
-                    res += &format!(
-                        "{}.{}.{}.{},",
-                        rdata[loc],
-                        rdata[loc + 1],
-                        rdata[loc + 2],
-                        rdata[loc + 3]
-                    );
+                    let addr = parse_ipv4(&rdata[loc..loc + 4])?;
+                    res += &format!("{addr},");
                     pos += 4;
                 }
-                res = match String::from_str(res.trim_end_matches(',')) {
-                    Ok(x) => x,
-                    Err(_) => {
-                        return Err(Parse_error::new(ParseErrorType::Invalid_Parameter, ""));
-                    }
+                let Ok(mut res) = String::from_str(res.trim_end_matches(',')) else {
+                    return Err(Parse_error::new(ParseErrorType::Invalid_Parameter, ""));
                 };
                 res += " ";
             }
@@ -173,23 +150,13 @@ fn parse_rr_https(rdata: &[u8]) -> Result<String, Parse_error> {
                 res += "ipv6hint=";
                 let mut pos: usize = 0;
                 while pos + 16 <= svc_param_len {
-                    let r: [u8; 16] = match rdata[offset + 4 + pos..offset + 4 + pos + 16]
-                        .try_into()
-                    {
-                        Ok(x) => x,
-                        Err(_) => {
-                            return Err(Parse_error::new(ParseErrorType::Invalid_Parameter, ""));
-                        }
-                    };
-                    let addr = Ipv6Addr::from(r);
+                    let loc = offset + 4 + pos;
+                    let addr = parse_ipv6(&rdata[loc..loc + 16])?;
                     res += &format!("{addr},");
                     pos += 16;
                 }
-                res = match String::from_str(res.trim_end_matches(',')) {
-                    Ok(x) => x,
-                    Err(_) => {
-                        return Err(Parse_error::new(ParseErrorType::Invalid_Parameter, ""));
-                    }
+                res = if let Ok(x) = String::from_str(res.trim_end_matches(',')) {x} else {
+                    return Err(Parse_error::new(ParseErrorType::Invalid_Parameter, ""));
                 };
                 res += " ";
             }
@@ -288,11 +255,11 @@ fn parse_rr_hinfo(rdata: &[u8]) -> Result<String, Parse_error> {
     let cpu_len1 = dns_read_u8(rdata, 0)?;
     let cpu_len: usize = cpu_len1 as usize;
     let mut offset: usize = 1;
-    let Some(r) = rdata.get(offset..offset + cpu_len as usize) else {
+    let Some(r) = rdata.get(offset..offset + cpu_len ) else {
         return Err(Parse_error::new(ParseErrorType::Invalid_packet_index, ""));
     };
     let mut s = parse_dns_str(r)?;
-    offset += cpu_len as usize;
+    offset += cpu_len ;
     let os_len = dns_read_u8(rdata, offset)? as usize;
     offset += 1;
     s.push(' ');
@@ -369,17 +336,10 @@ fn parse_rr_nsec3(rdata: &[u8]) -> Result<String, Parse_error> {
     let bitmap = parse_nsec_bitmap_vec(&rdata[6 + salt_len + hash_len..])?;
     let mut bitmap_str = String::new();
     for i in bitmap {
-        bitmap_str += &format!(
-            "{} ",
-            match DNS_RR_type::find(i) {
-                Ok(x) => {
-                    x
-                }
-                Err(_) => {
-                    return Err(Parse_error::new(ParseErrorType::Invalid_Parameter, ""));
-                }
-            }
-        );
+        let Ok(x) = DNS_RR_type::find(i) else {
+            return Err(Parse_error::new(ParseErrorType::Invalid_Parameter, ""));
+        };
+        bitmap_str += &format!( "{x} ");
     }
     Ok(format!(
         "{} {flags} {iterations} {} {} {bitmap_str}",
@@ -492,12 +452,12 @@ fn parse_rr_apl(rdata: &[u8]) -> Result<String, Parse_error> {
             // ipv4
             let mut ip: [u8; 4] = [0; 4];
             ip[..addr_len].copy_from_slice(&addr[..addr_len]);
-            ip_addr = std::net::IpAddr::V4(Ipv4Addr::from(ip));
+            ip_addr = IpAddr::V4(Ipv4Addr::from(ip));
         } else if af == 2 {
             // Ipv6
             let mut ip: [u8; 16] = [0; 16];
             ip[..addr_len].copy_from_slice(&addr[..addr_len]);
-            ip_addr = std::net::IpAddr::V6(Ipv6Addr::from(ip));
+            ip_addr = IpAddr::V6(Ipv6Addr::from(ip));
         } else {
             return Err(Parse_error::new(
                 ParseErrorType::Unknown_Address_Family,
@@ -707,20 +667,10 @@ fn parse_rr_csync(rdata: &[u8]) -> Result<String, Parse_error> {
     let bitmap = parse_nsec_bitmap_vec(&rdata[6..])?;
     let mut bitmap_str = String::new();
     for i in bitmap {
-        bitmap_str += &format!(
-            "{} ",
-            match DNS_RR_type::find(i) {
-                Ok(x) => {
-                    x
-                }
-                Err(_) => {
-                    return Err(Parse_error::new(
-                        ParseErrorType::Invalid_Resource_Record,
-                        "",
-                    ));
-                }
-            }
-        );
+        let Ok(x) =DNS_RR_type::find(i)  else {
+            return Err(Parse_error::new( ParseErrorType::Invalid_Resource_Record, ""));
+        };
+        bitmap_str += &format!("{x} ");
     }
     Ok(format!("{soa} {flags} {bitmap_str}"))
 }
@@ -749,20 +699,11 @@ fn parse_rr_nsec(rdata: &[u8]) -> Result<String, Parse_error> {
     let mut bitmap_str = String::new();
     let bitmap = parse_nsec_bitmap_vec(&rdata[offset..])?;
     for i in bitmap {
-        bitmap_str += &format!(
-            "{} ",
-            match DNS_RR_type::find(i) {
-                Ok(x) => {
-                    x
-                }
-                Err(_) => {
-                    return Err(Parse_error::new(
-                        ParseErrorType::Invalid_Resource_Record,
-                        "",
-                    ));
-                }
-            }
-        );
+        let Ok(x)=DNS_RR_type::find(i)  else {
+            return Err(Parse_error::new( ParseErrorType::Invalid_Resource_Record, ""));
+        };
+        bitmap_str += &format!( "{x} ");
+
     }
     Ok(format!("{next_dom} {bitmap_str}"))
 }
@@ -802,7 +743,7 @@ fn parse_rr_hip(rdata: &[u8]) -> Result<String, Parse_error> {
     let hit_len = dns_read_u8(rdata, 0)? as usize;
     let hit_alg = dns_read_u8(rdata, 1)?;
     let pk_len = dns_read_u16(rdata, 2)? as usize;
-    let Some(hit) = rdata.get(4..4 + hit_len as usize) else {
+    let Some(hit) = rdata.get(4..4 + hit_len ) else {
         return Err(Parse_error::new(ParseErrorType::Invalid_packet_index, ""));
     };
     let Some(hip_pk) = rdata.get(4 + hit_len..4 + hit_len + pk_len) else {
@@ -1104,10 +1045,10 @@ pub(crate) fn dns_parse_rdata(
     } else if rrtype == DNS_RR_type::NSEC3 {
         parse_rr_nsec3(rdata)
     } else {
-        tracing::debug!("Unknown RR type");
+        debug!("Unknown RR type");
         Err(Parse_error::new(
             ParseErrorType::Invalid_Resource_Record,
-            &rrtype.to_str(),
+            rrtype.to_str(),
         ))
     }
 }
@@ -1123,12 +1064,13 @@ fn parse_nsec_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, Parse_error> {
             let mut pos: u8 = 0x80;
             for j in 0..8 {
                 if bitmap[offset + 2 + i] & pos != 0 {
-                    res.push(match (high_byte as usize | ((8 * i) + j)).try_into() {
-                        Ok(x) => x,
-                        Err(_) => {
-                            return Err(Parse_error::new(ParseErrorType::Invalid_Parameter, ""));
-                        }
-                    });
+                    let Ok(x) = (high_byte as usize | ((8 * i) + j)).try_into()  else {
+                        return Err(Parse_error::new(ParseErrorType::Invalid_Parameter, ""));
+
+                    };
+
+                    res.push(x);
+
                 }
                 pos >>= 1;
             }
@@ -1144,12 +1086,11 @@ fn parse_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, Parse_error> {
         let mut pos: u8 = 0x80;
         for j in 0..8 {
             if item & pos != 0 {
-                res.push(match ((8 * i) + j).try_into() {
-                    Ok(x) => x,
-                    Err(_) => {
-                        return Err(Parse_error::new(ParseErrorType::Invalid_Parameter, ""));
-                    }
-                });
+                let Ok( x) =  ((8 * i) + j).try_into() else {
+                    return Err(Parse_error::new(ParseErrorType::Invalid_Parameter, ""));
+                };
+                res.push(x);
+
             }
             pos >>= 1;
         }
@@ -1160,15 +1101,11 @@ fn parse_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, Parse_error> {
 fn map_bitmap_to_rr(bitmap: &[u16]) -> Result<String, Parse_error> {
     let mut res = String::new();
     for i in bitmap {
-        res += &format!(
-            "{} ",
-            match DNS_RR_type::find(*i) {
-                Ok(x) => x,
-                Err(_) => {
-                    return Err(Parse_error::new(ParseErrorType::Invalid_Parameter, ""));
-                }
-            }
-        );
+        let Ok(x) =DNS_RR_type::find(*i)  else {
+            return Err(Parse_error::new(ParseErrorType::Invalid_Parameter, ""));
+        };
+        res += &format!( "{x} ");
+
     }
     Ok(res)
 }
