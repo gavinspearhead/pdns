@@ -11,19 +11,20 @@ use std::{
     thread::sleep,
     time,
 };
-use strum_macros::{EnumIter};
+use std::cmp::{max, min};
+use strum_macros::EnumIter;
 use tracing::debug;
-
+use crate::dns_helper::is_between;
 use crate::tcp_data::Tcp_data;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter )]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
 pub(crate) enum TCP_Connections_Error_Type {
     NotFound,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct TcpConnection_error {
-    error_type: TCP_Connections_Error_Type,
+    //error_type: TCP_Connections_Error_Type,
     error_str: String,
     value: String,
 }
@@ -35,7 +36,7 @@ impl TcpConnection_error {
         };
 
         TcpConnection_error {
-            error_type: err_t,
+            //error_type: err_t,
             error_str: s.to_owned(),
             value: val.to_string(),
         }
@@ -78,6 +79,7 @@ pub(crate) struct TCP_Connections {
     timelimit: i64,
 }
 
+
 impl TCP_Connections {
     pub fn new() -> TCP_Connections {
         TCP_Connections {
@@ -85,7 +87,7 @@ impl TCP_Connections {
             timelimit: 20,
         }
     }
-
+    #[inline]
     pub fn len(&self) -> usize {
         self.connections.len()
     }
@@ -98,19 +100,19 @@ impl TCP_Connections {
         dst: IpAddr,
         seqnr: u32,
         data: &[u8],
+        _timestamp: DateTime<Utc>,
     ) {
         let timestamp = Utc::now();
         let c = self
             .connections
             .entry((src, dst, sp, dp))
-            .or_insert(Tcp_connection::new(seqnr, timestamp));
+            .or_insert_with(|| Tcp_connection::new(seqnr, timestamp));
         c.in_data.add_data(seqnr, data);
-        if c.in_data.check_data_size() {
+       /* if c.in_data.check_data_size() {
             // if it is too big we just throw it away
             let _ = self.remove(sp, dp, src, dst);
-        }
+        }*/
     }
-
     pub fn get_data(
         &self,
         sp: u16,
@@ -136,7 +138,7 @@ impl TCP_Connections {
         src: IpAddr,
         dst: IpAddr,
     ) -> Result<(), Box<dyn Error>> {
-        //  println!("Removing key {} {} {} {} ", src, dst, sp, dp);
+        debug!("Removing key {} {} {} {} ", src, dst, sp, dp);
         match self.connections.remove(&(src, dst, sp, dp)) {
             None => {
                 debug!("Connection not found {src}:{sp} => {dst}:{dp}");
@@ -146,30 +148,28 @@ impl TCP_Connections {
                 )
                 .into())
             }
-            Some(_) => Ok(())
+            Some(_) => Ok(()),
         }
     }
 
     pub fn check_timeout(&mut self) -> i64 {
-        let now = Utc::now().timestamp();
-        let mut m_ts = 1;
+        let mut m_ts = self.timelimit;
         let mut keys: Vec<(IpAddr, IpAddr, u16, u16)> = Vec::new();
+        let now = Utc::now().timestamp();
         for (k, v) in &self.connections {
-            if v.ts.timestamp() + self.timelimit < now {
+            let time_in_seconds = v.ts.timestamp();
+            debug!("{time_in_seconds} {} {now} {}", self.timelimit, self.timelimit+time_in_seconds);
+            if time_in_seconds + self.timelimit < now {
                 keys.push(*k);
             }
-            if now - v.ts.timestamp() > m_ts {
-                m_ts = self.timelimit + v.ts.timestamp() - now;
+            if is_between(now - time_in_seconds, 1, m_ts) {
+                m_ts = now - time_in_seconds;
             }
         }
         for k in keys {
             self.connections.remove(&k);
         }
-        if m_ts > 0 {
-            m_ts 
-        } else {
-            self.timelimit 
-        } 
+        m_ts
     }
 
     pub fn process_data(
@@ -180,12 +180,13 @@ impl TCP_Connections {
         dst: IpAddr,
         seqnr: u32,
         data: &[u8],
-        _timestamp: DateTime<Utc>,
+        timestamp: DateTime<Utc>,
         flags: u8,
     ) -> Option<Tcp_data> {
+        debug!("Number of connections {}" , self.connections.len());
         if (flags & 1 != 0) || (flags & 4 != 0) {
             // FIN flag or reset
-            self.add_data(sp, dp, src, dst, seqnr, data);
+            self.add_data(sp, dp, src, dst, seqnr, data, timestamp);
             return match self.get_data(sp, dp, src, dst) {
                 Ok(x) => {
                     let y = x.clone();
@@ -196,14 +197,15 @@ impl TCP_Connections {
                     let _ = self.remove(sp, dp, src, dst);
                     None
                 }
-            }
+            };
         } else if (flags & 2 != 0) || (flags.trailing_zeros() >= 3) {
             // SYN flag or no flag
             let mut sn = seqnr;
             if flags & 2 == 2 {
+                // on syn we need to increment the seq nr
                 sn += 1;
             }
-            self.add_data(sp, dp, src, dst, sn, data);
+            self.add_data(sp, dp, src, dst, sn, data, timestamp);
             return None;
         }
         None
@@ -211,19 +213,19 @@ impl TCP_Connections {
 }
 
 pub(crate) fn clean_tcp_list(tcp_list: &Arc<Mutex<TCP_Connections>>, rx: mpsc::Receiver<String>) {
-    let timeout = time::Duration::from_secs(1);
+    let min_timeout = time::Duration::from_secs(1);
 
     loop {
         let dur = tcp_list.lock().unwrap().check_timeout();
         match rx.try_recv() {
-            Ok(_e) => {
-                return;
-            }
-            Err(TryRecvError::Disconnected) => {
+            Ok(_) | Err(TryRecvError::Disconnected) => {
                 return;
             }
             Err(TryRecvError::Empty) => {}
         }
-        sleep(std::cmp::max(timeout, time::Duration::from_secs(dur as u64)));
+        sleep(std::cmp::max(
+            min_timeout,
+            time::Duration::from_secs(dur as u64),
+        ));
     }
 }

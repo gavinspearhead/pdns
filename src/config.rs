@@ -2,12 +2,12 @@ use clap::{arg, ArgAction, Command};
 use serde::{Deserialize, Serialize};
 use serde_json::Error;
 
-use std::{fs::File, io::BufReader, str::FromStr};
-use tracing::error;
 use crate::{
     dns::DNS_RR_type,
     version::{AUTHOR, DESCRIPTION, PROGNAME, VERSION},
 };
+use std::{fs::File, io::BufReader, str::FromStr};
+use tracing::error;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
@@ -101,7 +101,7 @@ pub(crate) fn parse_rrtypes(config_str: &str) -> Vec<DNS_RR_type> {
     if config_str.is_empty() {
         return Vec::new();
     } else if config_str == "*" {
-        return DNS_RR_type::to_vec();
+        return DNS_RR_type::collect_dns_rr_types();
     }
 
     let mut rrtypes: Vec<DNS_RR_type> = Vec::new();
@@ -458,11 +458,21 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
         .unwrap_or(&config.export_stats)
         .clone();
     config.syslog = *matches.get_one::<bool>("syslog").unwrap_or(&config.syslog);
-    config.syslog = *matches.get_one::<bool>("nosyslog").unwrap_or(&config.syslog);
-    config.additional = *matches.get_one::<bool>("additional").unwrap_or(&config.additional);
-    config.additional = *matches.get_one::<bool>("noadditional").unwrap_or(&config.additional);
-    config.authority = *matches.get_one::<bool>("authority").unwrap_or(&config.authority);
-    config.authority = *matches.get_one::<bool>("noauthority").unwrap_or(&config.authority);
+    config.syslog = *matches
+        .get_one::<bool>("nosyslog")
+        .unwrap_or(&config.syslog);
+    config.additional = *matches
+        .get_one::<bool>("additional")
+        .unwrap_or(&config.additional);
+    config.additional = *matches
+        .get_one::<bool>("noadditional")
+        .unwrap_or(&config.additional);
+    config.authority = *matches
+        .get_one::<bool>("authority")
+        .unwrap_or(&config.authority);
+    config.authority = *matches
+        .get_one::<bool>("noauthority")
+        .unwrap_or(&config.authority);
 
     let rr_types = parse_rrtypes(&matches.get_one("rrtypes").unwrap_or(&empty_str).clone());
     if !rr_types.is_empty() {

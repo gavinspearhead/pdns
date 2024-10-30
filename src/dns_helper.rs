@@ -1,16 +1,25 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-
 use crate::{
     dns::{DNS_Class, DNS_RR_type},
     errors::{DNS_error, ParseErrorType, Parse_error},
 };
 use byteorder::{BigEndian, ByteOrder};
 use chrono::DateTime;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::ops::RangeBounds;
 
+
+#[inline]
+pub(crate) fn is_between<T: std::cmp::PartialOrd>(value: T, min: T, max: T) -> bool {
+    value >= min && value <= max
+}
+
+
+#[inline]
 pub(crate) fn parse_rrtype(rrtype: u16) -> Result<DNS_RR_type, DNS_error> {
     DNS_RR_type::find(rrtype)
 }
 
+#[inline]
 pub(crate) fn parse_class(class: u16) -> Result<DNS_Class, DNS_error> {
     DNS_Class::find(class)
 }
@@ -22,7 +31,6 @@ pub(crate) fn timestame_to_str(timestamp: u32) -> Result<String, Parse_error> {
             &timestamp.to_string(),
         ));
     };
-
     Ok(dt.to_string())
 }
 
@@ -87,6 +95,29 @@ pub(crate) fn base32hex_encode(input: &[u8]) -> String {
     enc.append(input);
     enc.finalize();
     output
+}
+
+pub(crate) fn dns_parse_slice<T>(packet: &[u8], range: T) -> Result<&[u8], Parse_error>
+where
+    T: RangeBounds<usize>,
+{
+    let start = match range.start_bound() {
+        std::ops::Bound::Included(&s) => s,
+        std::ops::Bound::Excluded(&s) => s + 1,
+        std::ops::Bound::Unbounded => 0,
+    };
+
+    let end = match range.end_bound() {
+        std::ops::Bound::Included(&e) => e + 1,
+        std::ops::Bound::Excluded(&e) => e,
+        std::ops::Bound::Unbounded => packet.len(),
+    };
+
+    if start <= end && end <= packet.len() {
+        Ok(&packet[start..end])
+    } else {
+        Err(Parse_error::new(ParseErrorType::Invalid_packet_index, ""))
+    }
 }
 
 pub(crate) fn parse_dns_str(rdata: &[u8]) -> Result<String, Parse_error> {

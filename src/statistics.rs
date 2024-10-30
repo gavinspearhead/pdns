@@ -1,9 +1,8 @@
 use crate::rank::Rank;
 use crate::time_stats::Time_stats;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs::File, io::BufReader};
-
 use serde_with::rust::deserialize_ignore_any;
+use std::{collections::HashMap, fs::File, io::BufReader};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub(crate) struct Statistics {

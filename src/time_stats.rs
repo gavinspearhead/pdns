@@ -21,35 +21,41 @@ impl Bucket {
 
     fn add(&mut self, position: u32, count: u64, group_val: u32) {
         let pos = position as usize;
-        let group = group_val as usize;
-        if pos >= self.items.len() {
+        let len = self.items.len();
+        if pos >= len {
             debug!("Cannot update item");
             return;
         }
+        let group = group_val as usize;
 
         if pos == self.last_post && group == self.last_group {
             self.items[pos] += count;
         } else if group == self.last_group {
             if pos > self.last_post {
-                for i in self.last_post + 1..pos {
+                /*                for i in self.last_post + 1..pos {
                     self.items[i] = 0;
-                }
+                }*/
+                self.items[self.last_post + 1..pos].fill(0);
             } else {
-                for i in 0..pos {
+                /*                for i in 0..pos {
                     self.items[i] = 0;
-                }
+                }*/
+                self.items[0..pos].fill(0);
             }
             self.items[pos] = count;
         } else if group == self.last_group + 1 {
-            for i in self.last_post + 1..self.items.len() {
+            self.items[self.last_post + 1..len].fill(0);
+            /*
+                for i in self.last_post + 1..self.items.len() {
                 self.items[i] = 0;
-            }
-            for i in 0..pos {
+            }*/
+            self.items[0..pos].fill(0);
+            /*for i in 0..pos {
                 self.items[i] = 0;
-            }
+            }*/
             self.items[pos] = count;
         } else {
-            self.items = vec![0; self.items.len()];
+            self.items = vec![0; len];
             self.items[pos] = count;
         }
         self.last_post = pos;
@@ -99,13 +105,13 @@ mod tests {
     }
 }
 
-#[derive(Serialize, Deserialize , Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub(crate) struct Time_stats {
     per_month: Bucket,
     per_minute: Bucket,
     per_hour: Bucket,
     per_day: Bucket,
-   // per_second: Bucket,
+    // per_second: Bucket,
 }
 
 impl Time_stats {

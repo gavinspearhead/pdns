@@ -76,7 +76,7 @@ fn dump_stats(stats: &Statistics, config: &Config) -> std::io::Result<()> {
         let filename = Path::new(filename_base).join(format!("stats-{date_as_string}.json"));
         match File::create_new(&filename) {
             Ok(f) => {
-                debug!("Dumping stats to {:?}", &filename);
+                debug!("Dumping stats to {filename:?}");
                 let mut writer = BufWriter::new(f);
                 serde_json::to_writer_pretty(&mut writer, stats)?;
                 writer.flush()?;
@@ -84,7 +84,6 @@ fn dump_stats(stats: &Statistics, config: &Config) -> std::io::Result<()> {
             }
             Err(e) => {
                 count += 1;
-
                 if count > 5 {
                     return Err(e);
                 }
@@ -99,7 +98,7 @@ fn packet_loop<T>(
     tcp_list: &Arc<Mutex<TCP_Connections>>,
     stats: &Arc<Mutex<Statistics>>,
     config: &Config,
-    skiplist: &Skip_List,
+    skip_list: &Skip_List,
 ) where
     T: pcap::Activated,
 {
@@ -132,7 +131,8 @@ fn packet_loop<T>(
                 let ts = DateTime::<Utc>::from_timestamp(
                     packet.header.ts.tv_sec,
                     packet.header.ts.tv_usec as u32 * 1000,
-                ).unwrap_or_else(Utc::now);
+                )
+                .unwrap_or_else(Utc::now);
                 packet_info.set_timestamp(ts);
                 let result = parse_eth(
                     packet.data,
@@ -140,18 +140,18 @@ fn packet_loop<T>(
                     &mut stats.lock().unwrap(),
                     tcp_list,
                     config,
-                    skiplist,
+                    skip_list,
                     &publicsuffixlist,
                 );
                 match result {
                     Ok(()) => {
-                        //packet_queue .queue .lock() .unwrap() .push_back(Some(packet_info));
                         packet_queue.push_back(Some(packet_info));
                     }
                     Err(error) => {
                         debug!("{error:?}");
                     }
                 }
+                
             }
             Err(pcap::Error::TimeoutExpired) => {
                 debug!("Packet capture error: {}", pcap::Error::TimeoutExpired);
@@ -166,7 +166,7 @@ fn packet_loop<T>(
 }
 
 fn load_asn_database(config: &Config) -> asn_db2::Database {
-    debug!("{}", config.asn_database_file);
+    debug!("ASN Database: {}", config.asn_database_file);
     let Ok(f) = File::open(&config.asn_database_file) else {
         error!("Cannot open ASN database {} ", &config.asn_database_file);
         exit(-1);
@@ -181,7 +181,6 @@ fn load_asn_database(config: &Config) -> asn_db2::Database {
 fn poll(packet_queue: &Packet_Queue, config: &Config, rx: mpsc::Receiver<String>) {
     let mut timeout = time::Duration::from_millis(0);
     let mut output_file: Option<File> = None;
-    let mut database_conn: Option<Mysql_connection> = None;
     let mut dns_cache: DNS_Cache = DNS_Cache::new(5);
     let mut live_dump = Live_dump::new(&config.live_dump_host, config.live_dump_port);
     let mut last_push = Utc::now().timestamp();
@@ -197,7 +196,9 @@ fn poll(packet_queue: &Packet_Queue, config: &Config, rx: mpsc::Receiver<String>
         };
     }
 
-    if !config.database.is_empty() {
+    let mut database_conn = if config.database.is_empty() {
+        None
+    } else {
         let x = block_on(Mysql_connection::connect(
             &config.dbhostname,
             &config.dbusername,
@@ -205,8 +206,8 @@ fn poll(packet_queue: &Packet_Queue, config: &Config, rx: mpsc::Receiver<String>
             &config.dbport,
             &config.dbname,
         ));
-        database_conn = Some(x);
-    }
+        Some(x)
+    };
     let asn_database = load_asn_database(config);
     loop {
         live_dump.accept();
@@ -292,6 +293,121 @@ fn cleanup_task(config: &Config) {
     }
 }
 
+fn terminate_loop(stats: &Arc<Mutex<Statistics>>, config: &Config) {
+    debug!("Starting signal loop");
+    let term = Arc::new(AtomicBool::new(false));
+    let kill = Arc::new(AtomicBool::new(false));
+    if let Err(e) = flag::register(signal_hook::consts::SIGTERM, Arc::clone(&term)) {
+        error!("Cannot set signal handler SIGTERM {e}");
+        exit(-1);
+    };
+    if let Err(e) = flag::register(signal_hook::consts::SIGINT, Arc::clone(&kill)) {
+        error!("Cannot set signal handler SIGINT {e}");
+        exit(-1);
+    }
+    while !term.load(Ordering::Relaxed) && !kill.load(Ordering::Relaxed) {
+        sleep(time::Duration::from_millis(50));
+    }
+    debug!("{}", stats.lock().unwrap().queries);
+    dump_stats(&stats.lock().unwrap(), config).unwrap();
+    exit(0);
+}
+
+fn capture_from_file(
+    config: &Config,
+    pcap_path: &str,
+    skiplist: &Skip_List,
+    stats: &Arc<Mutex<Statistics>>,
+    tcp_list: &Arc<Mutex<TCP_Connections>>,
+    packet_queue: &Packet_Queue,
+) {
+    let (_pq_tx, pq_rx) = mpsc::channel();
+    let (tcp_tx, tcp_rx) = mpsc::channel();
+    debug!("Reading PCAP file e {pcap_path}");
+    thread::scope(|s| {
+        let handle1 = s.spawn(|| clean_tcp_list(&tcp_list.clone(), tcp_rx));
+        let handle = s.spawn(|| poll(&packet_queue.clone(), config, pq_rx));
+        let cap = Capture::from_file(pcap_path);
+        match cap {
+            Ok(mut c) => {
+                if let Err(e) = c.filter(&config.filter, false) {
+                    error!("Cannot apply filter {}: {e}", config.filter);
+                    exit(-2);
+                }
+                let handle2 = s.spawn(|| {
+                    packet_loop(
+                        c,
+                        &packet_queue.clone(),
+                        &tcp_list.clone(),
+                        &stats.clone(),
+                        config,
+                        &skiplist,
+                    );
+                });
+                handle2.join().unwrap();
+                // we wait for the main threat to terminate; then cancel the tcp cleanup threat
+                let _ = tcp_tx.send(String::from_str("the end").unwrap());
+                handle.join().unwrap();
+                handle1.join().unwrap();
+            }
+            Err(e) => {
+                error!("Error reading PCAP file: {e:?}");
+                exit(-2);
+            }
+        }
+    });
+}
+
+fn capture_from_interface(
+    config: &Config,
+    skiplist: &Skip_List,
+    stats: &Arc<Mutex<Statistics>>,
+    tcp_list: &Arc<Mutex<TCP_Connections>>,
+    packet_queue: &Packet_Queue,
+    cap_in: Option<Capture<Active>>,
+) {
+    debug!("Listening on interface {}", config.interface);
+    let (_pq_tx, pq_rx) = mpsc::channel();
+    let (tcp_tx, tcp_rx) = mpsc::channel();
+    thread::scope(|s| {
+        let handle2 = s.spawn(|| clean_tcp_list(&tcp_list.clone(), tcp_rx));
+        let handle = s.spawn(|| poll(&packet_queue.clone(), config, pq_rx));
+        let listener = listen(&config.server, config.port);
+        let handle4 = s.spawn(|| {
+            if let Some(l) = listener {
+                server(&l, &stats.clone(), &tcp_list.clone(), &config.clone());
+            }
+        });
+        let Some(mut cap) = cap_in else {
+            error!("Something wrong with the capture");
+            exit(-1);
+        };
+        let handle6 = s.spawn(|| cleanup_task(config));
+        debug!("Filter: {}", config.filter);
+        if let Err(e) = cap.filter(&config.filter, false) {
+            error!("Cannot apply filter {}: {e}", config.filter);
+            exit(-1);
+        }
+        debug!("Ready to start packet loop");
+        let handle3 = s.spawn(|| {
+            debug!("Starting packet loop");
+            packet_loop(cap, &packet_queue, tcp_list, stats, config, &skiplist);
+        });
+        let handle5 = s.spawn(|| {
+            terminate_loop(stats, config);
+        });
+
+        handle3.join().unwrap();
+        // we wait for the main threat to terminate; then cancel the tcp cleanup threat
+        let _ = tcp_tx.send(String::from_str("the end").unwrap());
+        handle4.join().unwrap();
+        handle6.join().unwrap();
+        handle2.join().unwrap();
+        handle.join().unwrap();
+        handle5.join().unwrap();
+    });
+}
+
 fn run(
     config: &Config,
     cap_in: Option<Capture<Active>>,
@@ -300,101 +416,14 @@ fn run(
 ) {
     let packet_queue = Packet_Queue::new();
     let tcp_list = Arc::new(Mutex::new(TCP_Connections::new()));
-
-    let (tcp_tx, tcp_rx) = mpsc::channel();
-    let (_pq_tx, pq_rx) = mpsc::channel();
     let mut skiplist = Skip_List::new();
     skiplist.read_skip_list(&config.skip_list_file);
-    thread::scope(|s| {
-        let handle = s.spawn(|| poll(&packet_queue.clone(), config, pq_rx));
-        let handle2 = s.spawn(|| clean_tcp_list(&tcp_list.clone(), tcp_rx));
-
-        if !pcap_path.is_empty() {
-            debug!("Reading PCAP file e {}", pcap_path);
-            let cap = Capture::from_file(pcap_path);
-            match cap {
-                Ok(mut c) => {
-                    match c.filter(&config.filter, false) {
-                        Ok(()) => {}
-                        Err(e) => {
-                            error!("Cannot apply filter {}: {e}", config.filter);
-                            exit(-1);
-                        }
-                    }
-                    let handle3 = s.spawn(|| {
-                        packet_loop(
-                            c,
-                            &packet_queue.clone(),
-                            &tcp_list.clone(),
-                            &stats.clone(),
-                            config,
-                            &skiplist,
-                        );
-                    });
-                    handle3.join().unwrap();
-                    // we wait for the main threat to terminate; then cancel the tcp cleanup threat
-                    let _ = tcp_tx.send(String::from_str("the end").unwrap());
-                    handle.join().unwrap();
-                    handle2.join().unwrap();
-                }
-                Err(e) => {
-                    error!("Error reading PCAP file: {e:?}");
-                    exit(-1);
-                }
-            }
-        } else if !config.interface.is_empty() {
-            debug!("Listening on interface {}", config.interface);
-            let listener = listen(&config.server, config.port);
-            let handle4 = s.spawn(|| {
-                if let Some(l) = listener {
-                    server(&l, &stats.clone(), &tcp_list.clone(), &config.clone());
-                }
-            });
-            let Some(mut cap) = cap_in else {
-                error!("Something wrong with the capture");
-                exit(-1);
-            };
-            let handle6 = s.spawn(|| cleanup_task(config));
-            debug!("Filter: {}", config.filter);
-            if let Err(e) = cap.filter(&config.filter, false) {
-                error!("Cannot apply filter {}: {e}", config.filter);
-                exit(-1);
-            }
-            debug!("Ready to start packet loop");
-            let handle3 = s.spawn(|| {
-                debug!("Starting packet loop");
-                packet_loop(cap, &packet_queue, &tcp_list, &stats, config, &skiplist);
-            });
-            let handle5 = s.spawn(|| {
-                debug!("Starting signal loop");
-                let term = Arc::new(AtomicBool::new(false));
-                let kill = Arc::new(AtomicBool::new(false));
-                if let Err(e) = flag::register(signal_hook::consts::SIGTERM, Arc::clone(&term)) {
-                    error!("Cannot set signal handler SIGTERM {e}");
-                    exit(-1);
-                };
-                if let Err(e) = flag::register(signal_hook::consts::SIGINT, Arc::clone(&kill)) {
-                    error!("Cannot set signal handler SIGINT {e}");
-                    exit(-1);
-                }
-                while !term.load(Ordering::Relaxed) && !kill.load(Ordering::Relaxed) {
-                    sleep(time::Duration::from_millis(50));
-                }
-                debug!("{}", stats.lock().unwrap().queries);
-                dump_stats(&stats.lock().unwrap(), config).unwrap();
-                exit(0);
-            });
-
-            handle3.join().unwrap();
-            // we wait for the main threat to terminate; then cancel the tcp cleanup threat
-            let _ = tcp_tx.send(String::from_str("the end").unwrap());
-            handle4.join().unwrap();
-            handle6.join().unwrap();
-            handle2.join().unwrap();
-            handle.join().unwrap();
-            handle5.join().unwrap();
-        }
-    });
+    if !pcap_path.is_empty() {
+        capture_from_file(config, pcap_path, &skiplist, stats, &tcp_list, &packet_queue);
+    } else if !config.interface.is_empty() {
+        capture_from_interface(config, &skiplist, stats, &tcp_list, &packet_queue, cap_in);
+       
+    }
 }
 
 fn main() {
@@ -458,7 +487,7 @@ fn main() {
         cap = match Capture::from_device(config.interface.as_str())
             .unwrap()
             .timeout(1000)
-            .promisc(config.promisc) // todo make a paramater
+            .promisc(config.promisc) 
             //                .immediate_mode(true) //seems to break on ubuntu?
             .open()
         {

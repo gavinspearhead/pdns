@@ -1,17 +1,13 @@
 use crate::config::Config;
-use crate::dns_helper::{
-    self,  dns_read_u16, dns_read_u32, 
-};
+use crate::dns_helper::{self, dns_parse_slice, dns_read_u16, dns_read_u32};
 use crate::dns_packet::{parse_dns, DNS_Protocol};
 use crate::packet_info::Packet_info;
 use crate::skiplist::Skip_List;
 use crate::statistics::Statistics;
+use crate::{errors, tcp_connection};
 use errors::Parse_error;
 use std::sync::{Arc, Mutex};
 use tcp_connection::TCP_Connections;
-
-use crate::{ errors,  tcp_connection};
-
 
 fn parse_tcp(
     packet: &[u8],
@@ -33,16 +29,14 @@ fn parse_tcp(
     let hl: u8 = (packet[12] >> 4) * 4;
     let len: u32 = u32::try_from(packet.len() - usize::from(hl))?;
     let flags = packet[13];
-    let _wsize = dns_read_u16(packet, 14)?;
+    //let _wsize = dns_read_u16(packet, 14)?;
     let seqnr = dns_read_u32(packet, 4)?;
 
     packet_info.set_dest_port(dp);
     packet_info.set_source_port(sp);
     packet_info.set_data_len(len);
 
-    let Some(dnsdata) = packet.get((hl as usize)..) else {
-        return Err(Parse_error::new(errors::ParseErrorType::Invalid_TCP_Packet, "").into());
-    };
+    let dnsdata = dns_parse_slice(packet, (hl as usize)..)?;
     let r = tcp_list.lock().unwrap().process_data(
         sp,
         dp,
@@ -54,17 +48,33 @@ fn parse_tcp(
         flags,
     );
     if let Some(d) = r {
+        let data = d.data();
+        let data_len = data.len();
+        if data_len == 0 {
+            return Ok(()); 
+        }
         stats.tcp += 1;
-        return parse_dns(
-            d.data(),
-            packet_info,
-            stats,
-            config,
-            skip_list,
-            publicsuffixlist,
-        );
+        let mut offset = 0;
+        loop {
+            let len = usize::from(dns_read_u16(data, offset)?);
+            if len == 0 { 
+                break;
+            }
+            let in_data = dns_parse_slice(data, offset + 2..offset + 2 + len)?;
+            parse_dns(
+                in_data,
+                packet_info,
+                stats,
+                config,
+                skip_list,
+                publicsuffixlist,
+            )?;
+            offset = offset + 2 + len;
+            if offset >= data_len {
+                break;
+            }
+        }
     };
-
     Ok(())
 }
 
@@ -89,7 +99,7 @@ fn parse_udp(
     if dp == 53 || sp == 53 || dp == 5353 || sp == 5353 || dp == 5355 || sp == 5355 {
         stats.udp += 1;
         parse_dns(
-            &packet[8..],
+            dns_parse_slice(packet, 8..)?,
             packet_info,
             stats,
             config,
@@ -153,7 +163,7 @@ fn parse_ipv4(
     publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < 20 {
-        return Err(Parse_error::new(errors::ParseErrorType::Invalid_IPv6_Header, "").into());
+        return Err(Parse_error::new(errors::ParseErrorType::Invalid_IPv4_Header, "").into());
     }
     if packet[0] >> 4 != 4 {
         return Err(Parse_error::new(
@@ -171,7 +181,7 @@ fn parse_ipv4(
     packet_info.set_source_ip(src);
     packet_info.set_ip_len(len);
     parse_tunneling(
-        &packet[ihl as usize..],
+        &packet[usize::from(ihl)..],
         next_header,
         packet_info,
         stats,
@@ -250,7 +260,7 @@ fn parse_ipv6(
     stats: &mut Statistics,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
     config: &Config,
-    skip_list:&Skip_List, 
+    skip_list: &Skip_List,
     publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < 40 {
@@ -270,7 +280,6 @@ fn parse_ipv6(
 
     let _len: u16 = dns_read_u16(packet, 4)?;
     let next_header = packet[6];
-
     let src = dns_helper::parse_ipv6(&packet[8..24])?;
     let dst = dns_helper::parse_ipv6(&packet[24..40])?;
     packet_info.set_dest_ip(dst);
@@ -309,7 +318,7 @@ pub(crate) fn parse_eth(
 
     if eth_type_field == 0x0800 {
         parse_ipv4(
-            &packet[offset..],
+            dns_parse_slice(packet, offset..)?,
             packet_info,
             stats,
             tcp_list,
@@ -319,7 +328,7 @@ pub(crate) fn parse_eth(
         )
     } else if eth_type_field == 0x86dd {
         parse_ipv6(
-            &packet[offset..],
+            dns_parse_slice(packet, offset..)?,
             packet_info,
             stats,
             tcp_list,

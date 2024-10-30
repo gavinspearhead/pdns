@@ -13,7 +13,16 @@ use strum_macros::{AsRefStr, EnumIter, EnumString, IntoStaticStr};
 use tracing::{debug, error};
 
 #[derive(
-    Debug, EnumIter,  Clone, IntoStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize, AsRefStr
+    Debug,
+    EnumIter,
+    Clone,
+    IntoStaticStr,
+    EnumString,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    AsRefStr,
 )]
 pub(crate) enum Filter_fields {
     SRC_IP,
@@ -30,7 +39,7 @@ pub(crate) enum Filter_fields {
 }
 
 impl Filter_fields {
-    pub(crate) fn to_str(self) -> &'static str {
+    pub(crate) fn to_str(&self) -> &'static str {
         self.into()
     }
 
@@ -47,12 +56,21 @@ impl Filter_fields {
 
 impl fmt::Display for Filter_fields {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_ref())
+        write!(f, "{}", self.to_str())
     }
 }
 
 #[derive(
-    Debug, EnumIter, Clone, IntoStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize, AsRefStr
+    Debug,
+    EnumIter,
+    Clone,
+    IntoStaticStr,
+    EnumString,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    AsRefStr,
 )]
 enum Filter_operator {
     EQUAL,
@@ -61,9 +79,17 @@ enum Filter_operator {
     END_WITH,
     CONTAINS,
 }
+
+impl Filter_operator {
+    #[inline]
+    pub(crate) fn to_str(&self) -> &'static str {
+        self.into()
+    }
+}
+
 impl fmt::Display for Filter_operator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_ref())
+        write!(f, "{}", self.to_str())
     }
 }
 type SimpleExpr = (Filter_fields, Filter_operator, String);
@@ -180,14 +206,14 @@ impl Filter {
                 false
             }
             Filter_fields::REPLY_CODE => {
-              //  debug!("AA {} {} {}", self.expr.0, self.expr.1, self.expr.2);
+                //  debug!("AA {} {} {}", self.expr.0, self.expr.1, self.expr.2);
                 let Ok(rc) = self.expr.2.to_uppercase().parse::<DnsReplyType>() else {
                     debug!("false");
                     return false;
                 };
-              //  debug!("RC: {}", rc);
+                //  debug!("RC: {}", rc);
                 let c = rc;
-               // let Ok(c) = DnsReplyType::find(rc) else {
+                // let Ok(c) = DnsReplyType::find(rc) else {
                 //    return false;
                 //};
                 if self.expr.1 == Filter_operator::EQUAL {
@@ -201,8 +227,8 @@ impl Filter {
                     return false;
                 } else if self.expr.1 == Filter_operator::NOT_EQUAL {
                     for i in &packet_info.dns_records {
-                //        debug!("{} {} != {}", i.error, c, i.error == c );
-                  //      debug!("{}", packet_info);
+                        //        debug!("{} {} != {}", i.error, c, i.error == c );
+                        //      debug!("{}", packet_info);
                         if i.error != c {
                             return true;
                         }
@@ -350,14 +376,14 @@ impl Filter {
             Filter_fields::ASN => {
                 if self.expr.1 == Filter_operator::EQUAL {
                     for i in &packet_info.dns_records {
-                        if i.asn != self.expr.2 {
+                        if i.asn != self.expr.2.parse().unwrap_or(0) {
                             return false;
                         }
                     }
                     return true;
                 } else if self.expr.1 == Filter_operator::NOT_EQUAL {
                     for i in &packet_info.dns_records {
-                        if i.asn == self.expr.2 {
+                        if i.asn == self.expr.2.parse().unwrap_or(0) {
                             return false;
                         }
                     }
@@ -411,7 +437,6 @@ impl Live_dump_session {
                     return Err(e);
                 }
             };
-
             self.filters.push(f);
         }
         Ok(())
@@ -477,7 +502,7 @@ impl Live_dump {
         let tmp_str = &format!("{p1:#}");
         for (idx, stream) in self.streams.iter().enumerate() {
             if stream.matches(p1) {
-                if let Err(e) =  (&stream.stream).write_all(tmp_str.as_bytes()) {
+                if let Err(e) = (&stream.stream).write_all(tmp_str.as_bytes()) {
                     debug!("{e}");
                     x.push(idx);
                 }

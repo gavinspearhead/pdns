@@ -1,13 +1,13 @@
-use std::error::Error;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::error::Error;
 use std::fmt;
 use std::str::FromStr;
 use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 use strum_macros::{EnumString, IntoStaticStr};
-use strum_macros::{ EnumIter};
 use unic_idna::to_unicode;
-
+use crate::dns::DNS_RR_type::Private;
 use crate::edns::DNSExtendedError;
 use crate::errors::{DNS_Error_Type, DNS_error, Parse_error};
 
@@ -71,6 +71,7 @@ pub(crate) enum DNS_Class {
 }
 
 impl DNS_Class {
+    #[inline]
     pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
@@ -208,9 +209,11 @@ pub(crate) enum DNS_RR_type {
     WKS = 11,
     X25 = 19,
     ZONEMD = 63,
+    Private = 65534,
 }
 
 impl DNS_RR_type {
+    #[inline]
     pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
@@ -221,14 +224,18 @@ impl DNS_RR_type {
                 return Ok(rr);
             }
         }
+        if val > 65280 {
+            return Ok( Private);
+        }
         Err(DNS_error::new(
             DNS_Error_Type::Invalid_RR,
             &format!("{val}"),
         ))
     }
-    pub(crate) fn to_vec() -> Vec<DNS_RR_type> {
+    pub(crate) fn collect_dns_rr_types() -> Vec<DNS_RR_type> {
         DNS_RR_type::iter().collect::<Vec<_>>()
     }
+    #[inline]
     pub(crate) fn from_string(s: &str) -> Result<DNS_RR_type, strum::ParseError> {
         DNS_RR_type::from_str(s)
     }
@@ -269,7 +276,7 @@ pub(crate) struct DNS_record {
     pub(crate) count: u64,
     pub(crate) timestamp: DateTime<Utc>,
     pub(crate) domain: String,
-    pub(crate) asn: String,
+    pub(crate) asn: u32,
     pub(crate) asn_owner: String,
     pub(crate) prefix: String,
     pub(crate) error: DnsReplyType,
@@ -290,16 +297,17 @@ impl fmt::Display for DNS_record {
                 },
             )
             .0;
-            if s == self.name {
-                s = String::new();
+
+            s = if s == self.name {
+                String::new()
             } else {
-                s = format!("({s}) ");
-            }
+                format!("({s}) ")
+            };
+
             writeln!(
                 f,
-                "  {} {}{} {} {} {} {} {} {} {} ({}) {} {} {}",
+                "  {} {s}{} {} {} {} {} {} {} {} ({}) {} {} {}",
                 snailquote::escape(&self.name),
-                s,
                 self.class,
                 self.rr_type,
                 self.rdata,
@@ -390,6 +398,7 @@ pub(crate) enum DnsReplyType {
 }
 
 impl DnsReplyType {
+    #[inline]
     pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
@@ -436,7 +445,7 @@ mod tests2 {
 }
 
 pub(crate) fn dns_reply_type(u: u16) -> Result<&'static str, Box<dyn Error>> {
-    Ok(DnsReplyType::find(u)?.to_str()) /*/.parse().unwrap())*/
+    Ok(DnsReplyType::find(u)?.to_str())
 }
 
 pub(crate) fn tlsa_cert_usage(u: u8) -> Result<&'static str, Parse_error> {
@@ -493,6 +502,22 @@ pub(crate) fn key_algorithm(u: u8) -> Result<&'static str, Parse_error> {
         1 => Ok("RSA/MD5"),
         2 => Ok("DH"),
         3 => Ok("DSA"),
+        4=> Ok("ECC"),
+        5=> Ok("RSASHA1"),
+        6=> Ok("DSA-NSEC3-SHA1"),
+        7=> Ok("RSASHA1-NSEC3-SHA1"),
+        8=> Ok("RSASHA256"),
+        10=> Ok("RSASHA512"),
+        12=> Ok("ECC-GOST"),
+        13=> Ok("ECDSAP256SHA256"),
+        14=> Ok("ECDSAP384SHA384"),
+        15=> Ok("ED25519"),
+        16=> Ok("ED448"),
+        17=> Ok("SMS2SM3"),
+        23=> Ok("ECC-GOST12"),
+        252=> Ok("Indirect"),
+        253=> Ok("PrivateDNS"),
+        254=> Ok("PrivadeOID"),
         _ => Err(Parse_error::new(
             crate::errors::ParseErrorType::Invalid_Parameter,
             "Unknown algorithm",
@@ -604,6 +629,7 @@ pub(crate) fn cert_type_str(t: u16) -> Result<&'static str, Parse_error> {
         8 => Ok("IACPKIX"),
         253 => Ok("URI"),
         254 => Ok("OID"),
+        65280..=65534 => Ok("Experimental"),
         _ => Err(Parse_error::new(
             crate::errors::ParseErrorType::Invalid_Parameter,
             "Unknown digest",
@@ -634,10 +660,10 @@ impl SVC_Param_Keys {
             &format!("{val}"),
         ))
     }
-    pub (crate) fn to_str(self) -> &'static str {
+    #[inline]
+    pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
-
 }
 
 impl fmt::Display for SVC_Param_Keys {

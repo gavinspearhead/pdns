@@ -1,7 +1,7 @@
 use std::{error::Error, fmt};
-use strum_macros::{ EnumIter};
+use strum_macros::EnumIter;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter )]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
 pub(crate) enum ParseErrorType {
     Invalid_UDP_Header,
     Invalid_TCP_Header,
@@ -76,7 +76,7 @@ impl Error for Parse_error {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter )]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
 pub(crate) enum DNS_Error_Type {
     Invalid_RR,
     Invalid_Class,
@@ -88,7 +88,7 @@ pub(crate) enum DNS_Error_Type {
 
 #[derive(Debug, Clone)]
 pub(crate) struct DNS_error {
-    error_type: DNS_Error_Type,
+    //error_type: DNS_Error_Type,
     error_str: String,
     value: String,
 }
@@ -105,7 +105,7 @@ impl DNS_error {
         };
 
         DNS_error {
-            error_type: err_t,
+            //error_type: err_t,
             error_str: s.to_owned(),
             value: val.to_string(),
         }

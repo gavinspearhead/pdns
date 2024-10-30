@@ -1,12 +1,14 @@
 use asn_db2::{Database, IpEntry};
 use chrono::{DateTime, Utc};
 use std::{
-    collections::VecDeque, fmt, net::{IpAddr, Ipv4Addr}, sync::{Arc, Mutex}
+    collections::VecDeque,
+    fmt,
+    net::{IpAddr, Ipv4Addr},
+    sync::{Arc, Mutex},
 };
 
 use crate::dns::{DNS_RR_type, DNS_record};
 use crate::dns_packet::DNS_Protocol;
-
 
 #[derive(Debug, Clone)]
 pub(crate) struct Packet_Queue {
@@ -14,24 +16,20 @@ pub(crate) struct Packet_Queue {
 }
 
 impl Packet_Queue {
-    pub (crate) fn new() -> Packet_Queue {
+    pub(crate) fn new() -> Packet_Queue {
         Packet_Queue {
             queue: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
+    #[inline]
     pub(crate) fn push_back(&self, packet_info: Option<Packet_info>) {
         self.queue.lock().unwrap().push_back(packet_info);
     }
-    pub (crate) fn pop_front(&self) -> Option<Option<Packet_info>>
-    {
+    #[inline]
+    pub(crate) fn pop_front(&self) -> Option<Option<Packet_info>> {
         self.queue.lock().unwrap().pop_front()
     }
-
 }
-/*impl Default for Packet_info {
-
-}
-*/
 
 #[derive(Debug, Clone)]
 pub(crate) struct Packet_info {
@@ -46,7 +44,6 @@ pub(crate) struct Packet_info {
     pub protocol: DNS_Protocol,
     pub dns_records: Vec<DNS_record>,
 }
-
 
 impl Packet_info {
     pub fn new() -> Self {
@@ -64,30 +61,39 @@ impl Packet_info {
         }
     }
 
+    #[inline]
     pub fn set_timestamp(&mut self, timestamp: DateTime<Utc>) {
         self.timestamp = timestamp;
     }
+    #[inline]
     pub fn set_source_port(&mut self, port: u16) {
         self.sp = port;
     }
+    #[inline]
     pub fn set_protocol(&mut self, protocol: DNS_Protocol) {
         self.protocol = protocol;
     }
+    #[inline]
     pub fn set_dest_port(&mut self, port: u16) {
         self.dp = port;
     }
+    #[inline]
     pub fn set_source_ip(&mut self, s_ip: IpAddr) {
         self.s_addr = s_ip;
     }
+    #[inline]
     pub fn set_dest_ip(&mut self, d_ip: IpAddr) {
         self.d_addr = d_ip;
     }
+    #[inline]
     pub fn set_ip_len(&mut self, len: u16) {
         self.ip_len = len;
     }
+    #[inline]
     pub fn set_data_len(&mut self, len: u32) {
         self.data_len = len;
     }
+    #[inline]
     pub fn add_dns_record(&mut self, rec: DNS_record) {
         self.dns_records.push(rec);
     }
@@ -154,12 +160,12 @@ impl Packet_info {
                     if let Some(x) = Packet_info::find_asn(asn_db, &i.rdata) {
                         match x {
                             IpEntry::V4(v4) => {
-                                i.asn = v4.as_number.to_string();
+                                i.asn = v4.as_number;
                                 i.asn_owner.clone_from(&v4.owner);
                                 i.prefix = v4.subnet.to_string();
                             }
                             IpEntry::V6(v6) => {
-                                i.asn = v6.as_number.to_string();
+                                i.asn = v6.as_number;
                                 i.asn_owner.clone_from(&v6.owner);
                                 i.prefix = v6.subnet.to_string();
                             }

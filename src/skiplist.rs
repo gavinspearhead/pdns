@@ -1,5 +1,6 @@
 use regex::Regex;
 use std::{fs::File, io::Read};
+use tracing::{debug, error};
 
 fn prefix_str(mut s1: String, s2: &str) -> String {
     s1.insert_str(0, s2);
@@ -25,19 +26,19 @@ impl Skip_List {
             .map(|t| prefix_str(t, "(?i)"))
             .map(|s| Regex::new(s.as_str()).unwrap())
             .collect();
-        tracing::debug!("Regex: {lines:?}");
+        debug!("Regex: {lines:?}");
         self.entries = lines;
     }
 
     pub fn read_skip_list(&mut self, filename: &str) {
         if filename.is_empty() {
-            tracing::debug!("Empty skiplist");
+            debug!("Empty skiplist");
             self.entries = Vec::new();
             return;
         }
 
         let Ok(mut file) = File::open(filename) else {
-            tracing::error!("Skip file not found: {filename}");
+            error!("Skip file not found: {filename}");
             self.entries = Vec::new();
             return;
         };
@@ -45,18 +46,19 @@ impl Skip_List {
         let mut file_contents = String::new();
 
         if file.read_to_string(&mut file_contents).is_ok() {
-            self.parse_skiplist(&file_contents)
+            self.parse_skiplist(&file_contents);
         } else {
-            tracing::error!("File could not be read {filename}");
+            error!("File could not be read {filename}");
             self.entries = Vec::new();
         }
     }
 
     #[must_use]
     pub fn match_skip_list(&self, name: &str) -> bool {
-        for i in &self.entries {
-            let r = i;
-            if r.is_match(name.trim_end_matches('.')) {
+        let clean_name = name.trim_end_matches('.');
+        for r in &self.entries {
+            //let r = i;
+            if r.is_match(clean_name) {
                 return true;
             }
         }

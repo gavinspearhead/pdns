@@ -52,7 +52,7 @@ impl Mysql_connection {
                 TTL = if (TTL < ?, ?, TTL), COUNT = COUNT + ?, 
                 LAST_SEEN = if (LAST_SEEN < FROM_UNIXTIME(?), FROM_UNIXTIME(?), LAST_SEEN),
                 FIRST_SEEN = if (FIRST_SEEN > FROM_UNIXTIME(?), FROM_UNIXTIME(?), FIRST_SEEN), 
-                asn = if (asn is null and LENGTH(?) > 0, ?, asn), 
+                asn = if (asn is null and ? > 0, ?, asn),
                 asn_owner = if (asn_owner is null and LENGTH(?) > 0, ?, asn_owner) ,
                 prefix = if (prefix is null and LENGTH(?) > 0, ?, prefix) 
                 ";
@@ -68,8 +68,8 @@ impl Mysql_connection {
                     .bind(ts)
                     .bind(ts)
                     .bind(&i.domain)
-                    .bind(&i.asn)
-                    .bind(&i.asn)
+                    .bind(i.asn)
+                    .bind(i.asn)
                     .bind(&i.asn_owner)
                     .bind(&i.asn_owner)
                     .bind(&i.prefix)
@@ -81,8 +81,8 @@ impl Mysql_connection {
                     .bind(ts)
                     .bind(ts)
                     .bind(ts)
-                    .bind(&i.asn)
-                    .bind(&i.asn)
+                    .bind(i.asn)
+                    .bind(i.asn)
                     .bind(&i.asn_owner)
                     .bind(&i.asn_owner)
                     .bind(&i.prefix)
@@ -117,11 +117,10 @@ impl Mysql_connection {
             )
         };
         match q_res {
-            Ok(x) => {
-                debug!("Success {x:?}");
-            }
+            Ok(x) => debug!("Success {x:?}"),
             Err(e) => {
                 error!("Error: {e}");
+                exit(-1);
             }
         }
     }
@@ -131,7 +130,7 @@ impl Mysql_connection {
         `QUERY` varchar(255) NOT NULL DEFAULT '',
         `MAPTYPE` varchar(16) NOT NULL DEFAULT '',
         `RR` varchar(10) NOT NULL DEFAULT '',
-        `ANSWER` varchar(255) NOT NULL DEFAULT '',
+        `ANSWER` text NOT NULL DEFAULT '',
         `TTL` bigint(10) unsigned NOT NULL DEFAULT 0,
         `COUNT` bigint(20) unsigned NOT NULL DEFAULT 1,
         `FIRST_SEEN` datetime NOT NULL,
@@ -151,9 +150,7 @@ impl Mysql_connection {
       ) ENGINE=MyISAM  DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
       ";
         match block_on(sqlx::query(create_cmd).execute(&self.pool)) {
-            Ok(x) => {
-                debug!("Success {x:?}");
-            }
+            Ok(x) => debug!("Success {x:?}"),
             Err(e) => {
                 error!("Error: {e}");
                 exit(-1);
@@ -176,9 +173,7 @@ impl Mysql_connection {
       ) ENGINE=MyISAM  DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
       ";
         match block_on(sqlx::query(create_cmd1).execute(&self.pool)) {
-            Ok(x) => {
-                debug!("Success {x:?}");
-            }
+            Ok(x) => debug!("Success {x:?}"),
             Err(e) => {
                 error!("Error: {e}");
                 exit(-1);
@@ -202,7 +197,6 @@ impl Mysql_connection {
         }
 
         let clean_cmd1 = "DELETE FROM pdns_err WHERE LAST_SEEN < ?";
-
         if let Err(e) = block_on(
             sqlx::query(clean_cmd1)
                 .bind(current_time)

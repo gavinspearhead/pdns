@@ -1,13 +1,13 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use strum::IntoEnumIterator;
-use strum_macros::{ EnumString, IntoStaticStr};
-use strum_macros::{EnumIter};
+use strum_macros::EnumIter;
+use strum_macros::{EnumString, IntoStaticStr};
 
-use crate::errors::{DNS_Error_Type, DNS_error };
+use crate::errors::{DNS_Error_Type, DNS_error};
 
 #[derive(
-    Debug,IntoStaticStr, EnumIter, Copy, Clone, EnumString, PartialEq, Eq, Serialize, Deserialize,
+    Debug, IntoStaticStr, EnumIter, Copy, Clone, EnumString, PartialEq, Eq, Serialize, Deserialize,
 )]
 
 pub(crate) enum EDNSOptionCodes {
@@ -34,6 +34,7 @@ pub(crate) enum EDNSOptionCodes {
 }
 
 impl EDNSOptionCodes {
+    #[inline]
     pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
@@ -107,6 +108,7 @@ pub(crate) enum DNSExtendedError {
 }
 
 impl DNSExtendedError {
+    #[inline]
     pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
