@@ -7,12 +7,12 @@ pub(crate) struct Tcp_data {
 }
 
 impl Tcp_data {
-    const MAX_TCP_LEN: usize = 1024 * 1024;  // max  1MiB
-
+    const MAX_TCP_LEN: usize = 20 * 1024 * 1024;  // max  20 MiB
+    const INIT_LEN: usize = 2048;
     pub(crate) fn new(seqnr: u32) -> Tcp_data {
         Tcp_data {
             init_seqnr: seqnr,
-            data: Vec::new()
+            data: Vec::with_capacity(Self::INIT_LEN)
         }
     }
 
@@ -22,22 +22,17 @@ impl Tcp_data {
         }
         let pos = (seqnr - self.init_seqnr) as usize;
         if pos > Self::MAX_TCP_LEN {
-            debug!("Weird sequence number: {pos}- packet too big");
+            debug!("Weird sequence number: {pos} - packet too big");
             return;
         }
-        let datasize = pos + data.len();
-        if datasize > self.data.len() {
-            self.data.resize(datasize, 0);
+        let data_size = pos + data.len();
+        if data_size > self.data.len() {
+            self.data.resize(data_size, 0);
             debug!("resized to {}", self.data.len());
         }
-        self.data[pos..datasize].copy_from_slice(data);
+        self.data[pos..data_size].copy_from_slice(data);
         
-        debug!("Data added at position: {}, seqnr: {} ", self.data.len(), self.init_seqnr);
-        //debug!("Data added at position: {}, seqnr: {}, data: {:x?}", self.data.len(), self.init_seqnr, self.data);
-    }
-    #[inline]
-    pub(crate) fn check_data_size(&self) -> bool {
-        self.data.len() > Tcp_data::MAX_TCP_LEN
+        debug!("Data added at position: {}, init_seqnr: {} seqnr: {seqnr} ", self.data.len(), self.init_seqnr);
     }
 
     #[inline]

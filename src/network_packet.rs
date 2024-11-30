@@ -51,16 +51,17 @@ fn parse_tcp(
         let data = d.data();
         let data_len = data.len();
         if data_len == 0 {
-            return Ok(()); 
+            return Ok(());
         }
         stats.tcp += 1;
         let mut offset = 0;
         loop {
             let len = usize::from(dns_read_u16(data, offset)?);
-            if len == 0 { 
+            if len == 0 {
                 break;
             }
-            let in_data = dns_parse_slice(data, offset + 2..offset + 2 + len)?;
+            offset += 2;
+            let in_data = dns_parse_slice(data, offset..offset + len)?;
             parse_dns(
                 in_data,
                 packet_info,
@@ -69,7 +70,7 @@ fn parse_tcp(
                 skip_list,
                 publicsuffixlist,
             )?;
-            offset = offset + 2 + len;
+            offset += len;
             if offset >= data_len {
                 break;
             }

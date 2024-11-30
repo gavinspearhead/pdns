@@ -1,18 +1,31 @@
 use crate::rank::Rank;
 use crate::time_stats::Time_stats;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use serde_with::rust::deserialize_ignore_any;
+use serde_json; 
+
 use std::{collections::HashMap, fs::File, io::BufReader};
+use std::cmp::Ordering::Equal;
+use serde::ser::SerializeMap;
+use crate::dns::{DNS_Class, DNS_Opcodes, DNS_RR_type, DnsReplyType};
+use crate::edns::DNSExtendedError;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub(crate) struct Statistics {
-    pub errors: HashMap<String, u128>,
-    pub qtypes: HashMap<String, u128>,
-    pub atypes: HashMap<String, u128>,
-    pub qclass: HashMap<String, u128>,
-    pub aclass: HashMap<String, u128>,
-    pub opcodes: HashMap<String, u128>,
-    pub extended_error: HashMap<String, u128>,
+    #[serde(serialize_with = "ordered_map")]
+    pub errors: HashMap<DnsReplyType, u128>,
+    #[serde(serialize_with = "ordered_map")]
+    pub qtypes: HashMap<DNS_RR_type, u128>,
+    #[serde(serialize_with = "ordered_map")]
+    pub atypes: HashMap<DNS_RR_type, u128>,
+    #[serde(serialize_with = "ordered_map")]
+    pub qclass: HashMap<DNS_Class, u128>,
+    #[serde(serialize_with = "ordered_map")]
+    pub aclass: HashMap<DNS_Class, u128>,
+    #[serde(serialize_with = "ordered_map")]
+    pub opcodes: HashMap<DNS_Opcodes, u128>,
+    #[serde(serialize_with = "ordered_map")]
+    pub extended_error: HashMap<DNSExtendedError, u128>,
     pub queries: u128,
     pub answers: u128,
     pub additional: u128,
@@ -34,7 +47,7 @@ pub(crate) struct Statistics {
 
 impl Statistics {
     pub(crate) fn new(toplistsize: usize) -> Statistics {
-        Statistics {
+        Statistics {    
             errors: HashMap::new(),
             qtypes: HashMap::new(),
             atypes: HashMap::new(),
@@ -71,4 +84,26 @@ impl Statistics {
         statistics.topnx = Rank::new(toplistsize);
         Ok(statistics)
     }
+}
+
+/// For use with serde's [serialize_with] attribute
+fn ordered_map<S, K: Ord + Serialize + ToString, V: Serialize + PartialOrd >(
+    value: &HashMap<K, V>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let mut l = Vec::new();
+    for (k, v) in value {
+        l.push((k, v));
+    }
+    l.sort_by(|a, b| (a.0.to_string()).partial_cmp(&b.0.to_string()).unwrap_or(Equal));
+
+    let mut map = serializer.serialize_map(Some(l.len()))?;
+    for i in l {
+        map.serialize_entry(&i.0, i.1)?;
+    }
+    map.end()
+    
 }

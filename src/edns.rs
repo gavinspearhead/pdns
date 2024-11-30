@@ -7,7 +7,7 @@ use strum_macros::{EnumString, IntoStaticStr};
 use crate::errors::{DNS_Error_Type, DNS_error};
 
 #[derive(
-    Debug, IntoStaticStr, EnumIter, Copy, Clone, EnumString, PartialEq, Eq, Serialize, Deserialize,
+    Debug, Hash, IntoStaticStr, EnumIter, Copy, Clone, EnumString, PartialEq, Eq, Serialize, Deserialize,
 )]
 
 pub(crate) enum EDNSOptionCodes {
@@ -70,6 +70,9 @@ impl fmt::Display for EDNSOptionCodes {
     Serialize,
     Deserialize,
     Default,
+    PartialOrd,
+    Ord,
+    Hash
 )]
 pub(crate) enum DNSExtendedError {
     #[default]

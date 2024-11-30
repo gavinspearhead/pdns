@@ -32,27 +32,15 @@ impl Bucket {
             self.items[pos] += count;
         } else if group == self.last_group {
             if pos > self.last_post {
-                /*                for i in self.last_post + 1..pos {
-                    self.items[i] = 0;
-                }*/
+               
                 self.items[self.last_post + 1..pos].fill(0);
             } else {
-                /*                for i in 0..pos {
-                    self.items[i] = 0;
-                }*/
                 self.items[0..pos].fill(0);
             }
             self.items[pos] = count;
         } else if group == self.last_group + 1 {
             self.items[self.last_post + 1..len].fill(0);
-            /*
-                for i in self.last_post + 1..self.items.len() {
-                self.items[i] = 0;
-            }*/
             self.items[0..pos].fill(0);
-            /*for i in 0..pos {
-                self.items[i] = 0;
-            }*/
             self.items[pos] = count;
         } else {
             self.items = vec![0; len];

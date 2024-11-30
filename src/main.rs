@@ -4,6 +4,7 @@
 
 #![allow(non_camel_case_types)]
 pub mod config;
+pub mod dns_record;
 pub mod dns;
 pub mod dns_cache;
 pub mod dns_helper;
@@ -24,6 +25,7 @@ pub mod tcp_data;
 pub mod time_stats;
 pub mod version;
 
+
 use chrono::{DateTime, Utc};
 use clap::{arg, Parser};
 use config::parse_config;
@@ -32,7 +34,7 @@ use futures::executor::block_on;
 use live_dump::Live_dump;
 use mysql_connection::{create_database, Mysql_connection};
 use packet_info::Packet_Queue;
-use pcap::{Active, Capture, Linktype};
+use pcap::{Activated, Active, Capture, Linktype};
 use signal_hook::flag;
 use skiplist::Skip_List;
 use std::fs::{self, File, OpenOptions};
@@ -92,7 +94,7 @@ fn dump_stats(stats: &Statistics, config: &Config) -> std::io::Result<()> {
     }
 }
 
-fn packet_loop<T>(
+fn packet_loop<T:Activated>(
     mut cap: Capture<T>,
     packet_queue: &Packet_Queue,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
@@ -255,24 +257,26 @@ fn poll(packet_queue: &Packet_Queue, config: &Config, rx: mpsc::Receiver<String>
 
         let ct = Utc::now().timestamp();
         if ct > last_push + dns_cache.timeout() {
-            if let Some(ref mut db) = database_conn {
-                for i in dns_cache.push_all() {
-                    db.insert_or_update_record(&i);
-                }
-                last_push = Utc::now().timestamp();
-            }
+            db_insert(&mut dns_cache, &mut database_conn, &mut last_push);
         }
         match rx.try_recv() {
             Ok(_) | Err(TryRecvError::Disconnected) => {
-                if let Some(ref mut db) = database_conn {
-                    for i in dns_cache.push_all() {
-                        db.insert_or_update_record(&i);
-                    }
-                }
+                db_insert(&mut dns_cache, &mut database_conn, &mut last_push);
                 return;
             }
             Err(TryRecvError::Empty) => {}
         }
+    }
+}
+
+
+fn db_insert(dns_cache: &mut DNS_Cache, database_conn: & mut Option<Mysql_connection> , last_push : &mut i64) 
+{
+    if let Some(ref mut db) = database_conn {
+        for i in dns_cache.push_all() {
+            db.insert_or_update_record(i);
+        }
+        *last_push = Utc::now().timestamp();
     }
 }
 
@@ -341,7 +345,7 @@ fn capture_from_file(
                         &tcp_list.clone(),
                         &stats.clone(),
                         config,
-                        &skiplist,
+                        skiplist,
                     );
                 });
                 handle2.join().unwrap();
@@ -391,7 +395,7 @@ fn capture_from_interface(
         debug!("Ready to start packet loop");
         let handle3 = s.spawn(|| {
             debug!("Starting packet loop");
-            packet_loop(cap, &packet_queue, tcp_list, stats, config, &skiplist);
+            packet_loop(cap, packet_queue, tcp_list, stats, config, skiplist);
         });
         let handle5 = s.spawn(|| {
             terminate_loop(stats, config);

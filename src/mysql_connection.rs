@@ -8,8 +8,9 @@ use tracing::debug;
 
 use crate::{
     config::Config,
-    dns::{DNS_record, DnsReplyType},
+    dns::{ DnsReplyType},
 };
+use crate::dns_record::DNS_record;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Mysql_connection {
@@ -44,7 +45,7 @@ impl Mysql_connection {
         let i = record;
         let ts = i.timestamp.timestamp();
         let q_res = if record.error == DnsReplyType::NOERROR {
-            let q = r"INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN, DOMAIN, asn, asn_owner, prefix) VALUES (
+            static Q: &str = r"INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN, DOMAIN, asn, asn_owner, prefix) VALUES (
                 ?, ?, ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?), ?,  
                  if (length(?) > 0, ?, NULL),  
                  if (length(?) > 0, ?, NULL),
@@ -53,15 +54,15 @@ impl Mysql_connection {
                 LAST_SEEN = if (LAST_SEEN < FROM_UNIXTIME(?), FROM_UNIXTIME(?), LAST_SEEN),
                 FIRST_SEEN = if (FIRST_SEEN > FROM_UNIXTIME(?), FROM_UNIXTIME(?), FIRST_SEEN), 
                 asn = if (asn is null and ? > 0, ?, asn),
-                asn_owner = if (asn_owner is null and LENGTH(?) > 0, ?, asn_owner) ,
+                asn_owner = if (asn_owner is null and LENGTH(?) > 0, ?, asn_owner),
                 prefix = if (prefix is null and LENGTH(?) > 0, ?, prefix) 
                 ";
-            debug!("{} {} {} {}", i.name, i.rr_type, i.rdata, i.count);
+           // debug!("{} {} {} {}", i.name, i.rr_type, i.rdata, i.count);
+            
             block_on(
-                sqlx::query(q)
-                    .bind(&i.name)
-                    .bind(&i.class)
-                    .bind(&i.rr_type)
+                    sqlx::query(Q).bind(&i.name)
+                    .bind(i.class.to_str())
+                    .bind(i.rr_type.to_str())
                     .bind(&i.rdata)
                     .bind(i.ttl)
                     .bind(i.count)
@@ -87,34 +88,33 @@ impl Mysql_connection {
                     .bind(&i.asn_owner)
                     .bind(&i.prefix)
                     .bind(&i.prefix)
-                    .execute(&self.pool),
+                    .execute(&self.pool)
             )
         } else {
-            let q = r"INSERT INTO pdns_err (QUERY,RR,MAPTYPE,COUNT,LAST_SEEN,FIRST_SEEN, ERROR_VAL, EXT_ERROR_VAL) VALUES (
+            static Q: &str= "INSERT INTO pdns_err (QUERY,RR,MAPTYPE,COUNT,LAST_SEEN,FIRST_SEEN, ERROR_VAL, EXT_ERROR_VAL) VALUES (
                 ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?), ?, ?   
                 ) ON DUPLICATE KEY UPDATE
                 COUNT = COUNT + ?, 
                 LAST_SEEN = if (LAST_SEEN < FROM_UNIXTIME(?), FROM_UNIXTIME(?), LAST_SEEN),
                 FIRST_SEEN = if (FIRST_SEEN > FROM_UNIXTIME(?), FROM_UNIXTIME(?), FIRST_SEEN) 
                 ";
-            debug!("{} {} {} {}", i.name, i.rr_type, i.error as u16, i.count);
-            block_on(
-                sqlx::query(q)
-                    .bind(&i.name)
-                    .bind(&i.class)
-                    .bind(&i.rr_type)
-                    .bind(i.count)
-                    .bind(ts)
-                    .bind(ts)
-                    .bind(i.error as u16)
-                    .bind(i.extended_error as u16)
-                    .bind(i.count)
-                    .bind(ts)
-                    .bind(ts)
-                    .bind(ts)
-                    .bind(ts)
-                    .execute(&self.pool),
+            block_on( sqlx::query(Q)
+                          .bind(&i.name)
+                          .bind(i.class.to_str())
+                          .bind(i.rr_type.to_str())
+                          .bind(i.count)
+                          .bind(ts)
+                          .bind(ts)
+                          .bind(i.error as u16)
+                          .bind(i.extended_error as u16)
+                          .bind(i.count)
+                          .bind(ts)
+                          .bind(ts)
+                          .bind(ts)
+                          .bind(ts)
+                          .execute(&self.pool),
             )
+            //debug!("{} {} {} {}", i.name, i.rr_type, i.error as u16, i.count); 
         };
         match q_res {
             Ok(x) => debug!("Success {x:?}"),
@@ -187,18 +187,18 @@ impl Mysql_connection {
         let current_time = Utc::now() - Duration::days(config.clean_interval);
         debug!("Cleaning timestamp: {current_time}");
 
-        let clean_cmd = "DELETE FROM pdns WHERE LAST_SEEN < ?";
+        static CLEAN_CMD: &str = "DELETE FROM pdns WHERE LAST_SEEN < ?";
         if let Err(e) = block_on(
-            sqlx::query(clean_cmd)
+            sqlx::query(CLEAN_CMD)
                 .bind(current_time)
                 .execute(&self.pool),
         ) {
             error!("Cannot execute cleanup query: {e}");
         }
 
-        let clean_cmd1 = "DELETE FROM pdns_err WHERE LAST_SEEN < ?";
+        static CLEAN_CMD1: &str = "DELETE FROM pdns_err WHERE LAST_SEEN < ?";
         if let Err(e) = block_on(
-            sqlx::query(clean_cmd1)
+            sqlx::query(CLEAN_CMD1)
                 .bind(current_time)
                 .execute(&self.pool),
         ) {

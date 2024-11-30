@@ -1,3 +1,5 @@
+use crate::dns_helper::is_between;
+use crate::tcp_data::Tcp_data;
 use chrono::{DateTime, Utc};
 use std::{
     collections::HashMap,
@@ -11,11 +13,8 @@ use std::{
     thread::sleep,
     time,
 };
-use std::cmp::{max, min};
 use strum_macros::EnumIter;
 use tracing::debug;
-use crate::dns_helper::is_between;
-use crate::tcp_data::Tcp_data;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
 pub(crate) enum TCP_Connections_Error_Type {
@@ -79,7 +78,6 @@ pub(crate) struct TCP_Connections {
     timelimit: i64,
 }
 
-
 impl TCP_Connections {
     pub fn new() -> TCP_Connections {
         TCP_Connections {
@@ -108,10 +106,6 @@ impl TCP_Connections {
             .entry((src, dst, sp, dp))
             .or_insert_with(|| Tcp_connection::new(seqnr, timestamp));
         c.in_data.add_data(seqnr, data);
-       /* if c.in_data.check_data_size() {
-            // if it is too big we just throw it away
-            let _ = self.remove(sp, dp, src, dst);
-        }*/
     }
     pub fn get_data(
         &self,
@@ -158,11 +152,15 @@ impl TCP_Connections {
         let now = Utc::now().timestamp();
         for (k, v) in &self.connections {
             let time_in_seconds = v.ts.timestamp();
-            debug!("{time_in_seconds} {} {now} {}", self.timelimit, self.timelimit+time_in_seconds);
+            debug!(
+                "{time_in_seconds} {} {now} {}",
+                self.timelimit,
+                self.timelimit + time_in_seconds
+            );
             if time_in_seconds + self.timelimit < now {
                 keys.push(*k);
             }
-            if is_between(now - time_in_seconds, 1, m_ts) {
+            if is_between(&(now - time_in_seconds), &1, &m_ts) {
                 m_ts = now - time_in_seconds;
             }
         }
@@ -183,7 +181,7 @@ impl TCP_Connections {
         timestamp: DateTime<Utc>,
         flags: u8,
     ) -> Option<Tcp_data> {
-        debug!("Number of connections {}" , self.connections.len());
+        //debug!("Number of connections {}" , self.connections.len());
         if (flags & 1 != 0) || (flags & 4 != 0) {
             // FIN flag or reset
             self.add_data(sp, dp, src, dst, seqnr, data, timestamp);

@@ -66,7 +66,7 @@ pub(crate) fn handle_connection(
     }
 
     let status_line = "HTTP/1.1 200 OK";
-    let response; // = String::new();
+    let response; 
     if req[1] == "/stats" {
         let stats_data = stats.lock().unwrap().clone();
         let stats_str = serde_json::to_string(&stats_data).unwrap_or_default();

@@ -36,36 +36,38 @@ where
     }
 
     pub fn remove_lowest(&mut self) -> usize {
-        let mut mink = &T::default();
+        let mut mink = None;
         let mut minv: usize = 0;
         let mut maxv: usize = 0;
 
         for (k, v) in &self.rank {
             if minv == 0 || *v < minv {
                 minv = *v;
-                mink = k;
+                mink = Some(k);
             }
             if *v > maxv {
                 maxv = *v;
             }
         }
-        if minv > 0 {
-            let Some((_k, _v)) = self.rank.remove_entry(&mink.clone()) else {
-                return 0;
-            };
+        if let Some(k) = mink {
+            self.rank.remove(&k.clone());
+            (2 * minv + maxv) / 3
+        } else {
+            0
         }
-        (2 * minv + maxv) / 3
     }
 
-    pub fn add(&mut self, element: T) {
-        if self.rank.contains_key(&element) {
-            let _c = self.rank.entry(element).and_modify(|v| *v += 1);
+    pub fn add(&mut self, element: &T) {
+        if let Some(elem) = self.rank.get_mut(&element) {
+            *elem += 1;
+        //            let _c = self.rank.entry(element.clone()).and_modify(|v| *v += 1);
         } else {
-            let mut val = 1;
-            if self.rank.len() >= self.size {
-                val = min(self.remove_lowest(), 1);
-            }
-            self.rank.insert(element, val);
+            let val = if self.rank.len() >= self.size {
+                min(self.remove_lowest(), 1)
+            } else {
+                1
+            };
+            self.rank.insert(element.clone(), val);
         }
     }
 }

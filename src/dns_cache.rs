@@ -1,10 +1,11 @@
 use std::{collections::HashMap, fmt};
 
-use crate::dns::DNS_record;
+use crate::dns::DNS_RR_type;
+use crate::dns_record::DNS_record;
 
 #[derive(Debug, Clone)]
 pub(crate) struct DNS_Cache {
-    items: HashMap<(String, String, String), DNS_record>,
+    items: HashMap<(DNS_RR_type, String, String), DNS_record>,
     timeout: i64,
 }
 
@@ -22,22 +23,13 @@ impl DNS_Cache {
 
     pub(crate) fn add(&mut self, record: &DNS_record) {
         self.items
-            .entry((
-                record.rr_type.clone(),
-                record.name.clone(),
-                record.rdata.clone(),
-            ))
+            .entry((record.rr_type, record.name.clone(), record.rdata.clone()))
             .and_modify(|f| f.count += 1)
-            .or_insert(record.clone());
+            .or_insert_with(|| record.clone());
     }
-
-    pub(crate) fn push_all(&mut self) -> Vec<DNS_record> {
-        let mut res = Vec::new();
-        for v in self.items.values() {
-            res.push(v.clone());
-        }
-        self.items.clear();
-        res
+    #[inline]
+    pub(crate) fn push_all(&mut self) -> Vec<&DNS_record> {
+        self.items.values().collect()
     }
 }
 

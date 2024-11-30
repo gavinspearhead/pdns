@@ -7,12 +7,10 @@ use chrono::DateTime;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::ops::RangeBounds;
 
-
 #[inline]
-pub(crate) fn is_between<T: std::cmp::PartialOrd>(value: T, min: T, max: T) -> bool {
+pub(crate) fn is_between<T: PartialOrd>(value: &T, min: &T, max: &T) -> bool {
     value >= min && value <= max
 }
-
 
 #[inline]
 pub(crate) fn parse_rrtype(rrtype: u16) -> Result<DNS_RR_type, DNS_error> {
@@ -24,7 +22,7 @@ pub(crate) fn parse_class(class: u16) -> Result<DNS_Class, DNS_error> {
     DNS_Class::find(class)
 }
 
-pub(crate) fn timestame_to_str(timestamp: u32) -> Result<String, Parse_error> {
+pub(crate) fn timestamp_to_str(timestamp: u32) -> Result<String, Parse_error> {
     let Some(dt) = DateTime::from_timestamp(i64::from(timestamp), 0) else {
         return Err(Parse_error::new(
             ParseErrorType::Invalid_timestamp,
@@ -41,8 +39,16 @@ pub(crate) fn dns_read_u128(packet: &[u8], offset: usize) -> Result<u128, Parse_
             &offset.to_string(),
         ));
     };
-    let val = BigEndian::read_u128(r);
-    Ok(val)
+    Ok( BigEndian::read_u128(r))
+}
+pub(crate) fn dns_read_u48(packet: &[u8], offset: usize) -> Result<u64, Parse_error> {
+    let Some(r) = packet.get(offset..offset + 6) else {
+        return Err(Parse_error::new(
+            ParseErrorType::Invalid_packet_index,
+            &offset.to_string(),
+        ));
+    };
+    Ok(BigEndian::read_u48(r))
 }
 
 pub(crate) fn dns_read_u64(packet: &[u8], offset: usize) -> Result<u64, Parse_error> {
@@ -52,8 +58,7 @@ pub(crate) fn dns_read_u64(packet: &[u8], offset: usize) -> Result<u64, Parse_er
             &offset.to_string(),
         ));
     };
-    let val = BigEndian::read_u64(r);
-    Ok(val)
+   Ok(BigEndian::read_u64(r))
 }
 
 pub(crate) fn dns_read_u32(packet: &[u8], offset: usize) -> Result<u32, Parse_error> {
@@ -63,8 +68,7 @@ pub(crate) fn dns_read_u32(packet: &[u8], offset: usize) -> Result<u32, Parse_er
             &offset.to_string(),
         ));
     };
-    let val = BigEndian::read_u32(r);
-    Ok(val)
+    Ok(BigEndian::read_u32(r))
 }
 
 pub(crate) fn dns_read_u16(packet: &[u8], offset: usize) -> Result<u16, Parse_error> {
@@ -74,8 +78,7 @@ pub(crate) fn dns_read_u16(packet: &[u8], offset: usize) -> Result<u16, Parse_er
             &offset.to_string(),
         ));
     };
-    let val = BigEndian::read_u16(r);
-    Ok(val)
+    Ok(BigEndian::read_u16(r))
 }
 
 pub(crate) fn dns_read_u8(packet: &[u8], offset: usize) -> Result<u8, Parse_error> {
@@ -135,8 +138,7 @@ pub(crate) fn parse_ipv4(data: &[u8]) -> Result<IpAddr, Parse_error> {
             return Err(Parse_error::new(ParseErrorType::Invalid_DNS_Packet, ""));
         }
     };
-    let addr = Ipv4Addr::from(r);
-    Ok(IpAddr::V4(addr))
+    Ok(IpAddr::V4(Ipv4Addr::from(r)))
 }
 
 pub(crate) fn parse_ipv6(data: &[u8]) -> Result<IpAddr, Parse_error> {
@@ -146,8 +148,7 @@ pub(crate) fn parse_ipv6(data: &[u8]) -> Result<IpAddr, Parse_error> {
             return Err(Parse_error::new(ParseErrorType::Invalid_DNS_Packet, ""));
         }
     };
-    let addr = Ipv6Addr::from(r);
-    Ok(IpAddr::V6(addr))
+    Ok(IpAddr::V6(Ipv6Addr::from(r)))
 }
 
 #[cfg(test)]

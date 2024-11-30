@@ -57,7 +57,6 @@ impl Skip_List {
     pub fn match_skip_list(&self, name: &str) -> bool {
         let clean_name = name.trim_end_matches('.');
         for r in &self.entries {
-            //let r = i;
             if r.is_match(clean_name) {
                 return true;
             }

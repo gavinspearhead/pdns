@@ -1,17 +1,28 @@
-use chrono::{DateTime, Utc};
+use crate::dns::DNS_RR_type::Private;
+use crate::errors::{DNS_Error_Type, DNS_error, Parse_error};
 use serde::{Deserialize, Serialize};
-use std::error::Error;
 use std::fmt;
 use std::str::FromStr;
 use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
+use strum_macros::{EnumIter, FromRepr};
 use strum_macros::{EnumString, IntoStaticStr};
-use unic_idna::to_unicode;
-use crate::dns::DNS_RR_type::Private;
-use crate::edns::DNSExtendedError;
-use crate::errors::{DNS_Error_Type, DNS_error, Parse_error};
 
-#[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq, EnumString, IntoStaticStr)]
+#[derive(
+    Debug,
+    EnumIter,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    EnumString,
+    IntoStaticStr,
+    Hash,
+    Serialize,
+    Deserialize,
+    FromRepr,
+    PartialOrd,
+    Ord
+)]
 pub(crate) enum DNS_Opcodes {
     Query = 0,
     IQuery = 1,
@@ -25,17 +36,14 @@ impl DNS_Opcodes {
     pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
-
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
-        for oc in DNS_Opcodes::iter() {
-            if (oc as u16) == val {
-                return Ok(oc);
-            }
+        match DNS_Opcodes::from_repr(usize::from(val)) {
+            Some(x) => Ok(x),
+            None => Err(DNS_error::new(
+                DNS_Error_Type::Invalid_Opcode,
+                &format!("{val}"),
+            )),
         }
-        Err(DNS_error::new(
-            DNS_Error_Type::Invalid_Opcode,
-            &format!("{val}"),
-        ))
     }
 }
 
@@ -60,7 +68,22 @@ mod dns_opcodes_tests {
     }
 }
 
-#[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq, EnumString, IntoStaticStr)]
+#[derive(
+    Debug,
+    Hash,
+    EnumIter,
+    Copy,
+    Clone,
+    PartialEq,
+    PartialOrd,
+    Ord,
+    Eq,
+    EnumString,
+    IntoStaticStr,
+    Serialize,
+    Deserialize,
+    FromRepr,
+)]
 pub(crate) enum DNS_Class {
     IN = 1,
     CS = 2,
@@ -75,17 +98,14 @@ impl DNS_Class {
     pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
-
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
-        for cl in DNS_Class::iter() {
-            if (cl as u16) == val {
-                return Ok(cl);
-            }
+        match DNS_Class::from_repr(usize::from(val)) {
+            Some(x) => Ok(x),
+            None => Err(DNS_error::new(
+                DNS_Error_Type::Invalid_Class,
+                &format!("{val}"),
+            ))
         }
-        Err(DNS_error::new(
-            DNS_Error_Type::Invalid_Class,
-            &format!("{val}"),
-        ))
     }
 }
 
@@ -110,7 +130,20 @@ mod dns_class_tests {
 }
 
 #[derive(
-    Debug, EnumIter, Copy, Clone, IntoStaticStr, EnumString, PartialEq, Eq, Serialize, Deserialize,
+    Hash,
+    Debug,
+    EnumIter,
+    Copy,
+    Clone,
+    IntoStaticStr,
+    EnumString,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    FromRepr,
+    PartialOrd,
+    Ord
 )]
 pub(crate) enum DNS_RR_type {
     A = 1,
@@ -219,19 +252,21 @@ impl DNS_RR_type {
     }
 
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
-        for rr in DNS_RR_type::iter() {
-            if (rr as u16) == val {
-                return Ok(rr);
+        match DNS_RR_type::from_repr(usize::from(val)) {
+            Some(x) => Ok(x),
+            None => {
+                if val > 65280 {
+                    Ok(Private)
+                } else {
+                    Err(DNS_error::new(
+                        DNS_Error_Type::Invalid_RR,
+                        &format!("{val}"),
+                    ))
+                }
             }
         }
-        if val > 65280 {
-            return Ok( Private);
-        }
-        Err(DNS_error::new(
-            DNS_Error_Type::Invalid_RR,
-            &format!("{val}"),
-        ))
     }
+   
     pub(crate) fn collect_dns_rr_types() -> Vec<DNS_RR_type> {
         DNS_RR_type::iter().collect::<Vec<_>>()
     }
@@ -263,100 +298,13 @@ mod tests1 {
         assert_eq!(DNS_RR_type::from_str("HTTPS").unwrap(), DNS_RR_type::HTTPS);
         assert_eq!(DNS_RR_type::from_str("AAAA").unwrap(), DNS_RR_type::AAAA);
     }
-}
 
-#[derive(Debug, Clone)]
-
-pub(crate) struct DNS_record {
-    pub(crate) rr_type: String,
-    pub(crate) ttl: u32,
-    pub(crate) class: String,
-    pub(crate) name: String,
-    pub(crate) rdata: String,
-    pub(crate) count: u64,
-    pub(crate) timestamp: DateTime<Utc>,
-    pub(crate) domain: String,
-    pub(crate) asn: u32,
-    pub(crate) asn_owner: String,
-    pub(crate) prefix: String,
-    pub(crate) error: DnsReplyType,
-    pub(crate) extended_error: DNSExtendedError,
-}
-
-impl DNS_record {}
-
-impl fmt::Display for DNS_record {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if f.alternate() {
-            let mut s = to_unicode(
-                &self.name,
-                unic_idna::Flags {
-                    transitional_processing: false,
-                    verify_dns_length: true,
-                    use_std3_ascii_rules: true,
-                },
-            )
-            .0;
-
-            s = if s == self.name {
-                String::new()
-            } else {
-                format!("({s}) ")
-            };
-
-            writeln!(
-                f,
-                "  {} {s}{} {} {} {} {} {} {} {} ({}) {} {} {}",
-                snailquote::escape(&self.name),
-                self.class,
-                self.rr_type,
-                self.rdata,
-                self.ttl,
-                self.timestamp,
-                self.domain,
-                self.prefix,
-                self.asn,
-                self.asn_owner,
-                self.error,
-                self.extended_error.to_str(),
-                self.count,
-            )
-        } else {
-            writeln!(
-                f,
-                "Name: {} ({})
-            RData: {}  
-            RR Type: {}    Class: {}     TTL: {}
-            Count: {}      Time: {}
-            Domain: {}
-            ASN: {}        ASN Owner: {}
-            Prefix: {}
-            Error: {},
-            ExtError: {}",
-                snailquote::escape(&self.name),
-                to_unicode(
-                    &self.name,
-                    unic_idna::Flags {
-                        transitional_processing: false,
-                        verify_dns_length: true,
-                        use_std3_ascii_rules: true
-                    }
-                )
-                .0,
-                self.rdata,
-                self.rr_type,
-                self.class,
-                self.ttl,
-                self.count,
-                self.timestamp,
-                self.domain,
-                self.asn,
-                self.asn_owner,
-                self.prefix,
-                self.error,
-                self.extended_error
-            )
-        }
+    #[test]
+    fn test_dns_rr2() {
+        assert_eq!(DNS_RR_type::find(1).unwrap(), DNS_RR_type::A);
+        assert_eq!(DNS_RR_type::find(28).unwrap(), DNS_RR_type::AAAA);
+        assert_eq!(DNS_RR_type::find(65534).unwrap(), DNS_RR_type::Private);
+        assert!(DNS_RR_type::find(0).is_err());
     }
 }
 
@@ -369,9 +317,13 @@ impl fmt::Display for DNS_record {
     EnumString,
     PartialEq,
     Eq,
+    FromRepr,
     Serialize,
     Deserialize,
     Default,
+    Hash,
+    PartialOrd,
+    Ord
 )]
 pub(crate) enum DnsReplyType {
     #[default]
@@ -402,17 +354,14 @@ impl DnsReplyType {
     pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
-
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
-        for rr in DnsReplyType::iter() {
-            if (rr as u16) == val {
-                return Ok(rr);
-            }
+        match DnsReplyType::from_repr(usize::from(val)) {
+            Some(x) => Ok(x),
+            None => Err(DNS_error::new(
+                DNS_Error_Type::Invalid_reply_type,
+                &format!("{val}"),
+            )),
         }
-        Err(DNS_error::new(
-            DNS_Error_Type::Invalid_reply_type,
-            &val.to_string(),
-        ))
     }
 }
 
@@ -423,7 +372,7 @@ impl fmt::Display for DnsReplyType {
 }
 #[cfg(test)]
 mod tests2 {
-    use crate::dns::DnsReplyType;
+    use crate::dns::{DNS_Opcodes, DnsReplyType};
     use std::str::FromStr;
 
     #[test]
@@ -442,10 +391,12 @@ mod tests2 {
             DnsReplyType::NOERROR
         );
     }
-}
-
-pub(crate) fn dns_reply_type(u: u16) -> Result<&'static str, Box<dyn Error>> {
-    Ok(DnsReplyType::find(u)?.to_str())
+    #[test]
+    fn test_dns_rt2() {
+        assert_eq!(DnsReplyType::find(19).unwrap(), DnsReplyType::BADMODE);
+        assert_eq!(DnsReplyType::find(23).unwrap(), DnsReplyType::BADCOOKIE);
+        assert!(DNS_Opcodes::find(111).is_err());
+    }
 }
 
 pub(crate) fn tlsa_cert_usage(u: u8) -> Result<&'static str, Parse_error> {
@@ -490,34 +441,6 @@ pub(crate) fn key_protocol(u: u8) -> Result<&'static str, Parse_error> {
         3 => Ok("dnssec"),
         4 => Ok("ipsec"),
         255 => Ok("all"),
-        _ => Err(Parse_error::new(
-            crate::errors::ParseErrorType::Invalid_Parameter,
-            "Unknown algorithm",
-        )),
-    }
-}
-
-pub(crate) fn key_algorithm(u: u8) -> Result<&'static str, Parse_error> {
-    match u {
-        1 => Ok("RSA/MD5"),
-        2 => Ok("DH"),
-        3 => Ok("DSA"),
-        4=> Ok("ECC"),
-        5=> Ok("RSASHA1"),
-        6=> Ok("DSA-NSEC3-SHA1"),
-        7=> Ok("RSASHA1-NSEC3-SHA1"),
-        8=> Ok("RSASHA256"),
-        10=> Ok("RSASHA512"),
-        12=> Ok("ECC-GOST"),
-        13=> Ok("ECDSAP256SHA256"),
-        14=> Ok("ECDSAP384SHA384"),
-        15=> Ok("ED25519"),
-        16=> Ok("ED448"),
-        17=> Ok("SMS2SM3"),
-        23=> Ok("ECC-GOST12"),
-        252=> Ok("Indirect"),
-        253=> Ok("PrivateDNS"),
-        254=> Ok("PrivadeOID"),
         _ => Err(Parse_error::new(
             crate::errors::ParseErrorType::Invalid_Parameter,
             "Unknown algorithm",
@@ -637,7 +560,7 @@ pub(crate) fn cert_type_str(t: u16) -> Result<&'static str, Parse_error> {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, EnumIter, IntoStaticStr)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, EnumIter, IntoStaticStr, FromRepr)]
 pub(crate) enum SVC_Param_Keys {
     mandatory = 0,
     alpn = 1,
@@ -650,16 +573,15 @@ pub(crate) enum SVC_Param_Keys {
 
 impl SVC_Param_Keys {
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
-        for k in SVC_Param_Keys::iter() {
-            if (k as u16) == val {
-                return Ok(k);
-            }
+        match SVC_Param_Keys::from_repr(usize::from(val)) {
+            Some(x) => Ok(x),
+            None => Err(DNS_error::new(
+                DNS_Error_Type::Invalid_RR,
+                &format!("{val}"),
+            )),
         }
-        Err(DNS_error::new(
-            DNS_Error_Type::Invalid_RR,
-            &format!("{val}"),
-        ))
     }
+    
     #[inline]
     pub(crate) fn to_str(self) -> &'static str {
         self.into()

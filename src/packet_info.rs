@@ -6,9 +6,9 @@ use std::{
     net::{IpAddr, Ipv4Addr},
     sync::{Arc, Mutex},
 };
-
-use crate::dns::{DNS_RR_type, DNS_record};
+use crate::dns::{DNS_RR_type };
 use crate::dns_packet::DNS_Protocol;
+use crate::dns_record::DNS_record;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Packet_Queue {
@@ -155,23 +155,22 @@ impl Packet_info {
 
     pub fn update_asn(&mut self, asn_db: &Database) {
         for i in &mut self.dns_records {
-            if let Ok(rr_type) = DNS_RR_type::from_string(&i.rr_type) {
-                if rr_type == DNS_RR_type::A || rr_type == DNS_RR_type::AAAA {
-                    if let Some(x) = Packet_info::find_asn(asn_db, &i.rdata) {
-                        match x {
-                            IpEntry::V4(v4) => {
-                                i.asn = v4.as_number;
-                                i.asn_owner.clone_from(&v4.owner);
-                                i.prefix = v4.subnet.to_string();
-                            }
-                            IpEntry::V6(v6) => {
-                                i.asn = v6.as_number;
-                                i.asn_owner.clone_from(&v6.owner);
-                                i.prefix = v6.subnet.to_string();
-                            }
+            if i.rr_type == DNS_RR_type::A || i.rr_type == DNS_RR_type::AAAA {
+                if let Some(x) = Packet_info::find_asn(asn_db, &i.rdata) {
+                    match x {
+                        IpEntry::V4(v4) => {
+                            i.asn = v4.as_number;
+                            i.asn_owner.clone_from(&v4.owner);
+                            i.prefix = v4.subnet.to_string();
+                        }
+                        IpEntry::V6(v6) => {
+                            i.asn = v6.as_number;
+                            i.asn_owner.clone_from(&v6.owner);
+                            i.prefix = v6.subnet.to_string();
                         }
                     }
                 }
+
             }
         }
     }

@@ -1,4 +1,4 @@
-use crate::dns::DnsReplyType;
+use crate::dns::{DNS_Class, DNS_RR_type, DnsReplyType};
 use crate::{http_server::listen, packet_info::Packet_info};
 use core::fmt;
 use serde::{Deserialize, Serialize};
@@ -8,6 +8,7 @@ use std::{
     io::{self, Write},
     net::{TcpListener, TcpStream},
 };
+use std::str::FromStr;
 use strum::IntoEnumIterator;
 use strum_macros::{AsRefStr, EnumIter, EnumString, IntoStaticStr};
 use tracing::{debug, error};
@@ -213,9 +214,6 @@ impl Filter {
                 };
                 //  debug!("RC: {}", rc);
                 let c = rc;
-                // let Ok(c) = DnsReplyType::find(rc) else {
-                //    return false;
-                //};
                 if self.expr.1 == Filter_operator::EQUAL {
                     for i in &packet_info.dns_records {
                         //debug!("{} {} != {}", i.error, c, i.error == c );
@@ -277,16 +275,17 @@ impl Filter {
                 false
             }
             Filter_fields::CLASS => {
+                let Ok(match_class) = DNS_Class::from_str(self.expr.2.as_str()) else { return false; };
                 if self.expr.1 == Filter_operator::EQUAL {
                     for i in &packet_info.dns_records {
-                        if i.class == self.expr.2 {
+                        if i.class == match_class {
                             return true;
                         }
                     }
                     return false;
                 } else if self.expr.1 == Filter_operator::NOT_EQUAL {
                     for i in &packet_info.dns_records {
-                        if i.class != self.expr.2 {
+                        if i.class != match_class {
                             return true;
                         }
                     }
@@ -296,16 +295,17 @@ impl Filter {
             }
 
             Filter_fields::RR_TYPE => {
+                let Ok(match_class) = DNS_RR_type::from_str(self.expr.2.as_str()) else { return false; };
                 if self.expr.1 == Filter_operator::EQUAL {
                     for i in &packet_info.dns_records {
-                        if i.rr_type != self.expr.2 {
+                        if i.rr_type != match_class {
                             return false;
                         }
                     }
                     return true;
                 } else if self.expr.1 == Filter_operator::NOT_EQUAL {
                     for i in &packet_info.dns_records {
-                        if i.rr_type == self.expr.2 {
+                        if i.rr_type == match_class {
                             return false;
                         }
                     }

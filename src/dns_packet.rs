@@ -10,17 +10,17 @@ use crate::errors::ParseErrorType;
 use crate::packet_info::Packet_info;
 use crate::skiplist::Skip_List;
 use crate::statistics::Statistics;
-use dns::{dns_reply_type, DNS_RR_type, DNS_record, DnsReplyType};
+use dns::{ DNS_RR_type, DnsReplyType};
 use errors::Parse_error;
 use publicsuffix::Psl;
 use std::fmt;
-use strum::IntoEnumIterator;
-use strum_macros::{EnumIter, EnumString, IntoStaticStr};
+use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
 use tracing::{debug, error};
 
 use crate::{dns, errors};
+use crate::dns_record::DNS_record;
 
-#[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq, EnumString, IntoStaticStr)]
+#[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq, EnumString, IntoStaticStr, FromRepr)]
 pub(crate) enum DNS_Protocol {
     TCP = 6,
     UDP = 17,
@@ -32,17 +32,14 @@ impl DNS_Protocol {
     pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
-
     pub(crate) fn find(val: u16) -> Result<Self, Parse_error> {
-        for oc in DNS_Protocol::iter() {
-            if (oc as u16) == val {
-                return Ok(oc);
-            }
+        match DNS_Protocol::from_repr(usize::from(val)) {
+            Some(x) => Ok(x),
+            None => Err(Parse_error::new(
+                ParseErrorType::Unknown_Protocol,
+                &format!("{val}"),
+            )),
         }
-        Err(Parse_error::new(
-            ParseErrorType::Unknown_Protocol,
-            &format!("{val}"),
-        ))
     }
 }
 
@@ -70,33 +67,23 @@ fn parse_question(
     let class_val = dns_read_u16(packet, offset + 2)?;
     let rrtype = parse_rrtype(rrtype_val)?;
     let class = parse_class(class_val)?;
-    stats
-        .qtypes
-        .entry(rrtype.to_str().parse().unwrap_or_default())
-        .and_modify(|c| *c += 1)
-        .or_insert(1);
-
-    stats
-        .qclass
-        .entry(class.to_str().parse().unwrap_or_default())
-        .and_modify(|c| *c += 1)
-        .or_insert(1);
-
+    *stats.qtypes.entry(rrtype).or_insert(0) += 1;
+    *stats.qclass.entry(class).or_insert(0) += 1;
     stats.total_time_stats.add(packet_info.timestamp, 1);
 
     let len = offset - offset_in;
     if rcode == DnsReplyType::NXDOMAIN {
-        stats.topnx.add(name.clone());
+        stats.topnx.add(&name);
         stats.blocked_time_stats.add(packet_info.timestamp, 1);
     } else if rcode == DnsReplyType::NOERROR {
-        stats.topdomain.add(name.clone());
+        stats.topdomain.add(&name);
         stats.success_time_stats.add(packet_info.timestamp, 1);
     }
     if rcode != DnsReplyType::NOERROR {
         let rec: DNS_record = DNS_record {
-            rr_type: rrtype.to_str().parse().unwrap_or_default(),
+            rr_type: rrtype, 
             ttl: 0,
-            class: class.to_str().parse().unwrap_or_default(),
+            class,
             name,
             rdata: String::new(),
             count: 1,
@@ -110,7 +97,6 @@ fn parse_question(
         };
         packet_info.add_dns_record(rec);
     }
-
     Ok(len + 4)
 }
 
@@ -121,25 +107,25 @@ fn parse_edns(
     stats: &mut Statistics,
     _config: &Config,
 ) -> Result<usize, Box<dyn std::error::Error>> {
-    let payload_size = dns_read_u16(packet, offset_in)?;
-    debug!("payload size {payload_size}");
-    let e_rcode = dns_read_u8(packet, offset_in + 2)?;
-    debug!("e code {e_rcode}");
-    let edns_version = dns_read_u8(packet, offset_in + 3)?;
-    debug!("edns_version {edns_version}");
+    //let payload_size = dns_read_u16(packet, offset_in)?;
+    // debug!("payload size {payload_size}");
+    //let e_rcode = dns_read_u8(packet, offset_in + 2)?;
+    // debug!("e code {e_rcode}");
+    //let edns_version = dns_read_u8(packet, offset_in + 3)?;
+    // debug!("edns_version {edns_version}");
     let _z = dns_read_u16(packet, offset_in + 4)?;
     let data_length = usize::from(dns_read_u16(packet, offset_in + 6)?);
     if data_length == 0 {
         return Ok(8);
     }
-    debug!("data length {data_length}");
+    // debug!("data length {data_length}");
     let rdata = dns_parse_slice(packet, offset_in + 8..offset_in + 8 + data_length)?;
     let mut offset: usize = 0;
     while offset < data_length {
         let option_code = EDNSOptionCodes::find(dns_read_u16(rdata, offset)?)?;
-        debug!("option code {option_code}");
+        // debug!("option code {option_code}");
         let option_length = dns_read_u16(rdata, offset + 2)? as usize;
-        debug!("option length {option_length}");
+        //debug!("option length {option_length}");
         match option_code {
             EDNSOptionCodes::ExtendedDNSError => {
                 // Extended DNS error
@@ -154,11 +140,7 @@ fn parse_edns(
                     packet_info.dns_records[0].extended_error = info_code;
                 }
 
-                stats
-                    .extended_error
-                    .entry(info_code.to_str().parse().unwrap_or_default())
-                    .and_modify(|c| *c += 1)
-                    .or_insert(1);
+                *stats.extended_error.entry(info_code).or_insert(0) += 1;
             }
             EDNSOptionCodes::CHAIN => {
                 let chain = dns_parse_name(rdata, offset + 4)?;
@@ -304,7 +286,6 @@ fn parse_answer(
     }
     let rrtype_val = dns_read_u16(packet, offset)?;
     let rrtype = parse_rrtype(rrtype_val)?;
-//    debug!("rrtype {rrtype}");
     if rrtype == DNS_RR_type::OPT {
         let len = parse_edns(packet_info, packet, offset + 2, stats, config)?;
         offset += len - 1;
@@ -313,16 +294,8 @@ fn parse_answer(
     }
     let class_val = dns_read_u16(packet, offset + 2)?;
     let class = parse_class(class_val)?;
-    stats
-        .atypes
-        .entry(rrtype.to_str().parse().unwrap_or_default())
-        .and_modify(|c| *c += 1)
-        .or_insert(1);
-    stats
-        .aclass
-        .entry(class.to_str().parse().unwrap_or_default())
-        .and_modify(|c| *c += 1)
-        .or_insert(1);
+    *stats.atypes.entry(rrtype).or_insert(0) += 1;
+    *stats.aclass.entry(class).or_insert(0) += 1;
 
     let ttl = dns_read_u32(packet, offset + 4)?;
     let datalen: usize = dns_read_u16(packet, offset + 8)?.into();
@@ -338,7 +311,6 @@ fn parse_answer(
     offset += 1;
 
     let domain = publicsuffixlist.domain(name.as_bytes());
-
     let domain_str = if let Some(d) = domain {
         let x = d.trim().as_bytes().to_vec();
         String::from_utf8(x).unwrap_or_default()
@@ -348,9 +320,9 @@ fn parse_answer(
     };
 
     let rec: DNS_record = DNS_record {
-        rr_type: rrtype.to_str().parse().unwrap_or_default(),
+        rr_type: rrtype,
         ttl,
-        class: class.to_str().parse().unwrap_or_default(),
+        class,
         name,
         rdata,
         count: 1,
@@ -389,6 +361,7 @@ pub(crate) fn parse_dns(
     //let _rd = (flags >> 8) & 0x0001;
     //let _ra = (flags >> 7) & 0x0001;
     let rcode = flags & 0x000f;
+    let rcode = DnsReplyType::find(rcode)?;
     let opcode = DNS_Opcodes::find(opcode_val)?;
     if opcode != DNS_Opcodes::Query {
         // Query
@@ -421,21 +394,13 @@ pub(crate) fn parse_dns(
 
     if qr != 1 {
         // we ignore questions; except for stats
-        stats
-            .opcodes
-            .entry(opcode.to_str().parse().unwrap_or_default())
-            .and_modify(|c| *c += 1)
-            .or_insert(1);
-        stats.sources.add(packet_info.s_addr.to_string());
-        stats.destinations.add(packet_info.d_addr.to_string());
+        *stats.opcodes.entry(opcode).or_insert(0) += 1;
+        stats.sources.add(&packet_info.s_addr.to_string());
+        stats.destinations.add(&packet_info.d_addr.to_string());
         return Ok(());
     }
 
-    stats
-        .errors
-        .entry(dns_reply_type(rcode)?.to_string())
-        .and_modify(|c| *c += 1)
-        .or_insert(1);
+    *stats.errors.entry(rcode).or_insert(0) += 1;
 
     for _ in 0..questions {
         let query = dns_parse_slice(packet, offset..)?;
@@ -446,7 +411,7 @@ pub(crate) fn parse_dns(
             offset,
             stats,
             config,
-            DnsReplyType::find(rcode)?,
+            rcode,
             skip_list,
         )?;
     }
