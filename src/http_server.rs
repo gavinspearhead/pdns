@@ -4,7 +4,6 @@ use std::{
     process::exit,
     sync::{Arc, Mutex},
 };
-
 use tracing::{debug, error};
 
 use crate::config::Config;

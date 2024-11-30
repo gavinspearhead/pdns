@@ -81,7 +81,7 @@ fn parse_question(
     }
     if rcode != DnsReplyType::NOERROR {
         let rec: DNS_record = DNS_record {
-            rr_type: rrtype, 
+            rr_type: rrtype,
             ttl: 0,
             class,
             name,
@@ -113,7 +113,7 @@ fn parse_edns(
     // debug!("e code {e_rcode}");
     //let edns_version = dns_read_u8(packet, offset_in + 3)?;
     // debug!("edns_version {edns_version}");
-    let _z = dns_read_u16(packet, offset_in + 4)?;
+   // let _z = dns_read_u16(packet, offset_in + 4)?;
     let data_length = usize::from(dns_read_u16(packet, offset_in + 6)?);
     if data_length == 0 {
         return Ok(8);

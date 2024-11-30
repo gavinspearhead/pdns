@@ -34,8 +34,7 @@ impl fmt::Display for DNS_record {
                     verify_dns_length: true,
                     use_std3_ascii_rules: true,
                 },
-            )
-                .0;
+            ).0;
 
             s = if s == self.name {
                 String::new()

@@ -11,7 +11,7 @@ use crate::dns_packet::DNS_Protocol;
 use crate::errors::{ParseErrorType, Parse_error};
 use base64::engine::general_purpose;
 use base64::Engine;
-use std::fmt::Write as _;
+use std::fmt::Write;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use tracing::debug;
 

@@ -58,9 +58,8 @@ where
     }
 
     pub fn add(&mut self, element: &T) {
-        if let Some(elem) = self.rank.get_mut(&element) {
+        if let Some(elem) = self.rank.get_mut(element) {
             *elem += 1;
-        //            let _c = self.rank.entry(element.clone()).and_modify(|v| *v += 1);
         } else {
             let val = if self.rank.len() >= self.size {
                 min(self.remove_lowest(), 1)

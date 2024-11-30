@@ -1,6 +1,6 @@
-use crate::dns_helper::is_between;
 use crate::tcp_data::Tcp_data;
 use chrono::{DateTime, Utc};
+use std::cmp::min;
 use std::{
     collections::HashMap,
     error::Error,
@@ -100,11 +100,10 @@ impl TCP_Connections {
         data: &[u8],
         _timestamp: DateTime<Utc>,
     ) {
-        let timestamp = Utc::now();
         let c = self
             .connections
             .entry((src, dst, sp, dp))
-            .or_insert_with(|| Tcp_connection::new(seqnr, timestamp));
+            .or_insert_with(|| Tcp_connection::new(seqnr, Utc::now()));
         c.in_data.add_data(seqnr, data);
     }
     pub fn get_data(
@@ -147,28 +146,47 @@ impl TCP_Connections {
     }
 
     pub fn check_timeout(&mut self) -> i64 {
-        let mut m_ts = self.timelimit;
-        let mut keys: Vec<(IpAddr, IpAddr, u16, u16)> = Vec::new();
         let now = Utc::now().timestamp();
-        for (k, v) in &self.connections {
-            let time_in_seconds = v.ts.timestamp();
-            debug!(
-                "{time_in_seconds} {} {now} {}",
-                self.timelimit,
-                self.timelimit + time_in_seconds
-            );
-            if time_in_seconds + self.timelimit < now {
-                keys.push(*k);
-            }
-            if is_between(&(now - time_in_seconds), &1, &m_ts) {
-                m_ts = now - time_in_seconds;
-            }
+        let mut min_idle = 1;
+        debug!("Checking timeout before: Size : {}", self.connections.len());
+        self.connections.retain(|_, v| {
+            let idle_time = now - v.ts.timestamp();
+            min_idle = min(min_idle, idle_time);
+            idle_time <= self.timelimit
+        });
+        if self.connections.len() == 0 {
+            min_idle = self.timelimit;
+        } else {
+            min_idle = min_idle.min(self.timelimit);
         }
-        for k in keys {
-            self.connections.remove(&k);
-        }
-        m_ts
-    }
+        debug!(
+            "Checking timeout after: Size : {} {min_idle}",
+            self.connections.len()
+        );
+        min_idle
+    } /*
+          let mut m_ts = self.timelimit;
+          let mut keys: Vec<(IpAddr, IpAddr, u16, u16)> = Vec::new();
+          let now = Utc::now().timestamp();
+          for (k, v) in &self.connections {
+              let time_in_seconds = v.ts.timestamp();
+              debug!(
+                  "{time_in_seconds} {} {now} {}",
+                  self.timelimit,
+                  self.timelimit + time_in_seconds
+              );
+              if time_in_seconds + self.timelimit < now {
+                  keys.push(*k);
+              }
+              if is_between(&(now - time_in_seconds), &1, &m_ts) {
+                  m_ts = now - time_in_seconds;
+              }
+          }
+          for k in keys {
+              self.connections.remove(&k);
+          }
+          m_ts
+      }*/
 
     pub fn process_data(
         &mut self,

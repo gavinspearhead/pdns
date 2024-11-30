@@ -2,7 +2,7 @@ use crate::rank::Rank;
 use crate::time_stats::Time_stats;
 use serde::{Deserialize, Serialize, Serializer};
 use serde_with::rust::deserialize_ignore_any;
-use serde_json; 
+use serde_json;
 
 use std::{collections::HashMap, fs::File, io::BufReader};
 use std::cmp::Ordering::Equal;
@@ -47,7 +47,7 @@ pub(crate) struct Statistics {
 
 impl Statistics {
     pub(crate) fn new(toplistsize: usize) -> Statistics {
-        Statistics {    
+        Statistics {
             errors: HashMap::new(),
             qtypes: HashMap::new(),
             atypes: HashMap::new(),
@@ -105,5 +105,5 @@ where
         map.serialize_entry(&i.0, i.1)?;
     }
     map.end()
-    
+
 }

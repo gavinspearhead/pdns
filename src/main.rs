@@ -101,8 +101,7 @@ fn packet_loop<T:Activated>(
     stats: &Arc<Mutex<Statistics>>,
     config: &Config,
     skip_list: &Skip_List,
-) where
-    T: pcap::Activated,
+)
 {
     let link_type = cap.get_datalink();
     if link_type != Linktype::ETHERNET {
@@ -274,7 +273,7 @@ fn db_insert(dns_cache: &mut DNS_Cache, database_conn: & mut Option<Mysql_connec
 {
     if let Some(ref mut db) = database_conn {
         for i in dns_cache.push_all() {
-            db.insert_or_update_record(i);
+            db.insert_or_update_record(&i);
         }
         *last_push = Utc::now().timestamp();
     }

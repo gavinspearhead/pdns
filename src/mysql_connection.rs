@@ -1,16 +1,14 @@
-use std::process::exit;
-
 use chrono::{Duration, Utc};
 use futures::executor::block_on;
 use log::error;
-use sqlx::{mysql::MySqlPoolOptions, MySql, Pool};
+use sqlx::mysql::MySqlConnectOptions;
+use sqlx::{mysql::MySqlPoolOptions, ConnectOptions, MySql, Pool};
+use std::process::exit;
+use std::str::FromStr;
 use tracing::debug;
 
-use crate::{
-    config::Config,
-    dns::{ DnsReplyType},
-};
 use crate::dns_record::DNS_record;
+use crate::{config::Config, dns::DnsReplyType};
 
 #[derive(Debug, Clone)]
 pub(crate) struct Mysql_connection {
@@ -26,9 +24,18 @@ impl Mysql_connection {
         dbname: &str,
     ) -> Mysql_connection {
         let database_url = format!("mysql://{user}:{pass}@{host}:{port}/{dbname}");
-        match MySqlPoolOptions::new()
-            .max_connections(10)
-            .connect(&database_url)
+        let connection_options = match MySqlConnectOptions::from_str(&*database_url) {
+            Ok(c) => c
+                .log_statements(log::LevelFilter::Debug)
+                .disable_statement_logging()
+                .log_slow_statements(log::LevelFilter::Warn, std::time::Duration::from_secs(1)),
+            Err(err) => {
+                error!("Failed to connect to the database: {:?}", err);
+                exit(1);
+            }
+        };
+        let pool = match MySqlPoolOptions::new()
+            .connect_with(connection_options)
             .await
         {
             Ok(mysql_pool) => {
@@ -39,14 +46,15 @@ impl Mysql_connection {
                 error!("Failed to connect to the database: {:?}", err);
                 exit(1);
             }
-        }
+        };
+        pool
     }
     pub fn insert_or_update_record(&mut self, record: &DNS_record) {
         let i = record;
         let ts = i.timestamp.timestamp();
         let q_res = if record.error == DnsReplyType::NOERROR {
             static Q: &str = r"INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN, DOMAIN, asn, asn_owner, prefix) VALUES (
-                ?, ?, ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?), ?,  
+                ?, ?, ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?), ?,
                  if (length(?) > 0, ?, NULL),  
                  if (length(?) > 0, ?, NULL),
                   if (length(?) > 0, ?, NULL)) ON DUPLICATE KEY UPDATE
@@ -57,10 +65,11 @@ impl Mysql_connection {
                 asn_owner = if (asn_owner is null and LENGTH(?) > 0, ?, asn_owner),
                 prefix = if (prefix is null and LENGTH(?) > 0, ?, prefix) 
                 ";
-           // debug!("{} {} {} {}", i.name, i.rr_type, i.rdata, i.count);
-            
+            debug!("{} {} {} {}", i.name, i.rr_type, i.rdata, i.count);
+
             block_on(
-                    sqlx::query(Q).bind(&i.name)
+                sqlx::query(Q)
+                    .bind(&i.name)
                     .bind(i.class.to_str())
                     .bind(i.rr_type.to_str())
                     .bind(&i.rdata)
@@ -88,33 +97,34 @@ impl Mysql_connection {
                     .bind(&i.asn_owner)
                     .bind(&i.prefix)
                     .bind(&i.prefix)
-                    .execute(&self.pool)
+                    .execute(&self.pool),
             )
         } else {
             static Q: &str= "INSERT INTO pdns_err (QUERY,RR,MAPTYPE,COUNT,LAST_SEEN,FIRST_SEEN, ERROR_VAL, EXT_ERROR_VAL) VALUES (
                 ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?), ?, ?   
                 ) ON DUPLICATE KEY UPDATE
-                COUNT = COUNT + ?, 
+                COUNT = COUNT + ?,
                 LAST_SEEN = if (LAST_SEEN < FROM_UNIXTIME(?), FROM_UNIXTIME(?), LAST_SEEN),
                 FIRST_SEEN = if (FIRST_SEEN > FROM_UNIXTIME(?), FROM_UNIXTIME(?), FIRST_SEEN) 
                 ";
-            block_on( sqlx::query(Q)
-                          .bind(&i.name)
-                          .bind(i.class.to_str())
-                          .bind(i.rr_type.to_str())
-                          .bind(i.count)
-                          .bind(ts)
-                          .bind(ts)
-                          .bind(i.error as u16)
-                          .bind(i.extended_error as u16)
-                          .bind(i.count)
-                          .bind(ts)
-                          .bind(ts)
-                          .bind(ts)
-                          .bind(ts)
-                          .execute(&self.pool),
+            debug!("{} {} {} {}", i.name, i.rr_type, i.error as u16, i.count);
+            block_on(
+                sqlx::query(Q)
+                    .bind(&i.name)
+                    .bind(i.class.to_str())
+                    .bind(i.rr_type.to_str())
+                    .bind(i.count)
+                    .bind(ts)
+                    .bind(ts)
+                    .bind(i.error as u16)
+                    .bind(i.extended_error as u16)
+                    .bind(i.count)
+                    .bind(ts)
+                    .bind(ts)
+                    .bind(ts)
+                    .bind(ts)
+                    .execute(&self.pool),
             )
-            //debug!("{} {} {} {}", i.name, i.rr_type, i.error as u16, i.count); 
         };
         match q_res {
             Ok(x) => debug!("Success {x:?}"),

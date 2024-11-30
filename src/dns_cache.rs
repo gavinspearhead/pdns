@@ -28,8 +28,9 @@ impl DNS_Cache {
             .or_insert_with(|| record.clone());
     }
     #[inline]
-    pub(crate) fn push_all(&mut self) -> Vec<&DNS_record> {
-        self.items.values().collect()
+    pub(crate) fn push_all(&mut self) -> Vec<DNS_record> {
+        
+            self.items.drain().map(|(_, v)| v).collect()
     }
 }
 

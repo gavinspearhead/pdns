@@ -32,7 +32,6 @@ impl Bucket {
             self.items[pos] += count;
         } else if group == self.last_group {
             if pos > self.last_post {
-               
                 self.items[self.last_post + 1..pos].fill(0);
             } else {
                 self.items[0..pos].fill(0);
