@@ -56,18 +56,12 @@ impl Skip_List {
     #[must_use]
     pub fn match_skip_list(&self, name: &str) -> bool {
         let clean_name = name.trim_end_matches('.');
-        for r in &self.entries {
-            if r.is_match(clean_name) {
-                return true;
-            }
-        }
-        false
+        self.entries.iter().any(|r| r.is_match(clean_name))
     }
 }
 #[cfg(test)]
 mod tests {
     use regex::Regex;
-
     use crate::skiplist::Skip_List;
 
     #[test]
@@ -99,7 +93,9 @@ mod tests {
         ",
         );
         println!("{:?}", skip_list.entries);
+        assert!(skip_list.match_skip_list("www.NU.nl"));
         assert!(skip_list.match_skip_list("www.nu.nl"));
+        assert!(!skip_list.match_skip_list("www.nu.be"));
         assert!(skip_list.match_skip_list("www.tweakers.nl.fritz.box"));
         assert!(skip_list.match_skip_list("www.tweakers.nl.frITz.bOx"));
         assert!(skip_list.match_skip_list("www.tweakers.nl.frITz.bOx."));

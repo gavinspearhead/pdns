@@ -146,27 +146,27 @@ impl Packet_info {
     }
 
     fn find_asn<'a>(asn_db: &'a Database, ip: &'a str) -> Option<IpEntry<'a>> {
-        if let Ok(x) = ip.parse::<IpAddr>() {
-            asn_db.lookup(x)
+        if let Ok(ip_addr) = ip.parse::<IpAddr>() {
+            asn_db.lookup(ip_addr)
         } else {
             None
         }
     }
 
     pub fn update_asn(&mut self, asn_db: &Database) {
-        for i in &mut self.dns_records {
-            if i.rr_type == DNS_RR_type::A || i.rr_type == DNS_RR_type::AAAA {
-                if let Some(x) = Packet_info::find_asn(asn_db, &i.rdata) {
+        for record in &mut self.dns_records {
+            if record.rr_type == DNS_RR_type::A || record.rr_type == DNS_RR_type::AAAA {
+                if let Some(x) = Packet_info::find_asn(asn_db, &record.rdata) {
                     match x {
                         IpEntry::V4(v4) => {
-                            i.asn = v4.as_number;
-                            i.asn_owner.clone_from(&v4.owner);
-                            i.prefix = v4.subnet.to_string();
+                            record.asn = v4.as_number;
+                            record.asn_owner.clone_from(&v4.owner);
+                            record.prefix = v4.subnet.to_string();
                         }
                         IpEntry::V6(v6) => {
-                            i.asn = v6.as_number;
-                            i.asn_owner.clone_from(&v6.owner);
-                            i.prefix = v6.subnet.to_string();
+                            record.asn = v6.as_number;
+                            record.asn_owner.clone_from(&v6.owner);
+                            record.prefix = v6.subnet.to_string();
                         }
                     }
                 }

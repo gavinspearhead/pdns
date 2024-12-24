@@ -1,12 +1,14 @@
 use serde::ser::SerializeMap;
 use serde::Serialize;
 use std::cmp::Ordering::Equal;
-use std::{cmp::min, collections::HashMap, fmt};
+use std::fmt::Debug;
+use std::{collections::HashMap, fmt};
+use tracing::debug;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Rank<T>
 where
-    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize + Default + Clone,
+    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize +  Clone + Debug,
 {
     rank: HashMap<T, usize>,
     size: usize,
@@ -14,11 +16,11 @@ where
 
 impl<T> Default for Rank<T>
 where
-    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize + Default + Clone,
+    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize + Clone + Debug,
 {
     fn default() -> Self {
         Self {
-            rank: HashMap::default(),
+            rank: HashMap::new(),
             size: Default::default(),
         }
     }
@@ -26,7 +28,7 @@ where
 
 impl<T> Rank<T>
 where
-    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize + Default + Clone,
+    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize +  Clone + Debug,
 {
     pub fn new(size_in: usize) -> Rank<T> {
         Rank {
@@ -50,6 +52,7 @@ where
             }
         }
         if let Some(k) = mink {
+            debug!("Remove k={} minv={} maxv={}", k, minv, maxv);
             self.rank.remove(&k.clone());
             (2 * minv + maxv) / 3
         } else {
@@ -60,9 +63,11 @@ where
     pub fn add(&mut self, element: &T) {
         if let Some(elem) = self.rank.get_mut(element) {
             *elem += 1;
+            //debug!("{:?}: {:?}", element, *elem);
         } else {
+           // debug!("{:?}: 0", element);
             let val = if self.rank.len() >= self.size {
-                min(self.remove_lowest(), 1)
+                self.remove_lowest().max(1)
             } else {
                 1
             };
@@ -73,7 +78,7 @@ where
 
 impl<T> fmt::Display for Rank<T>
 where
-    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize + Default + Clone,
+    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize + Default + Clone + Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut l = Vec::new();
@@ -90,21 +95,18 @@ where
 
 impl<T> Serialize for Rank<T>
 where
-    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize + Default + Clone,
+    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize +  Clone + Debug,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        let mut l = Vec::new();
-        for (k, v) in &self.rank {
-            l.push((k, v));
-        }
+        let mut l: Vec<_> = self.rank.iter().collect(); // Collect references to entries
         l.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(Equal));
 
         let mut map = serializer.serialize_map(Some(l.len()))?;
         for i in l {
-            map.serialize_entry(&i.0, i.1)?;
+            map.serialize_entry(i.0, i.1)?;
         }
         map.end()
     }

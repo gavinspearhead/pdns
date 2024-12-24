@@ -6,8 +6,12 @@ authors = ["Gavin Spearhead"]
 description = "Passive DNS"
 license = "GPL-3.0-only"
 
+[profile.dev]
+debug = "full"
+
+
 [profile.release]
-debug = 1
+debug = 0
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -36,5 +40,3 @@ snailquote = "0.3"
 unic-idna = "0.9"
 serde_with = "3.11"
 signal-hook = "0.3"
-tracing-appender = "0.2"
-tracing-log = "0.2"

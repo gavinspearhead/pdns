@@ -4,15 +4,16 @@ use tracing::debug;
 pub(crate) struct Tcp_data {
     data: Vec<u8>,
     init_seqnr: u32,
+    max_tcp_len :usize,
 }
 
 impl Tcp_data {
-    const MAX_TCP_LEN: usize = 20 * 1024 * 1024;  // max  20 MiB
     const INIT_LEN: usize = 2048;
-    pub(crate) fn new(seqnr: u32) -> Tcp_data {
+    pub(crate) fn new(seqnr: u32, max_size:u32) -> Tcp_data {
         Tcp_data {
             init_seqnr: seqnr,
-            data: Vec::with_capacity(Self::INIT_LEN)
+            data: Vec::with_capacity(Self::INIT_LEN),
+            max_tcp_len: max_size as usize * 1024 * 1024, // convert to megabytes
         }
     }
 
@@ -21,7 +22,7 @@ impl Tcp_data {
             return;
         }
         let pos = (seqnr - self.init_seqnr) as usize;
-        if pos > Self::MAX_TCP_LEN {
+        if pos > self.max_tcp_len {
             debug!("Weird sequence number: {pos} - packet too big");
             return;
         }
@@ -31,7 +32,6 @@ impl Tcp_data {
             debug!("resized to {}", self.data.len());
         }
         self.data[pos..data_size].copy_from_slice(data);
-        
         debug!("Data added at position: {}, init_seqnr: {} seqnr: {seqnr} ", self.data.len(), self.init_seqnr);
     }
 

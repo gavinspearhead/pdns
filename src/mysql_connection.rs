@@ -20,11 +20,11 @@ impl Mysql_connection {
         host: &str,
         user: &str,
         pass: &str,
-        port: &str,
+        port: &u16,
         dbname: &str,
     ) -> Mysql_connection {
         let database_url = format!("mysql://{user}:{pass}@{host}:{port}/{dbname}");
-        let connection_options = match MySqlConnectOptions::from_str(&*database_url) {
+        let connection_options = match MySqlConnectOptions::from_str(&database_url) {
             Ok(c) => c
                 .log_statements(log::LevelFilter::Debug)
                 .disable_statement_logging()
@@ -34,7 +34,7 @@ impl Mysql_connection {
                 exit(1);
             }
         };
-        let pool = match MySqlPoolOptions::new()
+        match MySqlPoolOptions::new()
             .connect_with(connection_options)
             .await
         {
@@ -46,79 +46,80 @@ impl Mysql_connection {
                 error!("Failed to connect to the database: {:?}", err);
                 exit(1);
             }
-        };
-        pool
+        }
     }
-    pub fn insert_or_update_record(&mut self, record: &DNS_record) {
-        let i = record;
-        let ts = i.timestamp.timestamp();
-        let q_res = if record.error == DnsReplyType::NOERROR {
-            static Q: &str = r"INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN, DOMAIN, asn, asn_owner, prefix) VALUES (
+    pub fn insert_or_update_record(&mut self, dns_record: &DNS_record) {
+        let ts = dns_record.timestamp.timestamp();
+        let q_res = if dns_record.error == DnsReplyType::NOERROR {
+            static Q: &str = r"INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN, DOMAIN, asn, asn_owner, prefix) 
+            VALUES (
                 ?, ?, ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?), ?,
                  if (length(?) > 0, ?, NULL),  
                  if (length(?) > 0, ?, NULL),
-                  if (length(?) > 0, ?, NULL)) ON DUPLICATE KEY UPDATE
-                TTL = if (TTL < ?, ?, TTL), COUNT = COUNT + ?, 
+                 if (length(?) > 0, ?, NULL)) ON DUPLICATE KEY UPDATE
+                TTL = if (TTL < ?, ?, TTL), 
+                COUNT = COUNT + ?, 
                 LAST_SEEN = if (LAST_SEEN < FROM_UNIXTIME(?), FROM_UNIXTIME(?), LAST_SEEN),
                 FIRST_SEEN = if (FIRST_SEEN > FROM_UNIXTIME(?), FROM_UNIXTIME(?), FIRST_SEEN), 
                 asn = if (asn is null and ? > 0, ?, asn),
                 asn_owner = if (asn_owner is null and LENGTH(?) > 0, ?, asn_owner),
                 prefix = if (prefix is null and LENGTH(?) > 0, ?, prefix) 
                 ";
-            debug!("{} {} {} {}", i.name, i.rr_type, i.rdata, i.count);
+            debug!("{} {} {} {}", dns_record.name, dns_record.rr_type, dns_record.rdata, dns_record.count);
 
             block_on(
                 sqlx::query(Q)
-                    .bind(&i.name)
-                    .bind(i.class.to_str())
-                    .bind(i.rr_type.to_str())
-                    .bind(&i.rdata)
-                    .bind(i.ttl)
-                    .bind(i.count)
+                    .bind(&dns_record.name)
+                    .bind(dns_record.class.to_str())
+                    .bind(dns_record.rr_type.to_str())
+                    .bind(&dns_record.rdata)
+                    .bind(dns_record.ttl)
+                    .bind(dns_record.count)
                     .bind(ts)
                     .bind(ts)
-                    .bind(&i.domain)
-                    .bind(i.asn)
-                    .bind(i.asn)
-                    .bind(&i.asn_owner)
-                    .bind(&i.asn_owner)
-                    .bind(&i.prefix)
-                    .bind(&i.prefix)
-                    .bind(i.ttl)
-                    .bind(i.ttl)
-                    .bind(i.count)
+                    .bind(&dns_record.domain)
+                    .bind(dns_record.asn)
+                    .bind(dns_record.asn)
+                    .bind(&dns_record.asn_owner)
+                    .bind(&dns_record.asn_owner)
+                    .bind(&dns_record.prefix)
+                    .bind(&dns_record.prefix)
+                    .bind(dns_record.ttl)
+                    .bind(dns_record.ttl)
+                    .bind(dns_record.count)
                     .bind(ts)
                     .bind(ts)
                     .bind(ts)
                     .bind(ts)
-                    .bind(i.asn)
-                    .bind(i.asn)
-                    .bind(&i.asn_owner)
-                    .bind(&i.asn_owner)
-                    .bind(&i.prefix)
-                    .bind(&i.prefix)
+                    .bind(dns_record.asn)
+                    .bind(dns_record.asn)
+                    .bind(&dns_record.asn_owner)
+                    .bind(&dns_record.asn_owner)
+                    .bind(&dns_record.prefix)
+                    .bind(&dns_record.prefix)
                     .execute(&self.pool),
             )
         } else {
-            static Q: &str= "INSERT INTO pdns_err (QUERY,RR,MAPTYPE,COUNT,LAST_SEEN,FIRST_SEEN, ERROR_VAL, EXT_ERROR_VAL) VALUES (
+            static Q: &str= "INSERT INTO pdns_err (QUERY,RR,MAPTYPE,COUNT,LAST_SEEN,FIRST_SEEN, ERROR_VAL, EXT_ERROR_VAL) 
+            VALUES (
                 ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?), ?, ?   
                 ) ON DUPLICATE KEY UPDATE
                 COUNT = COUNT + ?,
                 LAST_SEEN = if (LAST_SEEN < FROM_UNIXTIME(?), FROM_UNIXTIME(?), LAST_SEEN),
                 FIRST_SEEN = if (FIRST_SEEN > FROM_UNIXTIME(?), FROM_UNIXTIME(?), FIRST_SEEN) 
                 ";
-            debug!("{} {} {} {}", i.name, i.rr_type, i.error as u16, i.count);
+           // debug!("{} {} {} {}", i.name, i.rr_type, i.error as u16, i.count);
             block_on(
                 sqlx::query(Q)
-                    .bind(&i.name)
-                    .bind(i.class.to_str())
-                    .bind(i.rr_type.to_str())
-                    .bind(i.count)
+                    .bind(&dns_record.name)
+                    .bind(dns_record.class.to_str())
+                    .bind(dns_record.rr_type.to_str())
+                    .bind(dns_record.count)
                     .bind(ts)
                     .bind(ts)
-                    .bind(i.error as u16)
-                    .bind(i.extended_error as u16)
-                    .bind(i.count)
+                    .bind(dns_record.error as u16)
+                    .bind(dns_record.extended_error as u16)
+                    .bind(dns_record.count)
                     .bind(ts)
                     .bind(ts)
                     .bind(ts)
@@ -130,7 +131,8 @@ impl Mysql_connection {
             Ok(x) => debug!("Success {x:?}"),
             Err(e) => {
                 error!("Error: {e}");
-                exit(-1);
+                debug!("Error: {e}");
+                //exit(-1);
             }
         }
     }

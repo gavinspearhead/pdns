@@ -14,6 +14,7 @@ use base64::Engine;
 use std::fmt::Write;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use tracing::debug;
+use ParseErrorType::Invalid_Resource_Record;
 
 const MAX_DOMAIN_NAME_LENGTH: usize = 253;
 const MAX_RECURSION_DEPTH: usize = 63;
@@ -174,7 +175,7 @@ fn decode_gpos_size(val: u8) -> String {
 fn parse_rr_a(rdata: &[u8]) -> Result<String, Parse_error> {
     if rdata.len() != 4 {
         return Err(Parse_error::new(
-            ParseErrorType::Invalid_Resource_Record,
+            Invalid_Resource_Record,
             &format!("{rdata:?}"),
         ));
     }
@@ -185,7 +186,7 @@ fn parse_rr_a(rdata: &[u8]) -> Result<String, Parse_error> {
 fn parse_rr_aaaa(rdata: &[u8]) -> Result<String, Parse_error> {
     if rdata.len() != 16 {
         return Err(Parse_error::new(
-            ParseErrorType::Invalid_Resource_Record,
+            Invalid_Resource_Record,
             &format!("{rdata:?}"),
         ));
     }
@@ -328,7 +329,7 @@ fn parse_rr_dnskey(rdata: &[u8]) -> Result<String, Parse_error> {
 fn parse_rr_tlsa(rdata: &[u8]) -> Result<String, Parse_error> {
     if rdata.len() < 4 {
         return Err(Parse_error::new(
-            ParseErrorType::Invalid_Resource_Record,
+            Invalid_Resource_Record,
             "",
         ));
     }
@@ -336,16 +337,13 @@ fn parse_rr_tlsa(rdata: &[u8]) -> Result<String, Parse_error> {
     let selector = tlsa_selector(rdata[1])?;
     let alg_type = tlsa_algorithm(rdata[2])?;
     let cad = &rdata[3..];
-    Ok(format!(
-        "{cert_usage} {selector} {alg_type} {}",
-        hex::encode(cad)
-    ))
+    Ok(format!( "{cert_usage} {selector} {alg_type} {}", hex::encode(cad) ))
 }
 
 fn parse_rr_cds(rdata: &[u8]) -> Result<String, Parse_error> {
     if rdata.len() < 5 {
         return Err(Parse_error::new(
-            ParseErrorType::Invalid_Resource_Record,
+            Invalid_Resource_Record,
             "",
         ));
     }
@@ -379,7 +377,7 @@ fn parse_rr_ipseckey(rdata: &[u8]) -> Result<String, Parse_error> {
         } // a FQDN
         e => {
             return Err(Parse_error::new(
-                ParseErrorType::Invalid_Resource_Record,
+                Invalid_Resource_Record,
                 &e.to_string(),
             ));
         }
@@ -505,7 +503,7 @@ fn parse_rr_srv(rdata: &[u8]) -> Result<String, Parse_error> {
 fn parse_rr_sshfp(rdata: &[u8]) -> Result<String, Parse_error> {
     if rdata.len() < 3 {
         return Err(Parse_error::new(
-            ParseErrorType::Invalid_Resource_Record,
+            Invalid_Resource_Record,
             "",
         ));
     }
@@ -934,15 +932,25 @@ pub(crate) fn dns_parse_rdata(
     } else if rrtype == DNS_RR_type::Private {
         Ok(String::new())
         // just ignore
+    } else if rrtype == DNS_RR_type::DSYNC {
+        parse_rr_dsync(rdata)
     } else {
         debug!("Unknown RR type");
         Err(Parse_error::new(
-            ParseErrorType::Invalid_Resource_Record,
+            Invalid_Resource_Record,
             rrtype.to_str(),
         ))
     }
 }
 
+fn parse_rr_dsync(rdata: &[u8]) -> Result<String, Parse_error> {
+    let rrtype_val = dns_read_u16(rdata, 0)?;
+    let Ok(rrtype) = parse_rrtype(rrtype_val) else { return Err( Parse_error::new(ParseErrorType::Invalid_Resource_Record, &rrtype_val.to_string())) };
+    let scheme = dns_read_u8(rdata, 2)?;
+    let port = dns_read_u16(rdata, 3)?;
+    let Ok(target) = dns_parse_name(rdata, 5) else { return Err( Parse_error::new(ParseErrorType::Invalid_Domain_name, "")) };
+    Ok(format!("{rrtype} {scheme} {port} {}", target.0))
+}
 
 fn parse_rr_px(rdata: &[u8]) -> Result<String, Parse_error> {
     let pref = dns_read_u16(rdata, 0)?;

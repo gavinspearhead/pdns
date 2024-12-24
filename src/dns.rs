@@ -6,6 +6,7 @@ use std::str::FromStr;
 use strum::IntoEnumIterator;
 use strum_macros::{EnumIter, FromRepr};
 use strum_macros::{EnumString, IntoStaticStr};
+use tracing::debug;
 
 #[derive(
     Debug,
@@ -33,6 +34,7 @@ pub(crate) enum DNS_Opcodes {
 }
 
 impl DNS_Opcodes {
+    #[inline]
     pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
@@ -101,11 +103,15 @@ impl DNS_Class {
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
         match DNS_Class::from_repr(usize::from(val)) {
             Some(x) => Ok(x),
-            None => Err(DNS_error::new(
-                DNS_Error_Type::Invalid_Class,
-                &format!("{val}"),
-            ))
+            None => {
+                debug!("Error wrong class value {}", val);
+                Err(DNS_error::new(
+                    DNS_Error_Type::Invalid_Class,
+                    &format!("{val}"),
+                ))
+            }
         }
+        
     }
 }
 
@@ -126,6 +132,10 @@ mod dns_class_tests {
     #[test]
     fn test_dns_class1() {
         assert_eq!(DNS_Class::find(4).unwrap(), DNS_Class::HS);
+    }
+    #[test]
+    fn test_dns_class3() {
+        assert_eq!(DNS_Class::find(255).unwrap(), DNS_Class::ANY);
     }
 }
 
@@ -169,6 +179,7 @@ pub(crate) enum DNS_RR_type {
     DNSKEY = 48,
     DOA = 259,
     DS = 43,
+    DSYNC= 66,
     EID = 31,
     EUI48 = 108,
     EUI64 = 109,

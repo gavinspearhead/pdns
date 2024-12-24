@@ -1,4 +1,4 @@
-use clap::{arg, ArgAction, Command};
+use clap::{arg, ArgAction, Command, Parser};
 use serde::{Deserialize, Serialize};
 use serde_json::Error;
 
@@ -7,10 +7,12 @@ use crate::{
     version::{AUTHOR, DESCRIPTION, PROGNAME, VERSION},
 };
 use std::{fs::File, io::BufReader, str::FromStr};
-use tracing::error;
+use tracing::{debug, error};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, Parser)]
 #[serde(default)]
+#[command(version, about, long_about = None)]
+
 pub(crate) struct Config {
     pub rr_type: Vec<DNS_RR_type>,
     pub interface: String,
@@ -18,14 +20,14 @@ pub(crate) struct Config {
     pub output: String,
     pub output_type: String,
     pub database: String,
-    pub server: String,
-    pub port: u16,
+    pub http_server: String,
+    pub http_port: u16,
     pub daemon: bool,
     pub promisc: bool,
     pub config_file: String,
     pub dbhostname: String,
     pub dbusername: String,
-    pub dbport: String,
+    pub dbport: u16,
     pub dbpassword: String,
     pub dbname: String,
     pub toplistsize: usize,
@@ -46,6 +48,7 @@ pub(crate) struct Config {
     pub log_file: String,
     pub syslog: bool,
     pub create_db: bool,
+    pub tcp_memory: u32,
 }
 
 impl Config {
@@ -57,14 +60,14 @@ impl Config {
             output: String::new(),
             output_type: String::new(),
             database: String::new(),
-            server: String::new(),
-            port: 0,
+            http_server: String::new(),
+            http_port: 0,
             daemon: false,
             promisc: false,
             config_file: String::new(),
             dbhostname: String::new(),
             dbpassword: String::new(),
-            dbport: String::new(),
+            dbport: 0,
             dbusername: String::new(),
             dbname: String::new(),
             toplistsize: 20,
@@ -85,6 +88,7 @@ impl Config {
             additional: true,
             syslog: true,
             create_db: false,
+            tcp_memory: 10,
         };
         c.rr_type.extend(vec![
             DNS_RR_type::A,
@@ -160,6 +164,11 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
                     .long_help("location of the config file"),
             )
             .arg(
+                arg!(-N --dbname <VALUE>)
+                    .required(false)
+                    .long_help("name of the database"),
+            )
+            .arg(
                 arg!(-H --dbhostname <VALUE>)
                     .required(false)
                     .long_help("hostname of the database"),
@@ -188,12 +197,17 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
                 "location of the file, containing regular expressions with domains to ignore",
             ))
             .arg(
-                arg!(-l --listen <VALUE>)
+                arg!(-l --http_server <VALUE>)
                     .required(false)
                     .long_help("Hostname or IP address for the internal web server to liste no"),
             )
             .arg(
-                arg!(-P --port <VALUE>).required(false).long_help(
+                arg!(-O --tcp_memory <VALUE>).required(false).long_help(
+                    "Amount of memory to use for each TCP connection)",
+                ),
+            )
+            .arg(
+                arg!(-P --http_port <VALUE>).required(false).long_help(
                     "Port number for the internal web server to listen on (0 to disable)",
                 ),
             )
@@ -287,13 +301,13 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
                     .long_help("Create a database"),
             )
             .arg(
-                arg!(-C - -promisc)
+                arg!(-C --promisc)
                     .required(false)
                     .action(ArgAction::SetTrue)
                     .long_help("Put the interface is promiscuous mode when capturing"),
             )
             .arg(
-                arg!(-D - -daemon)
+                arg!(-D --daemon)
                     .required(false)
                     .action(ArgAction::SetTrue)
                     .long_help("Start as a background process (daemon)"),
@@ -350,11 +364,15 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
                     .long_help("Do not log to syslog"),
             )
             .get_matches();
+
+
     let empty_str = String::new();
     config.config_file = matches
         .get_one::<String>("config")
         .unwrap_or(&String::from_str(&empty_str).unwrap())
         .clone();
+
+    //let mut config = Config::parse();
     if !config.config_file.is_empty() {
         let file = File::open(&config.config_file).expect("Cannot open file");
         let reader = BufReader::new(file);
@@ -370,15 +388,17 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
 
     config.create_db = *matches.get_one::<bool>("create_database").unwrap_or(&false);
 
-    config.server = matches
-        .get_one::<String>("listen")
-        .unwrap_or(&config.server)
+    config.http_server = matches
+        .get_one::<String>("http_server")
+        .unwrap_or(&config.http_server)
         .clone();
-    config.port = matches
-        .get_one::<String>("port")
-        .unwrap_or(&format!("{}", config.port))
-        .parse::<u16>()
-        .unwrap();
+    config.tcp_memory = matches
+        .get_one::<String>("tcp_memory")
+        .unwrap_or(&format!("{}",& config.tcp_memory)).parse::<u32>().unwrap();
+    debug!("Memory: {}", config.tcp_memory);
+    config.http_port = matches
+        .get_one::<String>("http_port")
+        .unwrap_or(&format!("{}",& config.http_port)).parse::<u16>().unwrap();
     matches
         .get_one::<String>("path")
         .unwrap_or(&empty_str)
@@ -406,6 +426,10 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
     config.output_type = matches
         .get_one::<String>("output_type")
         .unwrap_or(&config.output_type)
+        .clone();
+    config.dbname = matches
+        .get_one::<String>("dbname")
+        .unwrap_or(&config.dbname)
         .clone();
     config.database = matches
         .get_one::<String>("database")
@@ -475,6 +499,7 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
         .unwrap_or(&config.authority);
 
     let rr_types = parse_rrtypes(&matches.get_one("rrtypes").unwrap_or(&empty_str).clone());
+   // let rr_types = parse_rrtypes(config.rr_type);
     if !rr_types.is_empty() {
         config.rr_type = rr_types;
     }

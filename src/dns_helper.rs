@@ -7,10 +7,11 @@ use chrono::DateTime;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::ops::RangeBounds;
 
+/*
 #[inline]
 pub(crate) fn is_between<T: PartialOrd>(value: &T, min: &T, max: &T) -> bool {
     value >= min && value <= max
-}
+}*/
 
 #[inline]
 pub(crate) fn parse_rrtype(rrtype: u16) -> Result<DNS_RR_type, DNS_error> {

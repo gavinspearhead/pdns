@@ -10,15 +10,16 @@ use crate::errors::ParseErrorType;
 use crate::packet_info::Packet_info;
 use crate::skiplist::Skip_List;
 use crate::statistics::Statistics;
-use dns::{ DNS_RR_type, DnsReplyType};
+use dns::{DNS_RR_type, DnsReplyType};
 use errors::Parse_error;
 use publicsuffix::Psl;
 use std::fmt;
+use std::fmt::Debug;
 use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
 use tracing::{debug, error};
 
-use crate::{dns, errors};
 use crate::dns_record::DNS_record;
+use crate::{dns, errors};
 
 #[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq, EnumString, IntoStaticStr, FromRepr)]
 pub(crate) enum DNS_Protocol {
@@ -37,7 +38,7 @@ impl DNS_Protocol {
             Some(x) => Ok(x),
             None => Err(Parse_error::new(
                 ParseErrorType::Unknown_Protocol,
-                &format!("{val}"),
+                &val.to_string(),
             )),
         }
     }
@@ -78,7 +79,10 @@ fn parse_question(
     } else if rcode == DnsReplyType::NOERROR {
         stats.topdomain.add(&name);
         stats.success_time_stats.add(packet_info.timestamp, 1);
+    } else {
+        debug!("Other rcode: {rcode:?} ");
     }
+
     if rcode != DnsReplyType::NOERROR {
         let rec: DNS_record = DNS_record {
             rr_type: rrtype,
@@ -113,7 +117,7 @@ fn parse_edns(
     // debug!("e code {e_rcode}");
     //let edns_version = dns_read_u8(packet, offset_in + 3)?;
     // debug!("edns_version {edns_version}");
-   // let _z = dns_read_u16(packet, offset_in + 4)?;
+    // let _z = dns_read_u16(packet, offset_in + 4)?;
     let data_length = usize::from(dns_read_u16(packet, offset_in + 6)?);
     if data_length == 0 {
         return Ok(8);
@@ -286,10 +290,11 @@ fn parse_answer(
     }
     let rrtype_val = dns_read_u16(packet, offset)?;
     let rrtype = parse_rrtype(rrtype_val)?;
+    //debug!("rrtype: {rrtype}");
     if rrtype == DNS_RR_type::OPT {
-        let len = parse_edns(packet_info, packet, offset + 2, stats, config)?;
-        offset += len - 1;
-        let len = offset + 2 - offset_in;
+        offset += 2;
+        let len = parse_edns(packet_info, packet, offset, stats, config)?;
+        let len = offset + len - offset_in;
         return Ok(len);
     }
     let class_val = dns_read_u16(packet, offset + 2)?;
@@ -309,16 +314,7 @@ fn parse_answer(
     let data = dns_parse_slice(packet, offset..offset + datalen)?;
     let rdata = dns_parse_rdata(data, rrtype, packet, offset)?;
     offset += 1;
-
-    let domain = publicsuffixlist.domain(name.as_bytes());
-    let domain_str = if let Some(d) = domain {
-        let x = d.trim().as_bytes().to_vec();
-        String::from_utf8(x).unwrap_or_default()
-    } else {
-        debug!("Not found {name}");
-        String::new()
-    };
-
+    let domain_str = find_domain(publicsuffixlist, name.as_str());
     let rec: DNS_record = DNS_record {
         rr_type: rrtype,
         ttl,
@@ -338,6 +334,18 @@ fn parse_answer(
     offset += datalen - 1;
     let len = offset - offset_in;
     Ok(len)
+}
+
+fn find_domain(publicsuffixlist: &publicsuffix::List, name: &str) -> String {
+    let domain = publicsuffixlist.domain(name.as_bytes());
+    let domain_str: String = if let Some(d) = domain {
+        let x = d.trim().as_bytes().to_vec();
+        String::from_utf8(x).unwrap_or_default()
+    } else {
+        debug!("Domain not found: {name}");
+        String::new()
+    };
+    domain_str
 }
 
 pub(crate) fn parse_dns(
@@ -395,8 +403,8 @@ pub(crate) fn parse_dns(
     if qr != 1 {
         // we ignore questions; except for stats
         *stats.opcodes.entry(opcode).or_insert(0) += 1;
-        stats.sources.add(&packet_info.s_addr.to_string());
-        stats.destinations.add(&packet_info.d_addr.to_string());
+        stats.sources.add(&packet_info.s_addr);
+        stats.destinations.add(&packet_info.d_addr);
         return Ok(());
     }
 
@@ -444,9 +452,10 @@ pub(crate) fn parse_dns(
         }
     }
     if config.additional {
-        //  tracing::debug!("Additional {}", additional);
-        for _ in 0..additional {
-            //  debug!("additional {_i} of {additional} offset {offset}");
+      //  debug!("Additional {}", additional);
+        for _i in 0..additional {
+            //debug!("additional {_i} of {additional} offset {offset} data: {:x?}", &
+            //   packet[offset..offset+4]);
             offset += parse_answer(
                 packet_info,
                 packet,

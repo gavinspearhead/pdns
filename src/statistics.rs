@@ -6,6 +6,7 @@ use serde_json;
 
 use std::{collections::HashMap, fs::File, io::BufReader};
 use std::cmp::Ordering::Equal;
+use std::net::IpAddr;
 use serde::ser::SerializeMap;
 use crate::dns::{DNS_Class, DNS_Opcodes, DNS_RR_type, DnsReplyType};
 use crate::edns::DNSExtendedError;
@@ -31,9 +32,9 @@ pub(crate) struct Statistics {
     pub additional: u128,
     pub authority: u128,
     #[serde(deserialize_with = "deserialize_ignore_any")]
-    pub sources: Rank<String>,
+    pub sources: Rank<IpAddr>,
     #[serde(deserialize_with = "deserialize_ignore_any")]
-    pub destinations: Rank<String>,
+    pub destinations: Rank<IpAddr>,
     pub udp: u128,
     pub tcp: u128,
     #[serde(deserialize_with = "deserialize_ignore_any")]
@@ -86,7 +87,7 @@ impl Statistics {
     }
 }
 
-/// For use with serde's [serialize_with] attribute
+// For use with serde's [serialize_with] attribute
 fn ordered_map<S, K: Ord + Serialize + ToString, V: Serialize + PartialOrd >(
     value: &HashMap<K, V>,
     serializer: S,
@@ -94,10 +95,7 @@ fn ordered_map<S, K: Ord + Serialize + ToString, V: Serialize + PartialOrd >(
 where
     S: Serializer,
 {
-    let mut l = Vec::new();
-    for (k, v) in value {
-        l.push((k, v));
-    }
+    let mut l: Vec<_> = value.iter().collect();
     l.sort_by(|a, b| (a.0.to_string()).partial_cmp(&b.0.to_string()).unwrap_or(Equal));
 
     let mut map = serializer.serialize_map(Some(l.len()))?;

@@ -4,11 +4,11 @@
 
 #![allow(non_camel_case_types)]
 pub mod config;
-pub mod dns_record;
 pub mod dns;
 pub mod dns_cache;
 pub mod dns_helper;
 pub mod dns_packet;
+pub mod dns_record;
 pub mod dns_rr;
 pub mod edns;
 pub mod errors;
@@ -24,7 +24,6 @@ pub mod tcp_connection;
 pub mod tcp_data;
 pub mod time_stats;
 pub mod version;
-
 
 use chrono::{DateTime, Utc};
 use clap::{arg, Parser};
@@ -94,15 +93,14 @@ fn dump_stats(stats: &Statistics, config: &Config) -> std::io::Result<()> {
     }
 }
 
-fn packet_loop<T:Activated>(
+fn packet_loop<T: Activated>(
     mut cap: Capture<T>,
     packet_queue: &Packet_Queue,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
     stats: &Arc<Mutex<Statistics>>,
     config: &Config,
     skip_list: &Skip_List,
-)
-{
+) {
     let link_type = cap.get_datalink();
     if link_type != Linktype::ETHERNET {
         error!("Not ethernet {link_type:?}");
@@ -145,14 +143,9 @@ fn packet_loop<T:Activated>(
                     &publicsuffixlist,
                 );
                 match result {
-                    Ok(()) => {
-                        packet_queue.push_back(Some(packet_info));
-                    }
-                    Err(error) => {
-                        debug!("{error:?}");
-                    }
+                    Ok(()) => packet_queue.push_back(Some(packet_info)),
+                    Err(error) => debug!("{error:?}")
                 }
-                
             }
             Err(pcap::Error::TimeoutExpired) => {
                 debug!("Packet capture error: {}", pcap::Error::TimeoutExpired);
@@ -184,7 +177,6 @@ fn poll(packet_queue: &Packet_Queue, config: &Config, rx: mpsc::Receiver<String>
     let mut output_file: Option<File> = None;
     let mut dns_cache: DNS_Cache = DNS_Cache::new(5);
     let mut live_dump = Live_dump::new(&config.live_dump_host, config.live_dump_port);
-    let mut last_push = Utc::now().timestamp();
 
     if !config.output.is_empty() && config.output != "-" {
         let mut options = OpenOptions::new();
@@ -210,6 +202,7 @@ fn poll(packet_queue: &Packet_Queue, config: &Config, rx: mpsc::Receiver<String>
         Some(x)
     };
     let asn_database = load_asn_database(config);
+    let mut last_push = Utc::now().timestamp();
     loop {
         live_dump.accept();
         live_dump.read_all();
@@ -239,7 +232,7 @@ fn poll(packet_queue: &Packet_Queue, config: &Config, rx: mpsc::Receiver<String>
                 };
                 if let Some(ref _db) = database_conn {
                     for i in p1.dns_records {
-                        dns_cache.add(&i);
+                        dns_cache.add(i);
                     }
                 }
                 timeout = time::Duration::from_millis(0);
@@ -268,9 +261,11 @@ fn poll(packet_queue: &Packet_Queue, config: &Config, rx: mpsc::Receiver<String>
     }
 }
 
-
-fn db_insert(dns_cache: &mut DNS_Cache, database_conn: & mut Option<Mysql_connection> , last_push : &mut i64) 
-{
+fn db_insert(
+    dns_cache: &mut DNS_Cache,
+    database_conn: &mut Option<Mysql_connection>,
+    last_push: &mut i64,
+) {
     if let Some(ref mut db) = database_conn {
         for i in dns_cache.push_all() {
             db.insert_or_update_record(&i);
@@ -375,7 +370,7 @@ fn capture_from_interface(
     thread::scope(|s| {
         let handle2 = s.spawn(|| clean_tcp_list(&tcp_list.clone(), tcp_rx));
         let handle = s.spawn(|| poll(&packet_queue.clone(), config, pq_rx));
-        let listener = listen(&config.server, config.port);
+        let listener = listen(&config.http_server, config.http_port);
         let handle4 = s.spawn(|| {
             if let Some(l) = listener {
                 server(&l, &stats.clone(), &tcp_list.clone(), &config.clone());
@@ -418,14 +413,20 @@ fn run(
     stats: &Arc<Mutex<Statistics>>,
 ) {
     let packet_queue = Packet_Queue::new();
-    let tcp_list = Arc::new(Mutex::new(TCP_Connections::new()));
+    let tcp_list = Arc::new(Mutex::new(TCP_Connections::new(config.tcp_memory)));
     let mut skiplist = Skip_List::new();
     skiplist.read_skip_list(&config.skip_list_file);
     if !pcap_path.is_empty() {
-        capture_from_file(config, pcap_path, &skiplist, stats, &tcp_list, &packet_queue);
+        capture_from_file(
+            config,
+            pcap_path,
+            &skiplist,
+            stats,
+            &tcp_list,
+            &packet_queue,
+        );
     } else if !config.interface.is_empty() {
         capture_from_interface(config, &skiplist, stats, &tcp_list, &packet_queue, cap_in);
-       
     }
 }
 
@@ -490,7 +491,7 @@ fn main() {
         cap = match Capture::from_device(config.interface.as_str())
             .unwrap()
             .timeout(1000)
-            .promisc(config.promisc) 
+            .promisc(config.promisc)
             //                .immediate_mode(true) //seems to break on ubuntu?
             .open()
         {
@@ -538,7 +539,6 @@ fn main() {
         .umask(0o077) // Set umask, `0o027` by default.
         .stdout(stdout) // Redirect stdout to `/tmp/daemon.out`.
         .stderr(stderr) // Redirect stderr to `/tmp/daemon.err`.
-        //.privileged_action(|| "Executed before drop privileges")
         ;
         debug!("Daemonising");
         match daemonize.start() {

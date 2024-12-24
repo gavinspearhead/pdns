@@ -1,13 +1,22 @@
+use crate::errors::{DNS_Error_Type, DNS_error};
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
+use strum_macros::{EnumIter, FromRepr};
 use strum_macros::{EnumString, IntoStaticStr};
 
-use crate::errors::{DNS_Error_Type, DNS_error};
-
 #[derive(
-    Debug, Hash, IntoStaticStr, EnumIter, Copy, Clone, EnumString, PartialEq, Eq, Serialize, Deserialize,
+    Debug,
+    Hash,
+    IntoStaticStr,
+    EnumIter,
+    Copy,
+    Clone,
+    EnumString,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    FromRepr,
 )]
 
 pub(crate) enum EDNSOptionCodes {
@@ -40,15 +49,13 @@ impl EDNSOptionCodes {
     }
 
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
-        for ee in EDNSOptionCodes::iter() {
-            if (ee as u16) == val {
-                return Ok(ee);
-            }
+        match crate::edns::EDNSOptionCodes::from_repr(usize::from(val)) {
+            Some(x) => Ok(x),
+            None => Err(DNS_error::new(
+                DNS_Error_Type::Invalid_Extended_Option_Code,
+                &format!("{val}"),
+            )),
         }
-        Err(DNS_error::new(
-            DNS_Error_Type::Invalid_Extended_Option_Code,
-            &val.to_string(),
-        ))
     }
 }
 
@@ -63,6 +70,7 @@ impl fmt::Display for EDNSOptionCodes {
     EnumIter,
     Copy,
     Clone,
+    FromRepr,
     IntoStaticStr,
     EnumString,
     PartialEq,
@@ -72,7 +80,7 @@ impl fmt::Display for EDNSOptionCodes {
     Default,
     PartialOrd,
     Ord,
-    Hash
+    Hash,
 )]
 pub(crate) enum DNSExtendedError {
     #[default]
@@ -117,15 +125,13 @@ impl DNSExtendedError {
     }
 
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
-        for ee in DNSExtendedError::iter() {
-            if (ee as u16) == val {
-                return Ok(ee);
-            }
+        match DNSExtendedError::from_repr(usize::from(val)) {
+            Some(x) => Ok(x),
+            None => Err(DNS_error::new(
+                DNS_Error_Type::Invalid_Extended_Error_Code,
+                &format!("{val}"),
+            )),
         }
-        Err(DNS_error::new(
-            DNS_Error_Type::Invalid_Extended_Error_Code,
-            &val.to_string(),
-        ))
     }
 }
 

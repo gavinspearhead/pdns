@@ -9,8 +9,7 @@ use std::{
     net::{TcpListener, TcpStream},
 };
 use std::str::FromStr;
-use strum::IntoEnumIterator;
-use strum_macros::{AsRefStr, EnumIter, EnumString, IntoStaticStr};
+use strum_macros::{AsRefStr, EnumIter, EnumString, FromRepr, IntoStaticStr};
 use tracing::{debug, error};
 
 #[derive(
@@ -24,7 +23,9 @@ use tracing::{debug, error};
     Serialize,
     Deserialize,
     AsRefStr,
+FromRepr,
 )]
+
 pub(crate) enum Filter_fields {
     SRC_IP,
     DST_IP,
@@ -43,15 +44,9 @@ impl Filter_fields {
     pub(crate) fn to_str(&self) -> &'static str {
         self.into()
     }
-
-    pub(crate) fn find(val: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        for field in Filter_fields::iter() {
-            if (field.as_ref()) == val.to_ascii_uppercase() {
-                let result = field.clone();
-                return Ok(result);
-            }
-        }
-        Err("Not found".into())
+pub(crate) fn find(val: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        // Attempt to parse the string into the enum variant
+        val.to_uppercase().parse::<Filter_fields>().map_err(|_| "Not found".into())
     }
 }
 
@@ -60,7 +55,16 @@ impl fmt::Display for Filter_fields {
         write!(f, "{}", self.to_str())
     }
 }
+#[cfg(test)]
+mod dns_filter_fields_tests {
+    use crate::live_dump::Filter_fields;
 
+    #[test]
+    fn test_filter_fields() {
+        assert_eq!(Filter_fields::find("SRC_IP").unwrap(), Filter_fields::SRC_IP);
+        assert_eq!(Filter_fields::find("NAME").unwrap(), Filter_fields::NAME);
+    }
+}
 #[derive(
     Debug,
     EnumIter,
@@ -140,7 +144,7 @@ impl Filter {
         let Some(value) = spl.next() else {
             return Err("not found".into());
         };
-        debug!("Value: {:?}", value.to_string());
+        debug!("Value: {:?}", value);
 
         Ok(Filter {
             expr: (field, oper, value.to_string()),

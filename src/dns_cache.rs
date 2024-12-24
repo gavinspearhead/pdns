@@ -21,16 +21,15 @@ impl DNS_Cache {
         self.timeout
     }
 
-    pub(crate) fn add(&mut self, record: &DNS_record) {
+    pub(crate) fn add(&mut self, record: DNS_record) {
         self.items
             .entry((record.rr_type, record.name.clone(), record.rdata.clone()))
             .and_modify(|f| f.count += 1)
-            .or_insert_with(|| record.clone());
+            .or_insert_with(|| record);
     }
     #[inline]
     pub(crate) fn push_all(&mut self) -> Vec<DNS_record> {
-        
-            self.items.drain().map(|(_, v)| v).collect()
+        self.items.drain().map(|(_, v)| v).collect()
     }
 }
 
