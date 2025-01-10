@@ -62,7 +62,7 @@ impl Mysql_connection {
                 TTL = GREATEST(TTL, ?), 
                 COUNT = COUNT + ?, 
                 LAST_SEEN = GREATEST(LAST_SEEN, FROM_UNIXTIME(?)),
-                FIRST_SEEN = GREATEST(FROM_UNIXTIME(?), FIRST_SEEN), 
+                FIRST_SEEN = LEAST(FROM_UNIXTIME(?), FIRST_SEEN), 
                 asn = COALESCE(asn, NULLIF(?, 0)),
                 asn_owner = COALESCE(asn_owner, NULLIF(?, '')),
                 prefix = COALESCE(prefix, NULLIF(?, ''))
@@ -108,7 +108,7 @@ impl Mysql_connection {
                 ) ON DUPLICATE KEY UPDATE
                 COUNT = COUNT + ?,
                 LAST_SEEN = GREATEST(LAST_SEEN, FROM_UNIXTIME(?)),
-                FIRST_SEEN = GREATEST(FROM_UNIXTIME(?), FIRST_SEEN) 
+                FIRST_SEEN = LEAST(FROM_UNIXTIME(?), FIRST_SEEN) 
                 ";
            // debug!("{} {} {} {}", i.name, i.rr_type, i.error as u16, i.count);
             block_on(
