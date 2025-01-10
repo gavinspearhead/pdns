@@ -1,5 +1,5 @@
 use crate::dns::{DNS_Class, DNS_RR_type, DnsReplyType};
-use crate::{http_server::listen, packet_info::Packet_info};
+use crate::{packet_info::Packet_info};
 use core::fmt;
 use serde::{Deserialize, Serialize};
 use std::io::Read;
@@ -147,7 +147,7 @@ impl Filter {
         debug!("Value: {:?}", value);
 
         Ok(Filter {
-            expr: (field, oper, value.to_string()),
+            expr: (field, oper, value.to_owned()),
         })
     }
 
@@ -155,11 +155,8 @@ impl Filter {
         debug!("{}", self.expr.0);
         match self.expr.0 {
             Filter_fields::SRC_IP => {
-                let src_addr: IpAddr = match self.expr.2.parse() {
-                    Ok(x) => x,
-                    Err(_e) => {
-                        return false;
-                    }
+                let Ok(src_addr) = self.expr.2.parse::<IpAddr>() else {
+                    return false;
                 };
                 if self.expr.1 == Filter_operator::EQUAL {
                     return packet_info.s_addr == src_addr;
@@ -169,11 +166,8 @@ impl Filter {
                 false
             }
             Filter_fields::DST_IP => {
-                let dst_addr: IpAddr = match self.expr.2.parse() {
-                    Ok(x) => x,
-                    Err(_e) => {
-                        return false;
-                    }
+                let Ok(dst_addr) = self.expr.2.parse::<IpAddr>() else {
+                    return false;
                 };
                 if self.expr.1 == Filter_operator::EQUAL {
                     return packet_info.d_addr == dst_addr;
@@ -183,11 +177,8 @@ impl Filter {
                 false
             }
             Filter_fields::SRC_PORT => {
-                let port: u16 = match self.expr.2.parse::<u16>() {
-                    Ok(x) => x,
-                    Err(_e) => {
-                        return false;
-                    }
+                let Ok(port)= self.expr.2.parse::<u16>() else {
+                    return false;
                 };
                 if self.expr.1 == Filter_operator::EQUAL {
                     return packet_info.sp == port;
@@ -197,11 +188,8 @@ impl Filter {
                 false
             }
             Filter_fields::DST_PORT => {
-                let port: u16 = match self.expr.2.parse::<u16>() {
-                    Ok(x) => x,
-                    Err(_e) => {
+                let Ok(port) = self.expr.2.parse::<u16>() else{
                         return false;
-                    }
                 };
                 if self.expr.1 == Filter_operator::EQUAL {
                     return packet_info.dp == port;
@@ -279,7 +267,9 @@ impl Filter {
                 false
             }
             Filter_fields::CLASS => {
-                let Ok(match_class) = DNS_Class::from_str(self.expr.2.as_str()) else { return false; };
+                let Ok(match_class) = DNS_Class::from_str(self.expr.2.as_str()) else {
+                    return false; 
+                };
                 if self.expr.1 == Filter_operator::EQUAL {
                     for i in &packet_info.dns_records {
                         if i.class == match_class {
@@ -299,7 +289,9 @@ impl Filter {
             }
 
             Filter_fields::RR_TYPE => {
-                let Ok(match_class) = DNS_RR_type::from_str(self.expr.2.as_str()) else { return false; };
+                let Ok(match_class) = DNS_RR_type::from_str(self.expr.2.as_str()) else {
+                    return false; 
+                };
                 if self.expr.1 == Filter_operator::EQUAL {
                     for i in &packet_info.dns_records {
                         if i.rr_type != match_class {
@@ -446,6 +438,23 @@ impl Live_dump_session {
         Ok(())
     }
 }
+
+pub fn listen(address: &str, port: u16) -> Option<TcpListener> {
+    if address.is_empty() || port == 0 {
+        return None;
+    }
+    let addr = format!("{address}:{port}");
+    debug!("Listening on {addr}");
+    let x = TcpListener::bind(addr);
+    match x {
+        Ok(conn) => Some(conn),
+        Err(_e) => {
+            error!("Cannot listen on {address}:{port}");
+            None
+        }
+    }
+}
+
 
 #[derive(Debug)]
 pub(crate) struct Live_dump {

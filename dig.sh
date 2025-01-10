@@ -103,11 +103,11 @@
  dig +short txt nsap-ptr.dns.netmeister.org. 
  dig +short nsec nsec.dns.netmeister.org. 
  dig +short txt nsec.dns.netmeister.org. 
- dig +dnssec +nocmd +nocomments +noquestion +nostats +multiline nsec3 nsec3.dns.netmeister.org.
+ dig +dnssec nsec3 nsec3.dns.netmeister.org.
  dig +short txt nsec3.dns.netmeister.org. 
  dig +short nsec3param nsec3param.dns.netmeister.org. 
  dig +short txt nsec3param.dns.netmeister.org. 
- dig +dnssec +nocmd +nocomments +noquestion +nostats nsec3 nsec3.dns.netmeister.org. 
+ dig +dnssec nsec3 nsec3.dns.netmeister.org. 
  dig +short txt next.nsec3.dns.netmeister.org.
  dig +dnssec +nocmd +nocomments +noquestion +nostats nsec3 next.nsec3.dns.netmeister.org. 
  dig +short null.dns.netmeister.org

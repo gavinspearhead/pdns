@@ -59,7 +59,7 @@ impl Parse_error {
         Parse_error {
             error_type: err_t,
             error_str: s.to_owned(),
-            value: val.to_string(),
+            value: val.to_owned(),
         }
     }
 }
@@ -107,7 +107,7 @@ impl DNS_error {
         DNS_error {
             //error_type: err_t,
             error_str: s.to_owned(),
-            value: val.to_string(),
+            value: val.to_owned(),
         }
     }
 }

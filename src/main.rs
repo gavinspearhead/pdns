@@ -23,6 +23,7 @@ pub mod statistics;
 pub mod tcp_connection;
 pub mod tcp_data;
 pub mod time_stats;
+pub mod util;
 pub mod version;
 
 use chrono::{DateTime, Utc};
@@ -54,7 +55,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{filter, fmt, prelude::*, reload};
 
 use crate::config::Config;
-use crate::http_server::{listen, server};
+use crate::http_server::listen;
 use crate::network_packet::parse_eth;
 use crate::packet_info::Packet_info;
 use crate::statistics::Statistics;
@@ -144,7 +145,7 @@ fn packet_loop<T: Activated>(
                 );
                 match result {
                     Ok(()) => packet_queue.push_back(Some(packet_info)),
-                    Err(error) => debug!("{error:?}")
+                    Err(error) => debug!("{error:?}"),
                 }
             }
             Err(pcap::Error::TimeoutExpired) => {
@@ -370,11 +371,9 @@ fn capture_from_interface(
     thread::scope(|s| {
         let handle2 = s.spawn(|| clean_tcp_list(&tcp_list.clone(), tcp_rx));
         let handle = s.spawn(|| poll(&packet_queue.clone(), config, pq_rx));
-        let listener = listen(&config.http_server, config.http_port);
+        // let listener = listen(&config.http_server, config.http_port);
         let handle4 = s.spawn(|| {
-            if let Some(l) = listener {
-                server(&l, &stats.clone(), &tcp_list.clone(), &config.clone());
-            }
+            let _ = listen(&stats.clone(), &tcp_list.clone(), &config.clone());
         });
         let Some(mut cap) = cap_in else {
             error!("Something wrong with the capture");
@@ -432,7 +431,7 @@ fn run(
 
 fn main() {
     let mut pcap_path = String::new();
-    let mut config: Config = Config::new();
+    let mut config = Config::new();
     let layers = vec![fmt::Layer::default().boxed()];
     let filter = filter::LevelFilter::WARN;
     let (filter, reload_handle) = reload::Layer::new(filter);
@@ -497,10 +496,7 @@ fn main() {
         {
             Ok(x) => Some(x),
             Err(e) => {
-                error!(
-                    "Cannot open capture on interface '{}' {e}",
-                    &config.interface
-                );
+                error!("Cannot open capture on interface '{}' {e}", &config.interface );
                 exit(-1);
             }
         };
@@ -538,8 +534,7 @@ fn main() {
         .group(config.gid.as_str()) // Group name
         .umask(0o077) // Set umask, `0o027` by default.
         .stdout(stdout) // Redirect stdout to `/tmp/daemon.out`.
-        .stderr(stderr) // Redirect stderr to `/tmp/daemon.err`.
-        ;
+        .stderr(stderr); // Redirect stderr to `/tmp/daemon.err`. 
         debug!("Daemonising");
         match daemonize.start() {
             Ok(()) => {

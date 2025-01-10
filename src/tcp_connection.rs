@@ -12,6 +12,8 @@ use std::{
     thread::sleep,
     time,
 };
+use serde::{Serialize};
+use serde_with::serde_as;
 use strum_macros::EnumIter;
 use tracing::debug;
 
@@ -36,7 +38,7 @@ impl TcpConnection_error {
         TcpConnection_error {
             //error_type: err_t,
             error_str: s.to_owned(),
-            value: val.to_string(),
+            value: val.to_owned(),
         }
     }
 }
@@ -52,10 +54,11 @@ impl Error for TcpConnection_error {
         &self.error_str
     }
 }
-
-#[derive(Debug, Clone)]
+#[serde_as]
+#[derive(Debug, Clone, Serialize, PartialEq, PartialOrd)]
 struct Tcp_connection {
     in_data: Tcp_data,
+    #[serde(with = "chrono::serde::ts_seconds")]
     ts: DateTime<Utc>,
 }
 
@@ -72,8 +75,11 @@ impl Tcp_connection {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, PartialEq )]
+
+
 pub(crate) struct TCP_Connections {
+    #[serde(with = "vectorize")]
     connections: HashMap<(IpAddr, IpAddr, u16, u16), Tcp_connection>,
     timelimit: i64,
     max_tcp_len: u32,
@@ -81,17 +87,19 @@ pub(crate) struct TCP_Connections {
 
 impl TCP_Connections {
     pub fn new(maxsize: u32) -> TCP_Connections {
+        
         TCP_Connections {
+
             connections: HashMap::new(),
             timelimit: 20,
             max_tcp_len: maxsize,
         }
     }
-    #[inline]
+   /* #[inline]
     pub fn len(&self) -> usize {
         self.connections.len()
     }
-
+*/
     pub fn add_data(
         &mut self,
         sp: u16,
@@ -208,6 +216,7 @@ impl TCP_Connections {
         None
     }
 }
+
 
 pub(crate) fn clean_tcp_list(tcp_list: &Arc<Mutex<TCP_Connections>>, rx: mpsc::Receiver<String>) {
     let min_timeout = time::Duration::from_secs(1);

@@ -51,19 +51,21 @@ impl Mysql_connection {
     pub fn insert_or_update_record(&mut self, dns_record: &DNS_record) {
         let ts = dns_record.timestamp.timestamp();
         let q_res = if dns_record.error == DnsReplyType::NOERROR {
-            static Q: &str = r"INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN, DOMAIN, asn, asn_owner, prefix) 
+            static Q: &str = r"INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN,DOMAIN,asn,asn_owner,prefix) 
             VALUES (
                 ?, ?, ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?), ?,
-                 if (length(?) > 0, ?, NULL),  
-                 if (length(?) > 0, ?, NULL),
-                 if (length(?) > 0, ?, NULL)) ON DUPLICATE KEY UPDATE
-                TTL = if (TTL < ?, ?, TTL), 
+                NULLIF(?, 0),  
+                NULLIF(?, ''),  
+                NULLIF(?, '')
+                )
+                ON DUPLICATE KEY UPDATE
+                TTL = GREATEST(TTL, ?), 
                 COUNT = COUNT + ?, 
-                LAST_SEEN = if (LAST_SEEN < FROM_UNIXTIME(?), FROM_UNIXTIME(?), LAST_SEEN),
-                FIRST_SEEN = if (FIRST_SEEN > FROM_UNIXTIME(?), FROM_UNIXTIME(?), FIRST_SEEN), 
-                asn = if (asn is null and ? > 0, ?, asn),
-                asn_owner = if (asn_owner is null and LENGTH(?) > 0, ?, asn_owner),
-                prefix = if (prefix is null and LENGTH(?) > 0, ?, prefix) 
+                LAST_SEEN = GREATEST(LAST_SEEN, FROM_UNIXTIME(?)),
+                FIRST_SEEN = GREATEST(FROM_UNIXTIME(?), FIRST_SEEN), 
+                asn = COALESCE(asn, NULLIF(?, 0)),
+                asn_owner = COALESCE(asn_owner, NULLIF(?, '')),
+                prefix = COALESCE(prefix, NULLIF(?, ''))
                 ";
             debug!("{} {} {} {}", dns_record.name, dns_record.rr_type, dns_record.rdata, dns_record.count);
 
@@ -78,35 +80,35 @@ impl Mysql_connection {
                     .bind(ts)
                     .bind(ts)
                     .bind(&dns_record.domain)
+                  //  .bind(dns_record.asn)
                     .bind(dns_record.asn)
-                    .bind(dns_record.asn)
+                  //  .bind(&dns_record.asn_owner)
                     .bind(&dns_record.asn_owner)
-                    .bind(&dns_record.asn_owner)
+                    //.bind(&dns_record.prefix)
                     .bind(&dns_record.prefix)
-                    .bind(&dns_record.prefix)
-                    .bind(dns_record.ttl)
+                  //  .bind(dns_record.ttl)
                     .bind(dns_record.ttl)
                     .bind(dns_record.count)
+                  //  .bind(ts)
+                   // .bind(ts)
                     .bind(ts)
                     .bind(ts)
-                    .bind(ts)
-                    .bind(ts)
-                    .bind(dns_record.asn)
+                  //  .bind(dns_record.asn)
                     .bind(dns_record.asn)
                     .bind(&dns_record.asn_owner)
-                    .bind(&dns_record.asn_owner)
+                   // .bind(&dns_record.asn_owner)
                     .bind(&dns_record.prefix)
-                    .bind(&dns_record.prefix)
+                  //  .bind(&dns_record.prefix)
                     .execute(&self.pool),
             )
         } else {
-            static Q: &str= "INSERT INTO pdns_err (QUERY,RR,MAPTYPE,COUNT,LAST_SEEN,FIRST_SEEN, ERROR_VAL, EXT_ERROR_VAL) 
+            static Q: &str= "INSERT INTO pdns_err (QUERY,RR,MAPTYPE,COUNT,LAST_SEEN,FIRST_SEEN,ERROR_VAL,EXT_ERROR_VAL) 
             VALUES (
                 ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?), ?, ?   
                 ) ON DUPLICATE KEY UPDATE
                 COUNT = COUNT + ?,
-                LAST_SEEN = if (LAST_SEEN < FROM_UNIXTIME(?), FROM_UNIXTIME(?), LAST_SEEN),
-                FIRST_SEEN = if (FIRST_SEEN > FROM_UNIXTIME(?), FROM_UNIXTIME(?), FIRST_SEEN) 
+                LAST_SEEN = GREATEST(LAST_SEEN, FROM_UNIXTIME(?)),
+                FIRST_SEEN = GREATEST(FROM_UNIXTIME(?), FIRST_SEEN) 
                 ";
            // debug!("{} {} {} {}", i.name, i.rr_type, i.error as u16, i.count);
             block_on(
@@ -122,8 +124,8 @@ impl Mysql_connection {
                     .bind(dns_record.count)
                     .bind(ts)
                     .bind(ts)
-                    .bind(ts)
-                    .bind(ts)
+                    //.bind(ts)
+                  //  .bind(ts)
                     .execute(&self.pool),
             )
         };
@@ -131,6 +133,7 @@ impl Mysql_connection {
             Ok(x) => debug!("Success {x:?}"),
             Err(e) => {
                 error!("Error: {e}");
+                debug!("Error: {e}");
                 debug!("Error: {e}");
                 //exit(-1);
             }

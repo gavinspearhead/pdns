@@ -1,15 +1,14 @@
 use crate::rank::Rank;
 use crate::time_stats::Time_stats;
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use serde_with::rust::deserialize_ignore_any;
 use serde_json;
 
 use std::{collections::HashMap, fs::File, io::BufReader};
-use std::cmp::Ordering::Equal;
 use std::net::IpAddr;
-use serde::ser::SerializeMap;
 use crate::dns::{DNS_Class, DNS_Opcodes, DNS_RR_type, DnsReplyType};
 use crate::edns::DNSExtendedError;
+use crate::util::ordered_map;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub(crate) struct Statistics {
@@ -85,23 +84,4 @@ impl Statistics {
         statistics.topnx = Rank::new(toplistsize);
         Ok(statistics)
     }
-}
-
-// For use with serde's [serialize_with] attribute
-fn ordered_map<S, K: Ord + Serialize + ToString, V: Serialize + PartialOrd >(
-    value: &HashMap<K, V>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let mut l: Vec<_> = value.iter().collect();
-    l.sort_by(|a, b| (a.0.to_string()).partial_cmp(&b.0.to_string()).unwrap_or(Equal));
-
-    let mut map = serializer.serialize_map(Some(l.len()))?;
-    for i in l {
-        map.serialize_entry(&i.0, i.1)?;
-    }
-    map.end()
-
 }

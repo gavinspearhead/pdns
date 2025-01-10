@@ -12,7 +12,7 @@ use crate::skiplist::Skip_List;
 use crate::statistics::Statistics;
 use dns::{DNS_RR_type, DnsReplyType};
 use errors::Parse_error;
-use publicsuffix::Psl;
+use publicsuffix::Psl as _;
 use std::fmt;
 use std::fmt::Debug;
 use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
@@ -51,7 +51,6 @@ impl fmt::Display for DNS_Protocol {
 }
 
 fn parse_question(
-    _query: &[u8],
     packet_info: &mut Packet_info,
     packet: &[u8],
     offset_in: usize,
@@ -411,9 +410,8 @@ pub(crate) fn parse_dns(
     *stats.errors.entry(rcode).or_insert(0) += 1;
 
     for _ in 0..questions {
-        let query = dns_parse_slice(packet, offset..)?;
+        let _query = dns_parse_slice(packet, offset..)?;
         offset += parse_question(
-            query,
             packet_info,
             packet,
             offset,

@@ -76,9 +76,9 @@ for server in servers :
     #print(type(a))
     print()
     print()
-    e = bytearray([0xc0, 0x0c, 0, 1, 0, 1, 0, 0,0, 0x34,0, 4, 0x4d, 0xac, 0x0f, 0x41])
-    d = a+e
-
+ #   e = bytearray([0xc0, 0x0c, 0, 1, 0, 1, 0, 0,0, 0x34,0, 4, 0x4d, 0xac, 0x0f, 0x41])
+ #   d = a+e
+    d =a
     dns_req=IP(dst=server)/UDP(dport=53)/Raw(load=d)
     print(dns_req)
     send(dns_req, verbose=1)

@@ -21,13 +21,13 @@ fn parse_tcp(
     if packet.len() < 20 {
         return Err(Parse_error::new(errors::ParseErrorType::Invalid_TCP_Header, "").into());
     }
-    let sp: u16 = dns_read_u16(packet, 0)?;
-    let dp: u16 = dns_read_u16(packet, 2)?;
+    let sp = dns_read_u16(packet, 0)?;
+    let dp = dns_read_u16(packet, 2)?;
     if !(dp == 53 || sp == 53 || dp == 5353 || sp == 5353 || dp == 5355 || sp == 5355) {
         return Err(Parse_error::new(errors::ParseErrorType::Invalid_DNS_Packet, "").into());
     }
-    let hl: u8 = (packet[12] >> 4) * 4;
-    let len: u32 = u32::try_from(packet.len() - usize::from(hl))?;
+    let hl = (packet[12] >> 4) * 4;
+    let len = u32::try_from(packet.len() - usize::from(hl))?;
     let flags = packet[13];
     //let _wsize = dns_read_u16(packet, 14)?;
     let seqnr = dns_read_u32(packet, 4)?;
@@ -90,9 +90,9 @@ fn parse_udp(
     if packet.len() < 8 {
         return Err(Parse_error::new(errors::ParseErrorType::Invalid_UDP_Header, "").into());
     }
-    let sp: u16 = dns_read_u16(packet, 0)?;
-    let dp: u16 = dns_read_u16(packet, 2)?;
-    let len: u16 = dns_read_u16(packet, 4)?;
+    let sp = dns_read_u16(packet, 0)?;
+    let dp = dns_read_u16(packet, 2)?;
+    let len = dns_read_u16(packet, 4)?;
     packet_info.set_dest_port(dp);
     packet_info.set_source_port(sp);
     packet_info.set_data_len(u32::from(len) - 8);
@@ -173,10 +173,10 @@ fn parse_ipv4(
         )
         .into());
     }
-    let ihl: u16 = (u16::from(packet[0] & 0xf)) * 4;
+    let ihl = (u16::from(packet[0] & 0xf)) * 4;
     let src = dns_helper::parse_ipv4(&packet[12..16])?;
     let dst = dns_helper::parse_ipv4(&packet[16..20])?;
-    let len: u16 = dns_read_u16(packet, 2)? - ihl;
+    let len = dns_read_u16(packet, 2)? - ihl;
     let next_header = packet[9];
     packet_info.set_dest_ip(dst);
     packet_info.set_source_ip(src);
@@ -279,7 +279,7 @@ fn parse_ipv6(
         .into());
     }
 
-    let _len: u16 = dns_read_u16(packet, 4)?;
+//    let _len  = dns_read_u16(packet, 4)?;
     let next_header = packet[6];
     let src = dns_helper::parse_ipv6(&packet[8..24])?;
     let dst = dns_helper::parse_ipv6(&packet[24..40])?;

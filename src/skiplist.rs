@@ -21,7 +21,7 @@ impl Skip_List {
     pub fn parse_skiplist(&mut self, file_contents: &str) {
         let lines: Vec<Regex> = file_contents
             .split('\n')
-            .map(|s: &str| s.trim().to_string()) // .insert_str(0,"(?i)"))
+            .map(|s: &str| s.trim().to_owned()) // .insert_str(0,"(?i)"))
             .filter(|s| !s.is_empty())
             .map(|t| prefix_str(t, "(?i)"))
             .map(|s| Regex::new(s.as_str()).unwrap())

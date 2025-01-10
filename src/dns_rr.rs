@@ -96,7 +96,7 @@ fn parse_rr_https(rdata: &[u8]) -> Result<String, Parse_error> {
                     res += &format!("{x},");
                     pos += 2;
                 }
-                let mut res1 = res.trim_end_matches(',').to_string();
+                let mut res1 = res.trim_end_matches(',').to_owned();
                 res1 += " ";
                 res += &res1;
             }
@@ -112,7 +112,7 @@ fn parse_rr_https(rdata: &[u8]) -> Result<String, Parse_error> {
                     pos += 1 + alpn_len;
                     res += &format!("{alpn},");
                 }
-                res = res.trim_end_matches(',').to_string() + " ";
+                res = res.trim_end_matches(',').to_owned() + " ";
             }
             SVC_Param_Keys::ech => {
                 res += "ech=";
@@ -132,7 +132,7 @@ fn parse_rr_https(rdata: &[u8]) -> Result<String, Parse_error> {
                     res += &format!("{addr},");
                     pos += 4;
                 }
-                res = res.trim_end_matches(',').to_string();
+                res = res.trim_end_matches(',').to_owned();
                 res += " ";
             }
             SVC_Param_Keys::ipv6hint => {
@@ -144,7 +144,7 @@ fn parse_rr_https(rdata: &[u8]) -> Result<String, Parse_error> {
                     res += &format!("{addr},");
                     pos += 16;
                 }
-                res = res.trim_end_matches(',').to_string();
+                res = res.trim_end_matches(',').to_owned();
                 res += " ";
             }
             SVC_Param_Keys::no_default_alpn => {
@@ -162,14 +162,14 @@ fn parse_rr_https(rdata: &[u8]) -> Result<String, Parse_error> {
 
 fn decode_gpos_size(val: u8) -> String {
     let mut base = u64::from((val & 0xf0) >> 4);
-    let exp = u64::from(val & 0x0f);
+    let exp = usize::from(val & 0x0f);
     if exp < 2 {
         if exp == 1 {
             base *= 10;
         }
         return format!("0.{base}");
     }
-    format!("{base}{}", "0".repeat((exp - 2) as usize))
+    format!("{base}{}", "0".repeat(exp - 2))
 }
 
 fn parse_rr_a(rdata: &[u8]) -> Result<String, Parse_error> {
@@ -859,7 +859,7 @@ pub(crate) fn dns_parse_rdata(
         let (name2, _) = dns_parse_name(packet, offset_out)?;
         Ok(format!("{name1} {name2}"))
     } else if rrtype == DNS_RR_type::DHCID {
-        Ok(hex::encode(rdata).to_string())
+        Ok(hex::encode(rdata))
     } else if rrtype == DNS_RR_type::ZONEMD {
         parse_rr_zonemd(rdata)
     } else if rrtype == DNS_RR_type::URI {

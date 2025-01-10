@@ -1,4 +1,4 @@
-use clap::{arg, ArgAction, Command, Parser};
+use clap::{arg, ArgAction, Command};
 use serde::{Deserialize, Serialize};
 use serde_json::Error;
 
@@ -6,13 +6,11 @@ use crate::{
     dns::DNS_RR_type,
     version::{AUTHOR, DESCRIPTION, PROGNAME, VERSION},
 };
-use std::{fs::File, io::BufReader, str::FromStr};
+use std::{fs::File, io::BufReader, str::FromStr as _};
 use tracing::{debug, error};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, Parser)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
-#[command(version, about, long_about = None)]
-
 pub(crate) struct Config {
     pub rr_type: Vec<DNS_RR_type>,
     pub interface: String,
@@ -367,10 +365,9 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
 
 
     let empty_str = String::new();
-    config.config_file = matches
+    config.config_file.clone_from(matches
         .get_one::<String>("config")
-        .unwrap_or(&String::from_str(&empty_str).unwrap())
-        .clone();
+        .unwrap_or(&String::from_str(&empty_str).unwrap()));
 
     //let mut config = Config::parse();
     if !config.config_file.is_empty() {

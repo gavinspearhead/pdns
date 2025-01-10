@@ -1,6 +1,7 @@
+use serde_with::serde_derive::Serialize;
 use tracing::debug;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, PartialEq, PartialOrd)]
 pub(crate) struct Tcp_data {
     data: Vec<u8>,
     init_seqnr: u32,

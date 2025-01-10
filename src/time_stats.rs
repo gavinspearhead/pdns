@@ -1,11 +1,11 @@
-use chrono::{DateTime, Datelike, Timelike, Utc};
+use chrono::{DateTime, Datelike as _, Timelike as _, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 
 pub(crate) struct Bucket {
-    items: Vec<u64>,
+    pub(crate) items: Vec<u64>,
     last_post: usize,
     last_group: usize,
 }
@@ -94,11 +94,11 @@ mod tests {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub(crate) struct Time_stats {
-    per_month: Bucket,
-    per_minute: Bucket,
-    per_hour: Bucket,
-    per_day: Bucket,
-    // per_second: Bucket,
+    pub(crate) per_month: Bucket,
+    pub(crate) per_minute: Bucket,
+    pub(crate) per_hour: Bucket,
+    pub(crate) per_day: Bucket,
+    pub(crate) per_second: Bucket,
 }
 
 impl Time_stats {
@@ -108,11 +108,13 @@ impl Time_stats {
             per_hour: Bucket::new(24),
             per_day: Bucket::new(31),
             per_month: Bucket::new(12),
+            per_second: Bucket::new(60),
         }
     }
 
     pub(crate) fn add(&mut self, time_stamp: DateTime<Utc>, count: u64) {
         let m = time_stamp.minute();
+        let s = time_stamp.second();
         let h = time_stamp.hour();
         let d = time_stamp.day() - 1; //correct because start at 1
         let mon = time_stamp.month() - 1;
@@ -121,5 +123,6 @@ impl Time_stats {
         self.per_day.add(d, count, mon);
         self.per_minute.add(m, count, h);
         self.per_hour.add(h, count, d);
+        self.per_second.add(s, count, m);
     }
 }

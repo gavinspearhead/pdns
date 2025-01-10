@@ -3,7 +3,7 @@ CREATE TABLE `pdns` (
   `QUERY` varchar(255) NOT NULL DEFAULT '',
   `MAPTYPE` varchar(16) NOT NULL DEFAULT '',
   `RR` varchar(10) NOT NULL DEFAULT '',
-  `ANSWER` varchar(255) NOT NULL DEFAULT '',
+  `ANSWER` varchar(512) NOT NULL DEFAULT '',
   `TTL` bigint(10) unsigned NOT NULL DEFAULT 0,
   `COUNT` bigint(20) unsigned NOT NULL DEFAULT 1,
   `FIRST_SEEN` datetime NOT NULL,

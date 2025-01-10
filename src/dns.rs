@@ -2,8 +2,8 @@ use crate::dns::DNS_RR_type::Private;
 use crate::errors::{DNS_Error_Type, DNS_error, Parse_error};
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::str::FromStr;
-use strum::IntoEnumIterator;
+use std::str::FromStr as _;
+use strum::IntoEnumIterator as _;
 use strum_macros::{EnumIter, FromRepr};
 use strum_macros::{EnumString, IntoStaticStr};
 use tracing::debug;
@@ -101,15 +101,12 @@ impl DNS_Class {
         self.into()
     }
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
-        match DNS_Class::from_repr(usize::from(val)) {
-            Some(x) => Ok(x),
-            None => {
-                debug!("Error wrong class value {}", val);
-                Err(DNS_error::new(
-                    DNS_Error_Type::Invalid_Class,
-                    &format!("{val}"),
-                ))
-            }
+        if let Some(x) = DNS_Class::from_repr(usize::from(val)) { Ok(x) } else {
+            debug!("Error wrong class value {}", val);
+            Err(DNS_error::new(
+                DNS_Error_Type::Invalid_Class,
+                &format!("{val}"),
+            ))
         }
         
     }
@@ -486,7 +483,7 @@ pub(crate) fn sshfp_fp_type(u: u8) -> Result<&'static str, Parse_error> {
 
 pub(crate) fn dnssec_algorithm(u: u8) -> Result<&'static str, Parse_error> {
     match u {
-        0 | 9 | 11 | 123_u8..=251_u8 => Ok("Reserved"),
+        0 | 9 | 11 | 123u8..=251u8 => Ok("Reserved"),
         1 => Ok("RSA/MD5"),
         2 => Ok("DH"),
         3 => Ok("DSA/SHA1"),

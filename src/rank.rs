@@ -38,23 +38,23 @@ where
     }
 
     pub fn remove_lowest(&mut self) -> usize {
-        let mut mink = None;
-        let mut minv: usize = 0;
-        let mut maxv: usize = 0;
+        let mut min_key = None;
+        let mut min_val: usize = 0;
+        let mut max_val: usize = 0;
 
         for (k, v) in &self.rank {
-            if minv == 0 || *v < minv {
-                minv = *v;
-                mink = Some(k);
+            if min_val == 0 || *v < min_val {
+                min_val = *v;
+                min_key = Some(k);
             }
-            if *v > maxv {
-                maxv = *v;
+            if *v > max_val {
+                max_val = *v;
             }
         }
-        if let Some(k) = mink {
-            debug!("Remove k={} minv={} maxv={}", k, minv, maxv);
+        if let Some(k) = min_key {
+            debug!("Remove k={} minv={} maxv={}", k, min_val, max_val);
             self.rank.remove(&k.clone());
-            (2 * minv + maxv) / 3
+            (2 * min_val + max_val) / 3
         } else {
             0
         }

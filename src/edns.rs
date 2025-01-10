@@ -49,7 +49,7 @@ impl EDNSOptionCodes {
     }
 
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
-        match crate::edns::EDNSOptionCodes::from_repr(usize::from(val)) {
+        match EDNSOptionCodes::from_repr(usize::from(val)) {
             Some(x) => Ok(x),
             None => Err(DNS_error::new(
                 DNS_Error_Type::Invalid_Extended_Option_Code,

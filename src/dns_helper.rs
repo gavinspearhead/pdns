@@ -2,7 +2,7 @@ use crate::{
     dns::{DNS_Class, DNS_RR_type},
     errors::{DNS_error, ParseErrorType, Parse_error},
 };
-use byteorder::{BigEndian, ByteOrder};
+use byteorder::{BigEndian, ByteOrder as _};
 use chrono::DateTime;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::ops::RangeBounds;
@@ -126,7 +126,7 @@ where
 
 pub(crate) fn parse_dns_str(rdata: &[u8]) -> Result<String, Parse_error> {
     if let Ok(x) = std::str::from_utf8(rdata) {
-        Ok(x.to_string())
+        Ok(x.to_owned())
     } else {
         Err(Parse_error::new(ParseErrorType::Invalid_DNS_Packet, ""))
     }
