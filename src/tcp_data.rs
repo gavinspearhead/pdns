@@ -30,10 +30,10 @@ impl Tcp_data {
         let data_size = pos + data.len();
         if data_size > self.data.len() {
             self.data.resize(data_size, 0);
-            debug!("resized to {}", self.data.len());
+         //   debug!("resized to {}", self.data.len());
         }
         self.data[pos..data_size].copy_from_slice(data);
-        debug!("Data added at position: {}, init_seqnr: {} seqnr: {seqnr} ", self.data.len(), self.init_seqnr);
+      //  debug!("Data added at position: {}, init_seqnr: {} seqnr: {seqnr} ", self.data.len(), self.init_seqnr);
     }
 
     #[inline]

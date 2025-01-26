@@ -16,6 +16,7 @@ use serde::{Serialize};
 use serde_with::serde_as;
 use strum_macros::EnumIter;
 use tracing::debug;
+use crate::tcp_connection::TCP_Connections_Error_Type::NotFound;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
 pub(crate) enum TCP_Connections_Error_Type {
@@ -32,7 +33,7 @@ pub(crate) struct TcpConnection_error {
 impl TcpConnection_error {
     pub(crate) fn new(err_t: TCP_Connections_Error_Type, val: &str) -> TcpConnection_error {
         let s = match err_t {
-            TCP_Connections_Error_Type::NotFound => "TCP Connection not found",
+            NotFound => "TCP Connection not found",
         };
 
         TcpConnection_error {
@@ -89,7 +90,6 @@ impl TCP_Connections {
     pub fn new(maxsize: u32) -> TCP_Connections {
         
         TCP_Connections {
-
             connections: HashMap::new(),
             timelimit: 20,
             max_tcp_len: maxsize,
@@ -108,7 +108,7 @@ impl TCP_Connections {
         dst: &IpAddr,
         seqnr: u32,
         data: &[u8],
-        _timestamp: DateTime<Utc>,
+       // _timestamp: DateTime<Utc>,
     ) {
         let c = self
             .connections
@@ -126,7 +126,7 @@ impl TCP_Connections {
         let Some(c) = self.connections.get(&(*src, *dst, sp, dp)) else {
             debug!("Connection not found {src}:{sp} => {dst}:{dp}");
             return Err(TcpConnection_error::new(
-                TCP_Connections_Error_Type::NotFound,
+                NotFound,
                 &format!("{src}:{dp} => {dst}:{dp}"),
             )
             .into());
@@ -141,12 +141,12 @@ impl TCP_Connections {
         src: &IpAddr,
         dst: &IpAddr,
     ) -> Result<(), Box<dyn Error>> {
-        debug!("Removing key {src} {dst} {sp} {dp} ");
+        //debug!("Removing key {src} {dst} {sp} {dp} ");
         match self.connections.remove(&(*src, *dst, sp, dp)) {
             None => {
                 debug!("Connection not found {src}:{sp} => {dst}:{dp}");
                 Err(TcpConnection_error::new(
-                    TCP_Connections_Error_Type::NotFound,
+                    NotFound,
                     &format!("{src}:{sp} => {dst}:{dp}"),
                 )
                 .into())
@@ -155,14 +155,14 @@ impl TCP_Connections {
         }
     }
 
-    pub fn check_timeout(&mut self) -> i64 {
+    pub fn check_timeout(&mut self) -> u64 {
         let now = Utc::now().timestamp();
         let mut min_idle = 1;
-        debug!("Checking timeout before: Size : {}", self.connections.len());
+       // debug!("Checking timeout before: Size : {}", self.connections.len());
         self.connections.retain(|_, v| {
             let idle_time = now - v.ts.timestamp();
             min_idle = min_idle.min(self.timelimit - idle_time);
-            debug!("Check timeout after: {} {}", v.ts, idle_time);
+          //  debug!("Check timeout after: {} {}", v.ts, idle_time);
             idle_time < self.timelimit
         });
         if self.connections.is_empty() {
@@ -170,11 +170,8 @@ impl TCP_Connections {
         } else {
             min_idle = min_idle.min(self.timelimit);
         }
-        debug!(
-            "Checking timeout after: Size : {} {min_idle}",
-            self.connections.len()
-        );
-        min_idle
+//        debug!( "Checking timeout after Size : {} {min_idle}", self.connections.len() );
+        min_idle as u64
     } 
 
     pub fn process_data(
@@ -185,13 +182,13 @@ impl TCP_Connections {
         dst: IpAddr,
         seqnr: u32,
         data: &[u8],
-        timestamp: DateTime<Utc>,
+        //timestamp: DateTime<Utc>,
         flags: u8,
     ) -> Option<Tcp_data> {
         //debug!("Number of connections {}" , self.connections.len());
         if (flags & 1 != 0) || (flags & 4 != 0) {
             // FIN flag or reset
-            self.add_data(sp, dp, &src, &dst, seqnr, data, timestamp);
+            self.add_data(sp, dp, &src, &dst, seqnr, data);
             return match self.get_data(sp, dp, &src, &dst) {
                 Ok(x) => {
                     let y = x.to_owned();
@@ -210,13 +207,12 @@ impl TCP_Connections {
                 // on syn we need to increment the seq nr
                 sn += 1;
             }
-            self.add_data(sp, dp, &src, &dst, sn, data, timestamp);
+            self.add_data(sp, dp, &src, &dst, sn, data);
             return None;
         }
         None
     }
 }
-
 
 pub(crate) fn clean_tcp_list(tcp_list: &Arc<Mutex<TCP_Connections>>, rx: mpsc::Receiver<String>) {
     let min_timeout = time::Duration::from_secs(1);
@@ -224,14 +220,12 @@ pub(crate) fn clean_tcp_list(tcp_list: &Arc<Mutex<TCP_Connections>>, rx: mpsc::R
     loop {
         let dur = tcp_list.lock().unwrap().check_timeout();
         match rx.try_recv() {
-            Ok(_) | Err(TryRecvError::Disconnected) => {
-                return;
-            }
+            Ok(_) | Err(TryRecvError::Disconnected) => return,
             Err(TryRecvError::Empty) => {}
         }
         sleep(std::cmp::max(
             min_timeout,
-            time::Duration::from_secs(dur as u64),
+            time::Duration::from_secs(dur),
         ));
     }
 }

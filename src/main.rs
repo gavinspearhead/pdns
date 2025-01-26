@@ -94,6 +94,22 @@ fn dump_stats(stats: &Statistics, config: &Config) -> std::io::Result<()> {
     }
 }
 
+fn read_public_suffix_file(public_suffix_file : &str)->publicsuffix::List
+{
+    debug!("Reading pubsuf list {}", public_suffix_file);
+    if let Ok(c) = fs::read_to_string(public_suffix_file) {
+        if let Ok(d) = c.as_str().parse() {
+            d
+        } else {
+            error!( "Cannot parse public suffic file: {public_suffix_file}" );
+            exit(-1);
+        }
+    } else {
+        error!("Cannot read file {public_suffix_file}",);
+        exit(-1);
+    }
+}
+
 fn packet_loop<T: Activated>(
     mut cap: Capture<T>,
     packet_queue: &Packet_Queue,
@@ -107,22 +123,8 @@ fn packet_loop<T: Activated>(
         error!("Not ethernet {link_type:?}");
         exit(-1);
     }
-    debug!("Reading pubsuf list {}", config.public_suffix_file);
-    let publicsuffixlist: publicsuffix::List =
-        if let Ok(c) = fs::read_to_string(&config.public_suffix_file) {
-            if let Ok(d) = c.as_str().parse() {
-                d
-            } else {
-                error!(
-                    "Cannot parse public suffic file: {}",
-                    config.public_suffix_file
-                );
-                exit(-1);
-            }
-        } else {
-            error!("Cannot read file {}", config.public_suffix_file);
-            exit(-1);
-        };
+    //let publicsuffixlist: publicsuffix::List = read_public_suffix_file(config.public_suffix_file.as_str());
+        
     debug!("Starting loop");
     loop {
         match cap.next_packet() {
@@ -141,7 +143,7 @@ fn packet_loop<T: Activated>(
                     tcp_list,
                     config,
                     skip_list,
-                    &publicsuffixlist,
+                  //  &publicsuffixlist,
                 );
                 match result {
                     Ok(()) => packet_queue.push_back(Some(packet_info)),
@@ -203,6 +205,7 @@ fn poll(packet_queue: &Packet_Queue, config: &Config, rx: mpsc::Receiver<String>
         Some(x)
     };
     let asn_database = load_asn_database(config);
+    let publicsuffixlist: publicsuffix::List = read_public_suffix_file(config.public_suffix_file.as_str());
     let mut last_push = Utc::now().timestamp();
     loop {
         live_dump.accept();
@@ -211,6 +214,7 @@ fn poll(packet_queue: &Packet_Queue, config: &Config, rx: mpsc::Receiver<String>
         if let Some(p) = packet_info {
             if let Some(mut p1) = p {
                 p1.update_asn(&asn_database);
+                p1.update_public_suffix(&publicsuffixlist);
                 if !p1.dns_records.is_empty() {
                     if config.output == "-" {
                         println!("{p1}");
@@ -232,8 +236,8 @@ fn poll(packet_queue: &Packet_Queue, config: &Config, rx: mpsc::Receiver<String>
                     }
                 };
                 if let Some(ref _db) = database_conn {
-                    for i in p1.dns_records {
-                        dns_cache.add(i);
+                    for dns_record in p1.dns_records {
+                        dns_cache.add(dns_record);
                     }
                 }
                 timeout = time::Duration::from_millis(0);

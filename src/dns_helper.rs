@@ -1,12 +1,13 @@
+use crate::errors::ParseErrorType::{Invalid_DNS_Packet, Invalid_packet_index, Invalid_timestamp};
 use crate::{
     dns::{DNS_Class, DNS_RR_type},
-    errors::{DNS_error, ParseErrorType, Parse_error},
+    errors::{DNS_error, Parse_error},
 };
 use byteorder::{BigEndian, ByteOrder as _};
 use chrono::DateTime;
+use data_encoding::BASE32HEX_NOPAD;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::ops::RangeBounds;
-
 /*
 #[inline]
 pub(crate) fn is_between<T: PartialOrd>(value: &T, min: &T, max: &T) -> bool {
@@ -25,80 +26,54 @@ pub(crate) fn parse_class(class: u16) -> Result<DNS_Class, DNS_error> {
 
 pub(crate) fn timestamp_to_str(timestamp: u32) -> Result<String, Parse_error> {
     let Some(dt) = DateTime::from_timestamp(i64::from(timestamp), 0) else {
-        return Err(Parse_error::new(
-            ParseErrorType::Invalid_timestamp,
-            &timestamp.to_string(),
-        ));
+        return Err(Parse_error::new(Invalid_timestamp, &timestamp.to_string()));
     };
     Ok(dt.to_string())
 }
 
 pub(crate) fn dns_read_u128(packet: &[u8], offset: usize) -> Result<u128, Parse_error> {
     let Some(r) = packet.get(offset..offset + 16) else {
-        return Err(Parse_error::new(
-            ParseErrorType::Invalid_packet_index,
-            &offset.to_string(),
-        ));
+        return Err(Parse_error::new(Invalid_packet_index, &offset.to_string()));
     };
-    Ok( BigEndian::read_u128(r))
+    Ok(BigEndian::read_u128(r))
 }
 pub(crate) fn dns_read_u48(packet: &[u8], offset: usize) -> Result<u64, Parse_error> {
     let Some(r) = packet.get(offset..offset + 6) else {
-        return Err(Parse_error::new(
-            ParseErrorType::Invalid_packet_index,
-            &offset.to_string(),
-        ));
+        return Err(Parse_error::new(Invalid_packet_index, &offset.to_string()));
     };
     Ok(BigEndian::read_u48(r))
 }
 
 pub(crate) fn dns_read_u64(packet: &[u8], offset: usize) -> Result<u64, Parse_error> {
     let Some(r) = packet.get(offset..offset + 8) else {
-        return Err(Parse_error::new(
-            ParseErrorType::Invalid_packet_index,
-            &offset.to_string(),
-        ));
+        return Err(Parse_error::new(Invalid_packet_index, &offset.to_string()));
     };
-   Ok(BigEndian::read_u64(r))
+    Ok(BigEndian::read_u64(r))
 }
 
 pub(crate) fn dns_read_u32(packet: &[u8], offset: usize) -> Result<u32, Parse_error> {
     let Some(r) = packet.get(offset..offset + 4) else {
-        return Err(Parse_error::new(
-            ParseErrorType::Invalid_packet_index,
-            &offset.to_string(),
-        ));
+        return Err(Parse_error::new(Invalid_packet_index, &offset.to_string()));
     };
     Ok(BigEndian::read_u32(r))
 }
 
 pub(crate) fn dns_read_u16(packet: &[u8], offset: usize) -> Result<u16, Parse_error> {
     let Some(r) = packet.get(offset..offset + 2) else {
-        return Err(Parse_error::new(
-            ParseErrorType::Invalid_packet_index,
-            &offset.to_string(),
-        ));
+        return Err(Parse_error::new(Invalid_packet_index, &offset.to_string()));
     };
     Ok(BigEndian::read_u16(r))
 }
 
 pub(crate) fn dns_read_u8(packet: &[u8], offset: usize) -> Result<u8, Parse_error> {
     let Some(&r) = packet.get(offset) else {
-        return Err(Parse_error::new(
-            ParseErrorType::Invalid_packet_index,
-            &offset.to_string(),
-        ));
+        return Err(Parse_error::new(Invalid_packet_index, &offset.to_string()));
     };
     Ok(r)
 }
 
 pub(crate) fn base32hex_encode(input: &[u8]) -> String {
-    static BASE32HEX_NOPAD: data_encoding::Encoding = data_encoding::BASE32HEX_NOPAD;
-    let mut output = String::new();
-    let mut enc = BASE32HEX_NOPAD.new_encoder(&mut output);
-    enc.append(input);
-    enc.finalize();
-    output
+    BASE32HEX_NOPAD.encode(input)
 }
 
 pub(crate) fn dns_parse_slice<T>(packet: &[u8], range: T) -> Result<&[u8], Parse_error>
@@ -120,7 +95,7 @@ where
     if start <= end && end <= packet.len() {
         Ok(&packet[start..end])
     } else {
-        Err(Parse_error::new(ParseErrorType::Invalid_packet_index, ""))
+        Err(Parse_error::new(Invalid_packet_index, ""))
     }
 }
 
@@ -128,7 +103,7 @@ pub(crate) fn parse_dns_str(rdata: &[u8]) -> Result<String, Parse_error> {
     if let Ok(x) = std::str::from_utf8(rdata) {
         Ok(x.to_owned())
     } else {
-        Err(Parse_error::new(ParseErrorType::Invalid_DNS_Packet, ""))
+        Err(Parse_error::new(Invalid_DNS_Packet, ""))
     }
 }
 
@@ -136,7 +111,7 @@ pub(crate) fn parse_ipv4(data: &[u8]) -> Result<IpAddr, Parse_error> {
     let r: [u8; 4] = match data.try_into() {
         Ok(x) => x,
         Err(_) => {
-            return Err(Parse_error::new(ParseErrorType::Invalid_DNS_Packet, ""));
+            return Err(Parse_error::new(Invalid_DNS_Packet, ""));
         }
     };
     Ok(IpAddr::V4(Ipv4Addr::from(r)))
@@ -146,7 +121,7 @@ pub(crate) fn parse_ipv6(data: &[u8]) -> Result<IpAddr, Parse_error> {
     let r: [u8; 16] = match data.try_into() {
         Ok(x) => x,
         Err(_) => {
-            return Err(Parse_error::new(ParseErrorType::Invalid_DNS_Packet, ""));
+            return Err(Parse_error::new(Invalid_DNS_Packet, ""));
         }
     };
     Ok(IpAddr::V6(Ipv6Addr::from(r)))

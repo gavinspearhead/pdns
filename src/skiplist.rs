@@ -55,7 +55,7 @@ impl Skip_List {
 
     #[must_use]
     pub fn match_skip_list(&self, name: &str) -> bool {
-        let clean_name = name.trim_end_matches('.');
+        let clean_name = name.strip_suffix('.').unwrap_or(name);
         self.entries.iter().any(|r| r.is_match(clean_name))
     }
 }

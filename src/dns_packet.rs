@@ -6,7 +6,6 @@ use crate::dns_helper::{
 };
 use crate::dns_rr::{dns_parse_name, dns_parse_rdata};
 use crate::edns::{DNSExtendedError, EDNSOptionCodes};
-use crate::errors::ParseErrorType;
 use crate::packet_info::Packet_info;
 use crate::skiplist::Skip_List;
 use crate::statistics::Statistics;
@@ -20,6 +19,7 @@ use tracing::{debug, error};
 
 use crate::dns_record::DNS_record;
 use crate::{dns, errors};
+use crate::errors::ParseErrorType::Unknown_Protocol;
 
 #[derive(Debug, EnumIter, Copy, Clone, PartialEq, Eq, EnumString, IntoStaticStr, FromRepr)]
 pub(crate) enum DNS_Protocol {
@@ -36,10 +36,7 @@ impl DNS_Protocol {
     pub(crate) fn find(val: u16) -> Result<Self, Parse_error> {
         match DNS_Protocol::from_repr(usize::from(val)) {
             Some(x) => Ok(x),
-            None => Err(Parse_error::new(
-                ParseErrorType::Unknown_Protocol,
-                &val.to_string(),
-            )),
+            None => Err(Parse_error::new( Unknown_Protocol, &val.to_string())),
         }
     }
 }
@@ -55,7 +52,6 @@ fn parse_question(
     packet: &[u8],
     offset_in: usize,
     stats: &mut Statistics,
-    _config: &Config,
     rcode: DnsReplyType,
     skip_list: &Skip_List,
 ) -> Result<usize, Box<dyn std::error::Error>> {
@@ -108,7 +104,6 @@ fn parse_edns(
     packet: &[u8],
     offset_in: usize,
     stats: &mut Statistics,
-    _config: &Config,
 ) -> Result<usize, Box<dyn std::error::Error>> {
     //let payload_size = dns_read_u16(packet, offset_in)?;
     // debug!("payload size {payload_size}");
@@ -142,7 +137,6 @@ fn parse_edns(
                 if !packet_info.dns_records.is_empty() {
                     packet_info.dns_records[0].extended_error = info_code;
                 }
-
                 *stats.extended_error.entry(info_code).or_insert(0) += 1;
             }
             EDNSOptionCodes::CHAIN => {
@@ -280,7 +274,6 @@ fn parse_answer(
     offset_in: usize,
     stats: &mut Statistics,
     config: &Config,
-    publicsuffixlist: &publicsuffix::List,
     skip_list: &Skip_List,
 ) -> Result<usize, Box<dyn std::error::Error>> {
     let (name, mut offset) = dns_parse_name(packet, offset_in)?;
@@ -292,7 +285,7 @@ fn parse_answer(
     //debug!("rrtype: {rrtype}");
     if rrtype == DNS_RR_type::OPT {
         offset += 2;
-        let len = parse_edns(packet_info, packet, offset, stats, config)?;
+        let len = parse_edns(packet_info, packet, offset, stats)?;
         let len = offset + len - offset_in;
         return Ok(len);
     }
@@ -302,18 +295,17 @@ fn parse_answer(
     *stats.aclass.entry(class).or_insert(0) += 1;
 
     let ttl = dns_read_u32(packet, offset + 4)?;
-    let datalen: usize = dns_read_u16(packet, offset + 8)?.into();
+    let data_len: usize = dns_read_u16(packet, offset + 8)?.into();
 
     if !config.rr_type.contains(&rrtype) {
-        let len = (offset - offset_in) + 10 + datalen;
+        let len = (offset - offset_in) + 10 + data_len;
         return Ok(len);
     }
 
     offset += 10;
-    let data = dns_parse_slice(packet, offset..offset + datalen)?;
+    let data = dns_parse_slice(packet, offset..offset + data_len)?;
     let rdata = dns_parse_rdata(data, rrtype, packet, offset)?;
     offset += 1;
-    let domain_str = find_domain(publicsuffixlist, name.as_str());
     let rec: DNS_record = DNS_record {
         rr_type: rrtype,
         ttl,
@@ -322,7 +314,7 @@ fn parse_answer(
         rdata,
         count: 1,
         timestamp: packet_info.timestamp,
-        domain: domain_str,
+        domain: String::new(),//domain_str,
         asn: 0,
         asn_owner: String::new(),
         prefix: String::new(),
@@ -330,21 +322,20 @@ fn parse_answer(
         extended_error: DNSExtendedError::None,
     };
     packet_info.add_dns_record(rec);
-    offset += datalen - 1;
+    offset += data_len - 1;
     let len = offset - offset_in;
     Ok(len)
 }
 
-fn find_domain(publicsuffixlist: &publicsuffix::List, name: &str) -> String {
+pub(crate) fn find_domain(publicsuffixlist: &publicsuffix::List, name: &str) -> String {
     let domain = publicsuffixlist.domain(name.as_bytes());
-    let domain_str: String = if let Some(d) = domain {
-        let x = d.trim().as_bytes().to_vec();
+    if let Some(d) = domain {
+        let x = d.as_bytes().to_vec();
         String::from_utf8(x).unwrap_or_default()
     } else {
-        debug!("Domain not found: {name}");
+        //debug!("Domain not found: {name}");
         String::new()
-    };
-    domain_str
+    }
 }
 
 pub(crate) fn parse_dns(
@@ -353,7 +344,6 @@ pub(crate) fn parse_dns(
     stats: &mut Statistics,
     config: &Config,
     skip_list: &Skip_List,
-    publicsuffixlist: &publicsuffix::List,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut offset = 0;
     //let mut _len = 0;
@@ -410,13 +400,12 @@ pub(crate) fn parse_dns(
     *stats.errors.entry(rcode).or_insert(0) += 1;
 
     for _ in 0..questions {
-        let _query = dns_parse_slice(packet, offset..)?;
+       // let query = dns_parse_slice(packet, offset..)?;
         offset += parse_question(
             packet_info,
             packet,
             offset,
             stats,
-            config,
             rcode,
             skip_list,
         )?;
@@ -430,7 +419,6 @@ pub(crate) fn parse_dns(
             offset,
             stats,
             config,
-            publicsuffixlist,
             skip_list,
         )?;
     }
@@ -444,7 +432,6 @@ pub(crate) fn parse_dns(
                 offset,
                 stats,
                 config,
-                publicsuffixlist,
                 skip_list,
             )?;
         }
@@ -453,14 +440,12 @@ pub(crate) fn parse_dns(
       //  debug!("Additional {}", additional);
         for _i in 0..additional {
             //debug!("additional {_i} of {additional} offset {offset} data: {:x?}", &
-            //   packet[offset..offset+4]);
             offset += parse_answer(
                 packet_info,
                 packet,
                 offset,
                 stats,
                 config,
-                publicsuffixlist,
                 skip_list,
             )?;
         }

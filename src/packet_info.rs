@@ -6,7 +6,7 @@ use std::{
     net::{IpAddr, Ipv4Addr},
     sync::{Arc, Mutex},
 };
-use crate::dns::{DNS_RR_type };
+use crate::dns::DNS_RR_type;
 use crate::dns_packet::DNS_Protocol;
 use crate::dns_record::DNS_record;
 
@@ -144,7 +144,7 @@ impl Packet_info {
         }
         s
     }
-
+    #[inline]
     fn find_asn<'a>(asn_db: &'a Database, ip: &'a str) -> Option<IpEntry<'a>> {
         if let Ok(ip_addr) = ip.parse::<IpAddr>() {
             asn_db.lookup(ip_addr)
@@ -152,25 +152,31 @@ impl Packet_info {
             None
         }
     }
-
     pub fn update_asn(&mut self, asn_db: &Database) {
         for record in &mut self.dns_records {
-            if record.rr_type == DNS_RR_type::A || record.rr_type == DNS_RR_type::AAAA {
-                if let Some(x) = Packet_info::find_asn(asn_db, &record.rdata) {
-                    match x {
-                        IpEntry::V4(v4) => {
+            if matches!(record.rr_type, DNS_RR_type::A | DNS_RR_type::AAAA) {
+                if let Some(ip_asn_data) = Packet_info::find_asn(asn_db, &record.rdata) {
+                    match ip_asn_data {
+                        IpEntry::V4(v4 ) => {
                             record.asn = v4.as_number;
-                            record.asn_owner.clone_from(&v4.owner);
+                            record.asn_owner = v4.owner.clone();
                             record.prefix = v4.subnet.to_string();
                         }
                         IpEntry::V6(v6) => {
                             record.asn = v6.as_number;
-                            record.asn_owner.clone_from(&v6.owner);
+                            record.asn_owner = v6.owner.clone();
                             record.prefix = v6.subnet.to_string();
                         }
                     }
                 }
 
+            }
+        }
+    }
+    pub fn update_public_suffix(&mut self, publicsuffixlist: &publicsuffix::List) {
+        for record in &mut self.dns_records {
+            if record.domain.is_empty() {
+                record.domain = crate::dns_packet::find_domain(publicsuffixlist, &record.name);
             }
         }
     }

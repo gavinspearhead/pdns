@@ -27,19 +27,19 @@ impl DNS_record {}
 impl fmt::Display for DNS_record {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if f.alternate() {
-            let mut s = to_unicode(
+            let (name, res) = to_unicode(
                 &self.name,
                 unic_idna::Flags {
                     transitional_processing: false,
                     verify_dns_length: true,
                     use_std3_ascii_rules: true,
                 },
-            ).0;
-
-            s = if s == self.name {
+            );
+           // debug!("{:?}", s.1);
+            let s = if name == self.name || res != Ok(()) {
                 String::new()
             } else {
-                format!("({s}) ")
+                format!("({name}) ")
             };
 
             writeln!(
@@ -62,15 +62,10 @@ impl fmt::Display for DNS_record {
         } else {
             writeln!(
                 f,
-                "Name: {} ({})
-            RData: {}  
-            RR Type: {}    Class: {}     TTL: {}
-            Count: {}      Time: {}
-            Domain: {}
-            ASN: {}        ASN Owner: {}
-            Prefix: {}
-            Error: {},
-            ExtError: {}",
+                "Name: {} ({})      Domain: {}
+        RData: {}
+        RR Type: {}    Class: {}     TTL: {}      Error: {}      ExtError: {}    Count: {}
+        Time: {}      Prefix: {}   ASN: {}        ASN Owner: {}",
                 snailquote::escape(&self.name),
                 to_unicode(
                     &self.name,
@@ -79,20 +74,19 @@ impl fmt::Display for DNS_record {
                         verify_dns_length: true,
                         use_std3_ascii_rules: true
                     }
-                )
-                    .0,
+                ).0,
+                self.domain,
                 self.rdata,
                 self.rr_type,
                 self.class,
                 self.ttl,
+                self.error,
+                self.extended_error,
                 self.count,
                 self.timestamp,
-                self.domain,
+                self.prefix,
                 self.asn,
                 self.asn_owner,
-                self.prefix,
-                self.error,
-                self.extended_error
             )
         }
     }

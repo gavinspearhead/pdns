@@ -34,10 +34,7 @@ impl Mysql_connection {
                 exit(1);
             }
         };
-        match MySqlPoolOptions::new()
-            .connect_with(connection_options)
-            .await
-        {
+        match MySqlPoolOptions::new().connect_with(connection_options).await {
             Ok(mysql_pool) => {
                 debug!("Connection to the database is successful!");
                 Mysql_connection { pool: mysql_pool }
@@ -51,7 +48,7 @@ impl Mysql_connection {
     pub fn insert_or_update_record(&mut self, dns_record: &DNS_record) {
         let ts = dns_record.timestamp.timestamp();
         let q_res = if dns_record.error == DnsReplyType::NOERROR {
-            static Q: &str = r"INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN,DOMAIN,asn,asn_owner,prefix) 
+            static Q: &str = "INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN,DOMAIN,asn,asn_owner,prefix) 
             VALUES (
                 ?, ?, ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?), ?,
                 NULLIF(?, 0),  
@@ -67,7 +64,7 @@ impl Mysql_connection {
                 asn_owner = COALESCE(asn_owner, NULLIF(?, '')),
                 prefix = COALESCE(prefix, NULLIF(?, ''))
                 ";
-            debug!("{} {} {} {}", dns_record.name, dns_record.rr_type, dns_record.rdata, dns_record.count);
+           // debug!("{} {} {} {}", dns_record.name, dns_record.rr_type, dns_record.rdata, dns_record.count);
 
             block_on(
                 sqlx::query(Q)
@@ -80,25 +77,16 @@ impl Mysql_connection {
                     .bind(ts)
                     .bind(ts)
                     .bind(&dns_record.domain)
-                  //  .bind(dns_record.asn)
                     .bind(dns_record.asn)
-                  //  .bind(&dns_record.asn_owner)
                     .bind(&dns_record.asn_owner)
-                    //.bind(&dns_record.prefix)
                     .bind(&dns_record.prefix)
-                  //  .bind(dns_record.ttl)
                     .bind(dns_record.ttl)
                     .bind(dns_record.count)
-                  //  .bind(ts)
-                   // .bind(ts)
                     .bind(ts)
                     .bind(ts)
-                  //  .bind(dns_record.asn)
                     .bind(dns_record.asn)
                     .bind(&dns_record.asn_owner)
-                   // .bind(&dns_record.asn_owner)
                     .bind(&dns_record.prefix)
-                  //  .bind(&dns_record.prefix)
                     .execute(&self.pool),
             )
         } else {
@@ -124,23 +112,22 @@ impl Mysql_connection {
                     .bind(dns_record.count)
                     .bind(ts)
                     .bind(ts)
-                    //.bind(ts)
-                  //  .bind(ts)
                     .execute(&self.pool),
             )
         };
         match q_res {
-            Ok(x) => debug!("Success {x:?}"),
+            Ok(_x) => {
+                 //   debug!("Success {x:?}"),
+                }
             Err(e) => {
                 error!("Error: {e}");
-                debug!("Error: {e}");
-                debug!("Error: {e}");
+              //  debug!("Error: {e}");
                 //exit(-1);
             }
         }
     }
     pub fn create_database(&mut self) {
-        let create_cmd = r"CREATE TABLE If NOT EXISTS `pdns`  (
+        let create_cmd = "CREATE TABLE If NOT EXISTS `pdns`  (
         `ID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
         `QUERY` varchar(255) NOT NULL DEFAULT '',
         `MAPTYPE` varchar(16) NOT NULL DEFAULT '',
@@ -171,7 +158,7 @@ impl Mysql_connection {
                 exit(-1);
             }
         }
-        let create_cmd1 = r"CREATE TABLE IF NOT EXISTS `pdns_err` (
+        let create_cmd1 = "CREATE TABLE IF NOT EXISTS `pdns_err` (
              `ID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
         `QUERY` varchar(255) NOT NULL DEFAULT '',
         `MAPTYPE` varchar(16) NOT NULL DEFAULT '',

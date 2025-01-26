@@ -104,7 +104,8 @@
  dig +short nsec nsec.dns.netmeister.org. 
  dig +short txt nsec.dns.netmeister.org. 
  dig +dnssec nsec3 nsec3.dns.netmeister.org.
- dig +short txt nsec3.dns.netmeister.org. 
+dig +dnssec xxx.kmachine.nl 
+dig +short txt nsec3.dns.netmeister.org. 
  dig +short nsec3param nsec3param.dns.netmeister.org. 
  dig +short txt nsec3param.dns.netmeister.org. 
  dig +dnssec nsec3 nsec3.dns.netmeister.org. 

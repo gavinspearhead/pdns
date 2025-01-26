@@ -19,5 +19,4 @@ where
         map.serialize_entry(&i.0, i.1)?;
     }
     map.end()
-
 }

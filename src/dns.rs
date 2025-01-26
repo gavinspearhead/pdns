@@ -1,5 +1,7 @@
 use crate::dns::DNS_RR_type::Private;
-use crate::errors::{DNS_Error_Type, DNS_error, Parse_error};
+use crate::errors::DNS_Error_Type::{Invalid_Class, Invalid_Opcode, Invalid_RR, Invalid_reply_type};
+use crate::errors::ParseErrorType::Invalid_Parameter;
+use crate::errors::{DNS_error, Parse_error};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr as _;
@@ -22,7 +24,7 @@ use tracing::debug;
     Deserialize,
     FromRepr,
     PartialOrd,
-    Ord
+    Ord,
 )]
 pub(crate) enum DNS_Opcodes {
     Query = 0,
@@ -42,7 +44,7 @@ impl DNS_Opcodes {
         match DNS_Opcodes::from_repr(usize::from(val)) {
             Some(x) => Ok(x),
             None => Err(DNS_error::new(
-                DNS_Error_Type::Invalid_Opcode,
+                Invalid_Opcode,
                 &format!("{val}"),
             )),
         }
@@ -101,14 +103,12 @@ impl DNS_Class {
         self.into()
     }
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
-        if let Some(x) = DNS_Class::from_repr(usize::from(val)) { Ok(x) } else {
+        if let Some(x) = DNS_Class::from_repr(usize::from(val)) {
+            Ok(x)
+        } else {
             debug!("Error wrong class value {}", val);
-            Err(DNS_error::new(
-                DNS_Error_Type::Invalid_Class,
-                &format!("{val}"),
-            ))
+            Err(DNS_error::new( Invalid_Class, &format!("{val}"), ))
         }
-        
     }
 }
 
@@ -150,7 +150,7 @@ mod dns_class_tests {
     Deserialize,
     FromRepr,
     PartialOrd,
-    Ord
+    Ord,
 )]
 pub(crate) enum DNS_RR_type {
     A = 1,
@@ -176,7 +176,7 @@ pub(crate) enum DNS_RR_type {
     DNSKEY = 48,
     DOA = 259,
     DS = 43,
-    DSYNC= 66,
+    DSYNC = 66,
     EID = 31,
     EUI48 = 108,
     EUI64 = 109,
@@ -266,15 +266,12 @@ impl DNS_RR_type {
                 if val > 65280 {
                     Ok(Private)
                 } else {
-                    Err(DNS_error::new(
-                        DNS_Error_Type::Invalid_RR,
-                        &format!("{val}"),
-                    ))
+                    Err(DNS_error::new( Invalid_RR, &format!("{val}")))
                 }
             }
         }
     }
-   
+
     pub(crate) fn collect_dns_rr_types() -> Vec<DNS_RR_type> {
         DNS_RR_type::iter().collect::<Vec<_>>()
     }
@@ -331,7 +328,7 @@ mod tests1 {
     Default,
     Hash,
     PartialOrd,
-    Ord
+    Ord,
 )]
 pub(crate) enum DnsReplyType {
     #[default]
@@ -365,10 +362,7 @@ impl DnsReplyType {
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
         match DnsReplyType::from_repr(usize::from(val)) {
             Some(x) => Ok(x),
-            None => Err(DNS_error::new(
-                DNS_Error_Type::Invalid_reply_type,
-                &format!("{val}"),
-            )),
+            None => Err(DNS_error::new(Invalid_reply_type, &format!("{val}"))),
         }
     }
 }
@@ -413,10 +407,7 @@ pub(crate) fn tlsa_cert_usage(u: u8) -> Result<&'static str, Parse_error> {
         1 => Ok("PKIX-EE"),
         2 => Ok("DANE-TA"),
         3 => Ok("DANE-EE"),
-        _ => Err(Parse_error::new(
-            crate::errors::ParseErrorType::Invalid_Parameter,
-            "Unknown certificate usage",
-        )),
+        _ => Err(Parse_error::new( Invalid_Parameter, "Unknown certificate usage", )),
     }
 }
 
@@ -424,10 +415,7 @@ pub(crate) fn tlsa_selector(u: u8) -> Result<&'static str, Parse_error> {
     match u {
         0 => Ok("All"),
         1 => Ok("Pubkey"),
-        _ => Err(Parse_error::new(
-            crate::errors::ParseErrorType::Invalid_Parameter,
-            "Unknown TLSA selectory",
-        )),
+        _ => Err(Parse_error::new( Invalid_Parameter,"Unknown TLSA selector")),
     }
 }
 
@@ -436,10 +424,7 @@ pub(crate) fn tlsa_algorithm(u: u8) -> Result<&'static str, Parse_error> {
         0 => Ok("None"),
         1 => Ok("SHA2-256"),
         2 => Ok("SHA2-512"),
-        _ => Err(Parse_error::new(
-            crate::errors::ParseErrorType::Invalid_Parameter,
-            "Unknown algorithm",
-        )),
+        _ => Err(Parse_error::new(Invalid_Parameter, "Unknown algorithm")),
     }
 }
 pub(crate) fn key_protocol(u: u8) -> Result<&'static str, Parse_error> {
@@ -449,10 +434,7 @@ pub(crate) fn key_protocol(u: u8) -> Result<&'static str, Parse_error> {
         3 => Ok("dnssec"),
         4 => Ok("ipsec"),
         255 => Ok("all"),
-        _ => Err(Parse_error::new(
-            crate::errors::ParseErrorType::Invalid_Parameter,
-            "Unknown algorithm",
-        )),
+        _ => Err(Parse_error::new(Invalid_Parameter, "Unknown algorithm")),
     }
 }
 
@@ -463,10 +445,7 @@ pub(crate) fn sshfp_algorithm(u: u8) -> Result<&'static str, Parse_error> {
         3 => Ok("ECDSA"),
         4 => Ok("Ed25519"),
         5 => Ok("Ed448"),
-        _ => Err(Parse_error::new(
-            crate::errors::ParseErrorType::Invalid_Parameter,
-            "Unknown algorithm",
-        )),
+        _ => Err(Parse_error::new(Invalid_Parameter, "Unknown algorithm")),
     }
 }
 
@@ -474,10 +453,7 @@ pub(crate) fn sshfp_fp_type(u: u8) -> Result<&'static str, Parse_error> {
     match u {
         1 => Ok("SHA-1"),
         2 => Ok("SHA2-256"),
-        _ => Err(Parse_error::new(
-            crate::errors::ParseErrorType::Invalid_Parameter,
-            "Unknown algorithm",
-        )),
+        _ => Err(Parse_error::new(Invalid_Parameter, "Unknown algorithm")),
     }
 }
 
@@ -503,10 +479,7 @@ pub(crate) fn dnssec_algorithm(u: u8) -> Result<&'static str, Parse_error> {
         253 => Ok("PrivateDNS"),
         254 => Ok("PrivateOID"),
 
-        _ => Err(Parse_error::new(
-            crate::errors::ParseErrorType::Invalid_Parameter,
-            "Unknown algorithm",
-        )),
+        _ => Err(Parse_error::new(Invalid_Parameter, "Unknown algorithm")),
     }
 }
 
@@ -519,10 +492,7 @@ pub(crate) fn dnssec_digest(u: u8) -> Result<&'static str, Parse_error> {
         4 => Ok("SHA2-384"),
         5 => Ok("GOST R 34.11-2012"),
         6 => Ok("SM3"),
-        _ => Err(Parse_error::new(
-            crate::errors::ParseErrorType::Invalid_Parameter,
-            "Unknown digest",
-        )),
+        _ => Err(Parse_error::new(Invalid_Parameter, "Unknown digest")),
     }
 }
 
@@ -530,10 +500,7 @@ pub(crate) fn zonemd_digest(u: u8) -> Result<&'static str, Parse_error> {
     match u {
         1 => Ok("SHA2-384"),
         2 => Ok("SHA2-512"),
-        _ => Err(Parse_error::new(
-            crate::errors::ParseErrorType::Invalid_Parameter,
-            "Unknown digest",
-        )),
+        _ => Err(Parse_error::new(Invalid_Parameter, "Unknown digest")),
     }
 }
 
@@ -541,10 +508,7 @@ pub(crate) fn ipsec_alg(alg: u8) -> Result<&'static str, Parse_error> {
     match alg {
         1 => Ok("DSA"),
         2 => Ok("RSA"),
-        _ => Err(Parse_error::new(
-            crate::errors::ParseErrorType::Invalid_Parameter,
-            "Unknown algorithm",
-        )),
+        _ => Err(Parse_error::new(Invalid_Parameter, "Unknown algorithm")),
     }
 }
 
@@ -561,10 +525,7 @@ pub(crate) fn cert_type_str(t: u16) -> Result<&'static str, Parse_error> {
         253 => Ok("URI"),
         254 => Ok("OID"),
         65280..=65534 => Ok("Experimental"),
-        _ => Err(Parse_error::new(
-            crate::errors::ParseErrorType::Invalid_Parameter,
-            "Unknown digest",
-        )),
+        _ => Err(Parse_error::new(Invalid_Parameter, "Unknown digest")),
     }
 }
 
@@ -583,13 +544,10 @@ impl SVC_Param_Keys {
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
         match SVC_Param_Keys::from_repr(usize::from(val)) {
             Some(x) => Ok(x),
-            None => Err(DNS_error::new(
-                DNS_Error_Type::Invalid_RR,
-                &format!("{val}"),
-            )),
+            None => Err(DNS_error::new(Invalid_RR, &format!("{val}"))),
         }
     }
-    
+
     #[inline]
     pub(crate) fn to_str(self) -> &'static str {
         self.into()

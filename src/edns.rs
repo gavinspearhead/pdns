@@ -1,4 +1,5 @@
-use crate::errors::{DNS_Error_Type, DNS_error};
+use crate::errors::DNS_Error_Type::{Invalid_Extended_Error_Code, Invalid_Extended_Option_Code};
+use crate::errors::DNS_error;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use strum_macros::{EnumIter, FromRepr};
@@ -51,10 +52,7 @@ impl EDNSOptionCodes {
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
         match EDNSOptionCodes::from_repr(usize::from(val)) {
             Some(x) => Ok(x),
-            None => Err(DNS_error::new(
-                DNS_Error_Type::Invalid_Extended_Option_Code,
-                &format!("{val}"),
-            )),
+            None => Err(DNS_error::new( Invalid_Extended_Option_Code, &format!("{val}"))),
         }
     }
 }
@@ -127,10 +125,7 @@ impl DNSExtendedError {
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
         match DNSExtendedError::from_repr(usize::from(val)) {
             Some(x) => Ok(x),
-            None => Err(DNS_error::new(
-                DNS_Error_Type::Invalid_Extended_Error_Code,
-                &format!("{val}"),
-            )),
+            None => Err(DNS_error::new( Invalid_Extended_Error_Code, &format!("{val}") )),
         }
     }
 }
