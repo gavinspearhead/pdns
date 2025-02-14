@@ -34,7 +34,10 @@ impl Mysql_connection {
                 exit(1);
             }
         };
-        match MySqlPoolOptions::new().connect_with(connection_options).await {
+        match MySqlPoolOptions::new()
+            .connect_with(connection_options)
+            .await
+        {
             Ok(mysql_pool) => {
                 debug!("Connection to the database is successful!");
                 Mysql_connection { pool: mysql_pool }
@@ -48,7 +51,7 @@ impl Mysql_connection {
     pub fn insert_or_update_record(&mut self, dns_record: &DNS_record) {
         let ts = dns_record.timestamp.timestamp();
         let q_res = if dns_record.error == DnsReplyType::NOERROR {
-            static Q: &str = "INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN,DOMAIN,asn,asn_owner,prefix) 
+            static INSERT_QUERY_PDNS: &str = "INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN,DOMAIN,asn,asn_owner,prefix) 
             VALUES (
                 ?, ?, ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?), ?,
                 NULLIF(?, 0),  
@@ -64,10 +67,10 @@ impl Mysql_connection {
                 asn_owner = COALESCE(asn_owner, NULLIF(?, '')),
                 prefix = COALESCE(prefix, NULLIF(?, ''))
                 ";
-           // debug!("{} {} {} {}", dns_record.name, dns_record.rr_type, dns_record.rdata, dns_record.count);
+            // debug!("{} {} {} {}", dns_record.name, dns_record.rr_type, dns_record.rdata, dns_record.count);
 
             block_on(
-                sqlx::query(Q)
+                sqlx::query(INSERT_QUERY_PDNS)
                     .bind(&dns_record.name)
                     .bind(dns_record.class.to_str())
                     .bind(dns_record.rr_type.to_str())
@@ -90,7 +93,7 @@ impl Mysql_connection {
                     .execute(&self.pool),
             )
         } else {
-            static Q: &str= "INSERT INTO pdns_err (QUERY,RR,MAPTYPE,COUNT,LAST_SEEN,FIRST_SEEN,ERROR_VAL,EXT_ERROR_VAL) 
+            static INSERT_QUERY_PDNS_ERR: &str= "INSERT INTO pdns_err (QUERY,RR,MAPTYPE,COUNT,LAST_SEEN,FIRST_SEEN,ERROR_VAL,EXT_ERROR_VAL) 
             VALUES (
                 ? ,?, ?, ?, FROM_UNIXTIME(?),FROM_UNIXTIME(?), ?, ?   
                 ) ON DUPLICATE KEY UPDATE
@@ -98,9 +101,9 @@ impl Mysql_connection {
                 LAST_SEEN = GREATEST(LAST_SEEN, FROM_UNIXTIME(?)),
                 FIRST_SEEN = LEAST(FROM_UNIXTIME(?), FIRST_SEEN) 
                 ";
-           // debug!("{} {} {} {}", i.name, i.rr_type, i.error as u16, i.count);
+            // debug!("{} {} {} {}", i.name, i.rr_type, i.error as u16, i.count);
             block_on(
-                sqlx::query(Q)
+                sqlx::query(INSERT_QUERY_PDNS_ERR)
                     .bind(&dns_record.name)
                     .bind(dns_record.class.to_str())
                     .bind(dns_record.rr_type.to_str())
@@ -117,17 +120,17 @@ impl Mysql_connection {
         };
         match q_res {
             Ok(_x) => {
-                 //   debug!("Success {x:?}"),
-                }
+                //   debug!("Success {x:?}"),
+            }
             Err(e) => {
                 error!("Error: {e}");
-              //  debug!("Error: {e}");
+                //  debug!("Error: {e}");
                 //exit(-1);
             }
         }
     }
     pub fn create_database(&mut self) {
-        let create_cmd = "CREATE TABLE If NOT EXISTS `pdns`  (
+        static CREATE_CMD: &str = "CREATE TABLE If NOT EXISTS `pdns`  (
         `ID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
         `QUERY` varchar(255) NOT NULL DEFAULT '',
         `MAPTYPE` varchar(16) NOT NULL DEFAULT '',
@@ -151,14 +154,14 @@ impl Mysql_connection {
         KEY `asn` (`asn`)
       ) ENGINE=MyISAM  DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
       ";
-        match block_on(sqlx::query(create_cmd).execute(&self.pool)) {
+        match block_on(sqlx::query(CREATE_CMD).execute(&self.pool)) {
             Ok(x) => debug!("Success {x:?}"),
             Err(e) => {
                 error!("Error: {e}");
                 exit(-1);
             }
         }
-        let create_cmd1 = "CREATE TABLE IF NOT EXISTS `pdns_err` (
+        static CREATE_CMD1: &str = "CREATE TABLE IF NOT EXISTS `pdns_err` (
              `ID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
         `QUERY` varchar(255) NOT NULL DEFAULT '',
         `MAPTYPE` varchar(16) NOT NULL DEFAULT '',
@@ -174,7 +177,7 @@ impl Mysql_connection {
         KEY `FIRSTSEEN` (`FIRST_SEEN`)
       ) ENGINE=MyISAM  DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
       ";
-        match block_on(sqlx::query(create_cmd1).execute(&self.pool)) {
+        match block_on(sqlx::query(CREATE_CMD1).execute(&self.pool)) {
             Ok(x) => debug!("Success {x:?}"),
             Err(e) => {
                 error!("Error: {e}");

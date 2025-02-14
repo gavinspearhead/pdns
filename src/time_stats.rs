@@ -64,17 +64,14 @@ mod tests {
         assert_eq!(hour.items, v);
         hour.add(2, 1, 1);
         hour.add(3, 1, 1);
-        // println!("{} {}", hour.last_post, hour.last_group);
         v[1] = 2;
         v[2] = 1;
         v[3] = 1;
         assert_eq!(hour.items, v);
         hour.add(10, 1, 1);
-        //println!("{} {}", hour.last_post, hour.last_group);
         v[10] = 1;
         assert_eq!(hour.items, v);
         hour.add(3, 1, 2);
-        // println!("{} {}", hour.last_post, hour.last_group);
         v[1] = 0;
         v[2] = 0;
         v[3] = 1;
@@ -82,7 +79,6 @@ mod tests {
         hour.add(4, 1, 2);
         v[4] = 1;
         assert_eq!(hour.items, v);
-        // println!("{} {}", hour.last_post, hour.last_group);
         hour.add(2, 1, 4);
         hour.add(6, 1, 4);
         hour.add(16, 1, 4);

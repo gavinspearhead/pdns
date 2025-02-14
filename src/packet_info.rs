@@ -1,3 +1,6 @@
+use crate::dns::DNS_RR_type;
+use crate::dns_packet::DNS_Protocol;
+use crate::dns_record::DNS_record;
 use asn_db2::{Database, IpEntry};
 use chrono::{DateTime, Utc};
 use std::{
@@ -6,9 +9,6 @@ use std::{
     net::{IpAddr, Ipv4Addr},
     sync::{Arc, Mutex},
 };
-use crate::dns::DNS_RR_type;
-use crate::dns_packet::DNS_Protocol;
-use crate::dns_record::DNS_record;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Packet_Queue {
@@ -157,7 +157,7 @@ impl Packet_info {
             if matches!(record.rr_type, DNS_RR_type::A | DNS_RR_type::AAAA) {
                 if let Some(ip_asn_data) = Packet_info::find_asn(asn_db, &record.rdata) {
                     match ip_asn_data {
-                        IpEntry::V4(v4 ) => {
+                        IpEntry::V4(v4) => {
                             record.asn = v4.as_number;
                             record.asn_owner = v4.owner.clone();
                             record.prefix = v4.subnet.to_string();
@@ -169,7 +169,6 @@ impl Packet_info {
                         }
                     }
                 }
-
             }
         }
     }

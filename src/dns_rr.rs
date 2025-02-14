@@ -49,7 +49,7 @@ fn dns_parse_name_internal(
         return Err(Parse_error::new(Invalid_packet_index, ""));
     }
     let mut idx = offset_in;
-    let mut name = String::new();
+    let mut name = String::with_capacity(MAX_DOMAIN_NAME_LENGTH);
     loop {
         let val = dns_read_u8(packet, idx)?; // read the first byte of the pointer
         if val == 0 {
@@ -59,7 +59,8 @@ fn dns_parse_name_internal(
             // it is actually a pointer
             let pos = usize::from(dns_read_u16(packet, idx)? & POINTER_MASK); // slice the of the 2 MSbs
             let (pointer_name, _) = dns_parse_name_internal(packet, pos, recursion_depth + 1)?;
-            return Ok((name + &pointer_name, idx + 2));
+            name.push_str(pointer_name.as_str());
+            return Ok((name, idx + 2));
         } else if (val & POINTER_FLAG) == 0 {
             // it is just a length value.
             let label_len = usize::from(val & 0x3f);
@@ -67,7 +68,9 @@ fn dns_parse_name_internal(
             let label = dns_parse_slice(packet, idx..idx + label_len)?;
             match std::str::from_utf8(label) {
                 Ok(t) => name.push_str(t),
-                Err(_) => {return Err(Parse_error::new(Invalid_packet_index, &format!("{idx}")));}
+                Err(_) => {
+                    return Err(Parse_error::new(Invalid_packet_index, &format!("{idx}")));
+                }
             };
             name.push('.');
             idx += label_len;
@@ -238,9 +241,8 @@ fn parse_rr_txt(rdata: &[u8]) -> Result<String, Parse_error> {
 }
 
 fn parse_rr_hinfo(rdata: &[u8]) -> Result<String, Parse_error> {
-    let cpu_len1 = dns_read_u8(rdata, 0)?;
-    let cpu_len: usize = cpu_len1 as usize;
-    let mut offset: usize = 1;
+    let cpu_len = dns_read_u8(rdata, 0)? as usize;
+    let mut offset = 1;
     let r = dns_parse_slice(rdata, offset..offset + cpu_len)?;
     let mut s = parse_dns_str(r)?;
     offset += cpu_len;
@@ -263,15 +265,14 @@ fn parse_rr_loc(rdata: &[u8]) -> Result<String, Parse_error> {
     let mut lat = i64::from(dns_read_u32(rdata, 4)?);
     let mut lon = i64::from(dns_read_u32(rdata, 8)?);
     let alt = i64::from(dns_read_u32(rdata, 12)?);
-    let north: char;
-    let east: char;
+    let (north, east): (char, char);
     let equator: i64 = 1 << 31;
     if lat > equator {
         north = 'N';
         lat -= equator;
     } else {
         north = 'S';
-        lat = equator - lon;
+        lat = equator - lat;
     }
     if lon > equator {
         east = 'E';
@@ -290,7 +291,7 @@ fn parse_rr_loc(rdata: &[u8]) -> Result<String, Parse_error> {
     let ma = lat / (1000 * 60);
     lat %= 1000 * 60;
     let sa = lat as f64 / 1000.0;
-    let a = (alt as f64 / 100.0) - 100_000.0;
+    let a = (alt as f64/ 100.0) - 100_000.0;
 
     Ok(format!(
         "{ha} {ma} {sa} {north} {ho} {mo} {so} {east} {a}m {}m {}m {}m ",
@@ -489,7 +490,7 @@ fn parse_rr_srv(rdata: &[u8]) -> Result<String, Parse_error> {
     let prio = dns_read_u16(rdata, 0)?;
     let weight = dns_read_u16(rdata, 2)?;
     let port = dns_read_u16(rdata, 4)?;
-    let (target, _offset_out) = dns_parse_name(rdata, 6)?;
+    let (target, _) = dns_parse_name(rdata, 6)?;
     Ok(format!("{prio} {weight} {port} {target}"))
 }
 
@@ -592,6 +593,7 @@ fn parse_rr_nsec(rdata: &[u8]) -> Result<String, Parse_error> {
     let bitmap_str = map_bitmap_to_rr(&bitmap)?;
     Ok(format!("{next_dom} {bitmap_str}"))
 }
+
 fn parse_rr_sink(rdata: &[u8]) -> Result<String, Parse_error> {
     let mut coding = dns_read_u8(rdata, 0)?;
     let mut offset = 1;
@@ -868,7 +870,7 @@ pub(crate) fn dns_parse_rdata(
     } else if rrtype == DNS_RR_type::NXT {
         let (next, _) = dns_parse_name(packet, offset_in)?;
         let bm = parse_bitmap_vec(&rdata[next.len() + 2..])?;
-        Ok(format!("{} {}", next, map_bitmap_to_rr(&bm)?))
+        Ok(format!("{next} {}", map_bitmap_to_rr(&bm)?))
     } else if rrtype == DNS_RR_type::NSAP {
         Ok(format!("0x{}", hex::encode(rdata)))
     } else if rrtype == DNS_RR_type::NSAP_PTR {
@@ -931,7 +933,10 @@ pub(crate) fn dns_parse_rdata(
 fn parse_rr_dsync(rdata: &[u8]) -> Result<String, Parse_error> {
     let rrtype_val = dns_read_u16(rdata, 0)?;
     let Ok(rrtype) = parse_rrtype(rrtype_val) else {
-        return Err(Parse_error::new(Invalid_Resource_Record, &rrtype_val.to_string()));
+        return Err(Parse_error::new(
+            Invalid_Resource_Record,
+            &rrtype_val.to_string(),
+        ));
     };
     let scheme = dns_read_u8(rdata, 2)?;
     let port = dns_read_u16(rdata, 3)?;

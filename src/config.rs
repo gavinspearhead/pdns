@@ -47,6 +47,7 @@ pub(crate) struct Config {
     pub syslog: bool,
     pub create_db: bool,
     pub tcp_memory: u32,
+    pub capture_tcp: bool,
 }
 
 impl Config {
@@ -87,6 +88,7 @@ impl Config {
             syslog: true,
             create_db: false,
             tcp_memory: 10,
+            capture_tcp: true,
         };
         c.rr_type.extend(vec![
             DNS_RR_type::A,
@@ -200,9 +202,9 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
                     .long_help("Hostname or IP address for the internal web server to liste no"),
             )
             .arg(
-                arg!(-O --tcp_memory <VALUE>).required(false).long_help(
-                    "Amount of memory to use for each TCP connection)",
-                ),
+                arg!(-O --tcp_memory <VALUE>)
+                    .required(false)
+                    .long_help("Amount of memory to use for each TCP connection)"),
             )
             .arg(
                 arg!(-P --http_port <VALUE>).required(false).long_help(
@@ -297,6 +299,17 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
                     .required(false)
                     .action(ArgAction::SetTrue)
                     .long_help("Create a database"),
+            ).arg(
+            arg!(--no_capture_tcp)
+                .required(false)
+                .action(ArgAction::SetFalse)
+                .conflicts_with("capture_tcp")
+                .long_help("Do not capture DNS traffic on TCP"),
+            ).arg(
+            arg!(--capture_tcp)
+                .required(false)
+                .action(ArgAction::SetTrue)
+                .long_help("Capture DNS traffic on TCP"),
             )
             .arg(
                 arg!(-C --promisc)
@@ -363,11 +376,12 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
             )
             .get_matches();
 
-
     let empty_str = String::new();
-    config.config_file.clone_from(matches
-        .get_one::<String>("config")
-        .unwrap_or(&String::from_str(&empty_str).unwrap()));
+    config.config_file.clone_from(
+        matches
+            .get_one::<String>("config")
+            .unwrap_or(&String::from_str(&empty_str).unwrap()),
+    );
 
     //let mut config = Config::parse();
     if !config.config_file.is_empty() {
@@ -391,11 +405,15 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
         .clone();
     config.tcp_memory = matches
         .get_one::<String>("tcp_memory")
-        .unwrap_or(&format!("{}",& config.tcp_memory)).parse::<u32>().unwrap();
+        .unwrap_or(&format!("{}", &config.tcp_memory))
+        .parse::<u32>()
+        .unwrap();
     debug!("Memory: {}", config.tcp_memory);
     config.http_port = matches
         .get_one::<String>("http_port")
-        .unwrap_or(&format!("{}",& config.http_port)).parse::<u16>().unwrap();
+        .unwrap_or(&format!("{}", &config.http_port))
+        .parse::<u16>()
+        .unwrap();
     matches
         .get_one::<String>("path")
         .unwrap_or(&empty_str)
@@ -494,9 +512,11 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
     config.authority = *matches
         .get_one::<bool>("noauthority")
         .unwrap_or(&config.authority);
+    config.capture_tcp = *matches.get_one::<bool>("capture_tcp").unwrap_or(&config.capture_tcp);
+    config.capture_tcp = *matches.get_one::<bool>("no_capture_tcp").unwrap_or(&config.capture_tcp);
 
     let rr_types = parse_rrtypes(&matches.get_one("rrtypes").unwrap_or(&empty_str).clone());
-   // let rr_types = parse_rrtypes(config.rr_type);
+    // let rr_types = parse_rrtypes(config.rr_type);
     if !rr_types.is_empty() {
         config.rr_type = rr_types;
     }

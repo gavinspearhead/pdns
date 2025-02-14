@@ -25,7 +25,12 @@ pub mod tcp_data;
 pub mod time_stats;
 pub mod util;
 pub mod version;
-
+use crate::config::Config;
+use crate::http_server::listen;
+use crate::network_packet::parse_eth;
+use crate::packet_info::Packet_info;
+use crate::statistics::Statistics;
+use crate::version::{PROGNAME, VERSION};
 use chrono::{DateTime, Utc};
 use clap::{arg, Parser};
 use config::parse_config;
@@ -34,6 +39,7 @@ use futures::executor::block_on;
 use live_dump::Live_dump;
 use mysql_connection::{create_database, Mysql_connection};
 use packet_info::Packet_Queue;
+use parking_lot::Mutex;
 use pcap::{Activated, Active, Capture, Linktype};
 use signal_hook::flag;
 use skiplist::Skip_List;
@@ -44,7 +50,7 @@ use std::process::exit;
 use std::str::{self, FromStr};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::TryRecvError;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc};
 use std::thread::sleep;
 use std::{thread, time};
 use tcp_connection::{clean_tcp_list, TCP_Connections};
@@ -53,13 +59,6 @@ use tracing_rfc_5424::layer::Layer;
 use tracing_rfc_5424::transport::UnixSocket;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{filter, fmt, prelude::*, reload};
-
-use crate::config::Config;
-use crate::http_server::listen;
-use crate::network_packet::parse_eth;
-use crate::packet_info::Packet_info;
-use crate::statistics::Statistics;
-use crate::version::{PROGNAME, VERSION};
 
 #[derive(Parser, Clone, Debug, PartialEq)]
 struct Args {
@@ -94,14 +93,13 @@ fn dump_stats(stats: &Statistics, config: &Config) -> std::io::Result<()> {
     }
 }
 
-fn read_public_suffix_file(public_suffix_file : &str)->publicsuffix::List
-{
+fn read_public_suffix_file(public_suffix_file: &str) -> publicsuffix::List {
     debug!("Reading pubsuf list {}", public_suffix_file);
     if let Ok(c) = fs::read_to_string(public_suffix_file) {
         if let Ok(d) = c.as_str().parse() {
             d
         } else {
-            error!( "Cannot parse public suffic file: {public_suffix_file}" );
+            error!("Cannot parse public suffic file: {public_suffix_file}");
             exit(-1);
         }
     } else {
@@ -124,7 +122,7 @@ fn packet_loop<T: Activated>(
         exit(-1);
     }
     //let publicsuffixlist: publicsuffix::List = read_public_suffix_file(config.public_suffix_file.as_str());
-        
+
     debug!("Starting loop");
     loop {
         match cap.next_packet() {
@@ -139,11 +137,10 @@ fn packet_loop<T: Activated>(
                 let result = parse_eth(
                     packet.data,
                     &mut packet_info,
-                    &mut stats.lock().unwrap(),
+                    &mut stats.lock(),
                     tcp_list,
                     config,
                     skip_list,
-                  //  &publicsuffixlist,
                 );
                 match result {
                     Ok(()) => packet_queue.push_back(Some(packet_info)),
@@ -205,7 +202,8 @@ fn poll(packet_queue: &Packet_Queue, config: &Config, rx: mpsc::Receiver<String>
         Some(x)
     };
     let asn_database = load_asn_database(config);
-    let publicsuffixlist: publicsuffix::List = read_public_suffix_file(config.public_suffix_file.as_str());
+    let publicsuffixlist: publicsuffix::List =
+        read_public_suffix_file(config.public_suffix_file.as_str());
     let mut last_push = Utc::now().timestamp();
     loop {
         live_dump.accept();
@@ -247,11 +245,10 @@ fn poll(packet_queue: &Packet_Queue, config: &Config, rx: mpsc::Receiver<String>
             }
         } else {
             sleep(timeout);
-            if timeout.as_millis() < 500 {
+            if timeout.as_millis() < 750 {
                 timeout += time::Duration::from_millis(50);
             }
         }
-
         let ct = Utc::now().timestamp();
         if ct > last_push + dns_cache.timeout() {
             db_insert(&mut dns_cache, &mut database_conn, &mut last_push);
@@ -280,19 +277,18 @@ fn db_insert(
 }
 
 fn cleanup_task(config: &Config) {
-    if config.database.is_empty() {
-        return;
-    }
-    loop {
-        let x = block_on(Mysql_connection::connect(
-            &config.dbhostname,
-            &config.dbusername,
-            &config.dbpassword,
-            &config.dbport,
-            &config.dbname,
-        ));
-        x.clean_database(config);
-        sleep(time::Duration::from_secs(24 * 3600));
+    if !config.database.is_empty() {
+        loop {
+            let x = block_on(Mysql_connection::connect(
+                &config.dbhostname,
+                &config.dbusername,
+                &config.dbpassword,
+                &config.dbport,
+                &config.dbname,
+            ));
+            x.clean_database(config);
+            sleep(time::Duration::from_secs(24 * 3600));
+        }
     }
 }
 
@@ -311,8 +307,8 @@ fn terminate_loop(stats: &Arc<Mutex<Statistics>>, config: &Config) {
     while !term.load(Ordering::Relaxed) && !kill.load(Ordering::Relaxed) {
         sleep(time::Duration::from_millis(50));
     }
-    debug!("{}", stats.lock().unwrap().queries);
-    dump_stats(&stats.lock().unwrap(), config).unwrap();
+    debug!("{}", stats.lock().queries);
+    dump_stats(&stats.lock(), config).unwrap();
     exit(0);
 }
 
@@ -327,17 +323,17 @@ fn capture_from_file(
     let (_pq_tx, pq_rx) = mpsc::channel();
     let (tcp_tx, tcp_rx) = mpsc::channel();
     debug!("Reading PCAP file e {pcap_path}");
-    thread::scope(|s| {
-        let handle1 = s.spawn(|| clean_tcp_list(&tcp_list.clone(), tcp_rx));
-        let handle = s.spawn(|| poll(&packet_queue.clone(), config, pq_rx));
-        let cap = Capture::from_file(pcap_path);
-        match cap {
-            Ok(mut c) => {
-                if let Err(e) = c.filter(&config.filter, false) {
-                    error!("Cannot apply filter {}: {e}", config.filter);
-                    exit(-2);
-                }
-                let handle2 = s.spawn(|| {
+    let cap = Capture::from_file(pcap_path);
+    match cap {
+        Ok(mut c) => {
+            if let Err(e) = c.filter(&config.filter, false) {
+                error!("Cannot apply filter {}: {e}", config.filter);
+                exit(-2);
+            }
+            thread::scope(|s| {
+                let handle_tcp_list = s.spawn(|| clean_tcp_list(&tcp_list.clone(), tcp_rx));
+                let handle_poll = s.spawn(|| poll(&packet_queue.clone(), config, pq_rx));
+                let handle_packet_loop = s.spawn(|| {
                     packet_loop(
                         c,
                         &packet_queue.clone(),
@@ -347,18 +343,18 @@ fn capture_from_file(
                         skiplist,
                     );
                 });
-                handle2.join().unwrap();
+                handle_packet_loop.join().unwrap();
                 // we wait for the main threat to terminate; then cancel the tcp cleanup threat
                 let _ = tcp_tx.send(String::from_str("the end").unwrap());
-                handle.join().unwrap();
-                handle1.join().unwrap();
-            }
-            Err(e) => {
-                error!("Error reading PCAP file: {e:?}");
-                exit(-2);
-            }
+                handle_poll.join().unwrap();
+                handle_tcp_list.join().unwrap();
+            });
         }
-    });
+        Err(e) => {
+            error!("Error reading PCAP file: {e:?}");
+            exit(-2);
+        }
+    };
 }
 
 fn capture_from_interface(
@@ -367,45 +363,40 @@ fn capture_from_interface(
     stats: &Arc<Mutex<Statistics>>,
     tcp_list: &Arc<Mutex<TCP_Connections>>,
     packet_queue: &Packet_Queue,
-    cap_in: Option<Capture<Active>>,
+    mut cap_in: Capture<Active>,
 ) {
     debug!("Listening on interface {}", config.interface);
     let (_pq_tx, pq_rx) = mpsc::channel();
     let (tcp_tx, tcp_rx) = mpsc::channel();
+    debug!("Filter: {}", config.filter);
+    if let Err(e) = cap_in.filter(&config.filter, false) {
+        error!("Cannot apply filter {}: {e}", config.filter);
+        exit(-1);
+    }
     thread::scope(|s| {
-        let handle2 = s.spawn(|| clean_tcp_list(&tcp_list.clone(), tcp_rx));
-        let handle = s.spawn(|| poll(&packet_queue.clone(), config, pq_rx));
-        // let listener = listen(&config.http_server, config.http_port);
-        let handle4 = s.spawn(|| {
+        let handle_tcp_list = s.spawn(|| clean_tcp_list(&tcp_list.clone(), tcp_rx));
+        let handle_poll = s.spawn(|| poll(&packet_queue.clone(), config, pq_rx));
+        let handle_http = s.spawn(|| {
             let _ = listen(&stats.clone(), &tcp_list.clone(), &config.clone());
         });
-        let Some(mut cap) = cap_in else {
-            error!("Something wrong with the capture");
-            exit(-1);
-        };
-        let handle6 = s.spawn(|| cleanup_task(config));
-        debug!("Filter: {}", config.filter);
-        if let Err(e) = cap.filter(&config.filter, false) {
-            error!("Cannot apply filter {}: {e}", config.filter);
-            exit(-1);
-        }
-        debug!("Ready to start packet loop");
-        let handle3 = s.spawn(|| {
-            debug!("Starting packet loop");
-            packet_loop(cap, packet_queue, tcp_list, stats, config, skiplist);
+        let handle_cleanup = s.spawn(|| cleanup_task(config));
+        //debug!("Ready to start packet loop");
+        let handle_packet_loop = s.spawn(|| {
+            //debug!("Starting packet loop");
+            packet_loop(cap_in, packet_queue, tcp_list, stats, config, skiplist);
         });
-        let handle5 = s.spawn(|| {
+        let handle_terminate = s.spawn(|| {
             terminate_loop(stats, config);
         });
 
-        handle3.join().unwrap();
+        handle_packet_loop.join().unwrap();
         // we wait for the main threat to terminate; then cancel the tcp cleanup threat
         let _ = tcp_tx.send(String::from_str("the end").unwrap());
-        handle4.join().unwrap();
-        handle6.join().unwrap();
-        handle2.join().unwrap();
-        handle.join().unwrap();
-        handle5.join().unwrap();
+        handle_http.join().unwrap();
+        handle_cleanup.join().unwrap();
+        handle_tcp_list.join().unwrap();
+        handle_poll.join().unwrap();
+        handle_terminate.join().unwrap();
     });
 }
 
@@ -429,7 +420,11 @@ fn run(
             &packet_queue,
         );
     } else if !config.interface.is_empty() {
-        capture_from_interface(config, &skiplist, stats, &tcp_list, &packet_queue, cap_in);
+        let Some(cap) = cap_in else {
+            error!("Something wrong with the capture");
+            exit(-1);
+        };
+        capture_from_interface(config, &skiplist, stats, &tcp_list, &packet_queue, cap);
     }
 }
 
@@ -441,10 +436,7 @@ fn main() {
     let (filter, reload_handle) = reload::Layer::new(filter);
     let (tracing_layers, reload_handle1) = reload::Layer::new(layers);
 
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(tracing_layers)
-        .init();
+    tracing_subscriber::registry().with(filter).with(tracing_layers).init();
     parse_config(&mut config, &mut pcap_path);
 
     if config.debug {
@@ -455,11 +447,7 @@ fn main() {
     if !config.log_file.is_empty() {
         debug!("Logging to {}", config.log_file);
         let _ = reload_handle1.modify(|layers| {
-            let file = match OpenOptions::new()
-                .append(true)
-                .create(true)
-                .open(&config.log_file)
-            {
+            let file = match OpenOptions::new().append(true).create(true).open(&config.log_file) {
                 Ok(f) => f,
                 Err(e) => {
                     error!("Cannot create file {} {e}", config.log_file);
@@ -479,15 +467,13 @@ fn main() {
             );
         });
     }
-
     debug!("Starting {PROGNAME} {VERSION}");
-
     if config.create_db {
         create_database(&config);
         exit(0);
     }
-
     let mut cap = None;
+    debug!("Config is: {:?}", config);
     if !config.interface.is_empty() {
         // do it here otherwise PCAP hangs on open if we do it after daemonizing
         debug!("Interface: {}", config.interface);
@@ -495,12 +481,11 @@ fn main() {
             .unwrap()
             .timeout(1000)
             .promisc(config.promisc)
-            //                .immediate_mode(true) //seems to break on ubuntu?
             .open()
         {
             Ok(x) => Some(x),
             Err(e) => {
-                error!("Cannot open capture on interface '{}' {e}", &config.interface );
+                error!("Cannot open capture on interface '{}' {e}",&config.interface);
                 exit(-1);
             }
         };
@@ -531,14 +516,14 @@ fn main() {
         //let stdout = File::open("/tmp/pdns.out").unwrap();
         //let stderr = File::open("/tmp/pdns.err").unwrap();
         let daemonize = daemonize::Daemonize::new()
-        .pid_file("/var/run/pdns.pid") // Every method except `new` and `start`
-        .chown_pid_file(true) // is optional, see `Daemonize` documentation
-        .working_directory("/tmp") // for default behaviour.
-        .user(config.uid.as_str())
-        .group(config.gid.as_str()) // Group name
-        .umask(0o077) // Set umask, `0o027` by default.
-        .stdout(stdout) // Redirect stdout to `/tmp/daemon.out`.
-        .stderr(stderr); // Redirect stderr to `/tmp/daemon.err`. 
+            .pid_file("/var/run/pdns.pid") // Every method except `new` and `start`
+            .chown_pid_file(true) // is optional, see `Daemonize` documentation
+            .working_directory("/tmp") // for default behaviour.
+            .user(config.uid.as_str())
+            .group(config.gid.as_str()) // Group name
+            .umask(0o077) // Set umask, `0o027` by default.
+            .stdout(stdout) // Redirect stdout to `/tmp/daemon.out`.
+            .stderr(stderr); // Redirect stderr to `/tmp/daemon.err`.
         debug!("Daemonising");
         match daemonize.start() {
             Ok(()) => {

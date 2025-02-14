@@ -1,8 +1,8 @@
-use std::fmt;
-use chrono::{DateTime, Utc};
-use unic_idna::to_unicode;
 use crate::dns::{DNS_Class, DNS_RR_type, DnsReplyType};
 use crate::edns::DNSExtendedError;
+use chrono::{DateTime, Utc};
+use std::fmt;
+use unic_idna::to_unicode;
 
 #[derive(Debug, Clone)]
 
@@ -35,7 +35,6 @@ impl fmt::Display for DNS_record {
                     use_std3_ascii_rules: true,
                 },
             );
-           // debug!("{:?}", s.1);
             let s = if name == self.name || res != Ok(()) {
                 String::new()
             } else {
@@ -74,7 +73,8 @@ impl fmt::Display for DNS_record {
                         verify_dns_length: true,
                         use_std3_ascii_rules: true
                     }
-                ).0,
+                )
+                .0,
                 self.domain,
                 self.rdata,
                 self.rr_type,

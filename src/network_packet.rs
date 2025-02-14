@@ -10,9 +10,9 @@ use crate::skiplist::Skip_List;
 use crate::statistics::Statistics;
 use crate::{errors, tcp_connection};
 use errors::Parse_error;
-use std::sync::{Arc, Mutex};
+use parking_lot::Mutex;
+use std::sync::Arc;
 use tcp_connection::TCP_Connections;
-
 fn parse_tcp(
     packet: &[u8],
     packet_info: &mut Packet_info,
@@ -26,7 +26,7 @@ fn parse_tcp(
     }
     let sp = dns_read_u16(packet, 0)?;
     let dp = dns_read_u16(packet, 2)?;
-    if !(dp == 53 || sp == 53 || dp == 5353 || sp == 5353 || dp == 5355 || sp == 5355) {
+    if !(matches!(dp, 53 | 5353 | 5355) || matches!(sp, 53 | 5353 | 5355)) {
         return Err(Parse_error::new(Invalid_DNS_Packet, "").into());
     }
     let hl = (packet[12] >> 4) * 4;
@@ -39,14 +39,14 @@ fn parse_tcp(
     packet_info.set_source_port(sp);
     packet_info.set_data_len(len);
 
-    let dnsdata = dns_parse_slice(packet, (hl as usize)..)?;
-    let r = tcp_list.lock().unwrap().process_data(
+    let dns_data = dns_parse_slice(packet, (hl as usize)..)?;
+    let r = tcp_list.lock().process_data(
         sp,
         dp,
         packet_info.s_addr,
         packet_info.d_addr,
         seqnr,
-        dnsdata,
+        dns_data,
         flags,
     );
     if let Some(d) = r {
@@ -91,7 +91,8 @@ fn parse_udp(
     packet_info.set_source_port(sp);
     packet_info.set_data_len(u32::from(len) - 8);
 
-    if dp == 53 || sp == 53 || dp == 5353 || sp == 5353 || dp == 5355 || sp == 5355 {
+    //if dp == 53 || sp == 53 || dp == 5353 || sp == 5353 || dp == 5355 || sp == 5355 {
+    if matches!(dp, 53 | 5353 | 5355) || matches!(sp, 53 | 5353 | 5355) {
         stats.udp += 1;
         parse_dns(
             dns_parse_slice(packet, 8..)?,
@@ -115,12 +116,17 @@ fn parse_ip_data(
     skip_list: &Skip_List,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if protocol == 6 {
-        packet_info.set_protocol(DNS_Protocol::TCP);
         // TCP
-        parse_tcp(packet, packet_info, stats, tcp_list, config, skip_list)
+        if config.capture_tcp {
+            packet_info.set_protocol(DNS_Protocol::TCP);
+
+            parse_tcp(packet, packet_info, stats, tcp_list, config, skip_list)
+        } else {
+            Ok(())
+        }
     } else if protocol == 17 {
-        packet_info.set_protocol(DNS_Protocol::UDP);
         //  UDP
+        packet_info.set_protocol(DNS_Protocol::UDP);
         parse_udp(packet, packet_info, stats, config, skip_list)
     } else {
         Ok(())

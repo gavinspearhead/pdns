@@ -18,8 +18,8 @@ debug = 0
 pcap ={ version = "2.2" }
 byteorder = "1.5"
 chrono = { version = "0.4", features = ["serde"] }
-strum =  { version = "0.26", features = ["derive"] }
-strum_macros = "0.26"
+strum =  { version = "0.27", features = ["derive"] }
+strum_macros = "0.27"
 clap = { version = "4.5", features = ["derive"] }
 hex="0.4"
 base64= "0.22"
@@ -27,7 +27,7 @@ sqlx = { version = "0.8", features = ["runtime-async-std-native-tls", "mysql", "
 futures = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-data-encoding = "2.6"
+data-encoding = "2.8"
 daemonize = "0.5"
 regex = "1.11"
 publicsuffix="2.3"
@@ -38,7 +38,8 @@ tracing-subscriber = "0.3"
 tracing-rfc-5424 = "0.1"
 snailquote = "0.3"
 unic-idna = "0.9"
-serde_with = "3.11"
+serde_with = "3.12"
 signal-hook = "0.3"
 actix-web = "4.9.0"
 vectorize = "=0.2"
+parking_lot = "0.12.3"

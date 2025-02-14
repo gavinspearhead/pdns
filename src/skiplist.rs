@@ -61,8 +61,8 @@ impl Skip_List {
 }
 #[cfg(test)]
 mod tests {
-    use regex::Regex;
     use crate::skiplist::Skip_List;
+    use regex::Regex;
 
     #[test]
     fn test_skiplist() {

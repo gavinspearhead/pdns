@@ -1,16 +1,17 @@
 use crate::dns::{DNS_Class, DNS_RR_type, DnsReplyType};
-use crate::{packet_info::Packet_info};
+use crate::packet_info::Packet_info;
 use core::fmt;
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 use std::net::IpAddr;
+use std::str::FromStr;
 use std::{
     io::{self, Write},
     net::{TcpListener, TcpStream},
 };
-use std::str::FromStr;
 use strum_macros::{AsRefStr, EnumIter, EnumString, FromRepr, IntoStaticStr};
 use tracing::{debug, error};
+use crate::dns_packet::DNS_Protocol;
 
 #[derive(
     Debug,
@@ -23,7 +24,7 @@ use tracing::{debug, error};
     Serialize,
     Deserialize,
     AsRefStr,
-FromRepr,
+    FromRepr,
 )]
 
 pub(crate) enum Filter_fields {
@@ -31,6 +32,7 @@ pub(crate) enum Filter_fields {
     DST_IP,
     SRC_PORT,
     DST_PORT,
+    PROTOCOL,
     REPLY_CODE,
     NAME,
     CLASS,
@@ -44,9 +46,11 @@ impl Filter_fields {
     pub(crate) fn to_str(&self) -> &'static str {
         self.into()
     }
-pub(crate) fn find(val: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub(crate) fn find(val: &str) -> Result<Self, Box<dyn std::error::Error>> {
         // Attempt to parse the string into the enum variant
-        val.to_uppercase().parse::<Filter_fields>().map_err(|_| "Not found".into())
+        val.to_uppercase()
+            .parse::<Filter_fields>()
+            .map_err(|_| "Not found".into())
     }
 }
 
@@ -61,7 +65,10 @@ mod dns_filter_fields_tests {
 
     #[test]
     fn test_filter_fields() {
-        assert_eq!(Filter_fields::find("SRC_IP").unwrap(), Filter_fields::SRC_IP);
+        assert_eq!(
+            Filter_fields::find("SRC_IP").unwrap(),
+            Filter_fields::SRC_IP
+        );
         assert_eq!(Filter_fields::find("NAME").unwrap(), Filter_fields::NAME);
     }
 }
@@ -152,8 +159,18 @@ impl Filter {
     }
 
     fn matches(&self, packet_info: &Packet_info) -> bool {
-        debug!("{}", self.expr.0);
         match self.expr.0 {
+            Filter_fields::PROTOCOL => {
+                let Ok(prot) = DNS_Protocol::from_str(&*self.expr.2.to_uppercase()) else {
+                    return false;
+                };
+                if self.expr.1 == Filter_operator::EQUAL {
+                    return packet_info.protocol == prot;
+                } else if self.expr.1 == Filter_operator::NOT_EQUAL {
+                    return packet_info.protocol != prot;
+                };
+                false
+            }
             Filter_fields::SRC_IP => {
                 let Ok(src_addr) = self.expr.2.parse::<IpAddr>() else {
                     return false;
@@ -177,7 +194,7 @@ impl Filter {
                 false
             }
             Filter_fields::SRC_PORT => {
-                let Ok(port)= self.expr.2.parse::<u16>() else {
+                let Ok(port) = self.expr.2.parse::<u16>() else {
                     return false;
                 };
                 if self.expr.1 == Filter_operator::EQUAL {
@@ -188,8 +205,8 @@ impl Filter {
                 false
             }
             Filter_fields::DST_PORT => {
-                let Ok(port) = self.expr.2.parse::<u16>() else{
-                        return false;
+                let Ok(port) = self.expr.2.parse::<u16>() else {
+                    return false;
                 };
                 if self.expr.1 == Filter_operator::EQUAL {
                     return packet_info.dp == port;
@@ -199,17 +216,13 @@ impl Filter {
                 false
             }
             Filter_fields::REPLY_CODE => {
-                //  debug!("AA {} {} {}", self.expr.0, self.expr.1, self.expr.2);
                 let Ok(rc) = self.expr.2.to_uppercase().parse::<DnsReplyType>() else {
                     debug!("false");
                     return false;
                 };
-                //  debug!("RC: {}", rc);
                 let c = rc;
                 if self.expr.1 == Filter_operator::EQUAL {
                     for i in &packet_info.dns_records {
-                        //debug!("{} {} != {}", i.error, c, i.error == c );
-                        //debug!("{}", packet_info);
                         if i.error == c {
                             return true;
                         }
@@ -217,8 +230,6 @@ impl Filter {
                     return false;
                 } else if self.expr.1 == Filter_operator::NOT_EQUAL {
                     for i in &packet_info.dns_records {
-                        //        debug!("{} {} != {}", i.error, c, i.error == c );
-                        //      debug!("{}", packet_info);
                         if i.error != c {
                             return true;
                         }
@@ -268,7 +279,7 @@ impl Filter {
             }
             Filter_fields::CLASS => {
                 let Ok(match_class) = DNS_Class::from_str(self.expr.2.as_str()) else {
-                    return false; 
+                    return false;
                 };
                 if self.expr.1 == Filter_operator::EQUAL {
                     for i in &packet_info.dns_records {
@@ -290,7 +301,7 @@ impl Filter {
 
             Filter_fields::RR_TYPE => {
                 let Ok(match_class) = DNS_RR_type::from_str(self.expr.2.as_str()) else {
-                    return false; 
+                    return false;
                 };
                 if self.expr.1 == Filter_operator::EQUAL {
                     for i in &packet_info.dns_records {
@@ -390,6 +401,7 @@ impl Filter {
         }
     }
 
+    #[inline]
     fn to_str(&self) -> String {
         format!("{} {} {}", self.expr.0, self.expr.1, self.expr.2)
     }
@@ -454,7 +466,6 @@ pub fn listen(address: &str, port: u16) -> Option<TcpListener> {
         }
     }
 }
-
 
 #[derive(Debug)]
 pub(crate) struct Live_dump {

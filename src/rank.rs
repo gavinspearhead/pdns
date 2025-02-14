@@ -8,7 +8,7 @@ use tracing::debug;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Rank<T>
 where
-    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize +  Clone + Debug,
+    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize + Clone + Debug,
 {
     rank: HashMap<T, usize>,
     size: usize,
@@ -28,7 +28,7 @@ where
 
 impl<T> Rank<T>
 where
-    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize +  Clone + Debug,
+    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize + Clone + Debug,
 {
     pub fn new(size_in: usize) -> Rank<T> {
         Rank {
@@ -65,7 +65,7 @@ where
             *elem += 1;
             //debug!("{:?}: {:?}", element, *elem);
         } else {
-           // debug!("{:?}: 0", element);
+            // debug!("{:?}: 0", element);
             let val = if self.rank.len() >= self.size {
                 self.remove_lowest().max(1)
             } else {
@@ -95,7 +95,7 @@ where
 
 impl<T> Serialize for Rank<T>
 where
-    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize +  Clone + Debug,
+    T: Eq + std::hash::Hash + fmt::Display + serde::Serialize + Clone + Debug,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

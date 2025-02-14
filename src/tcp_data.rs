@@ -5,12 +5,12 @@ use tracing::debug;
 pub(crate) struct Tcp_data {
     data: Vec<u8>,
     init_seqnr: u32,
-    max_tcp_len :usize,
+    max_tcp_len: usize,
 }
 
 impl Tcp_data {
     const INIT_LEN: usize = 2048;
-    pub(crate) fn new(seqnr: u32, max_size:u32) -> Tcp_data {
+    pub(crate) fn new(seqnr: u32, max_size: u32) -> Tcp_data {
         Tcp_data {
             init_seqnr: seqnr,
             data: Vec::with_capacity(Self::INIT_LEN),
@@ -19,7 +19,7 @@ impl Tcp_data {
     }
 
     pub(crate) fn add_data(&mut self, seqnr: u32, data: &[u8]) {
-        if data.is_empty() { 
+        if data.is_empty() {
             return;
         }
         let pos = (seqnr - self.init_seqnr) as usize;
@@ -30,10 +30,10 @@ impl Tcp_data {
         let data_size = pos + data.len();
         if data_size > self.data.len() {
             self.data.resize(data_size, 0);
-         //   debug!("resized to {}", self.data.len());
+            //   debug!("resized to {}", self.data.len());
         }
         self.data[pos..data_size].copy_from_slice(data);
-      //  debug!("Data added at position: {}, init_seqnr: {} seqnr: {seqnr} ", self.data.len(), self.init_seqnr);
+        //  debug!("Data added at position: {}, init_seqnr: {} seqnr: {seqnr} ", self.data.len(), self.init_seqnr);
     }
 
     #[inline]

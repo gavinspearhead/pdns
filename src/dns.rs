@@ -1,5 +1,7 @@
 use crate::dns::DNS_RR_type::Private;
-use crate::errors::DNS_Error_Type::{Invalid_Class, Invalid_Opcode, Invalid_RR, Invalid_reply_type};
+use crate::errors::DNS_Error_Type::{
+    Invalid_Class, Invalid_Opcode, Invalid_RR, Invalid_reply_type,
+};
 use crate::errors::ParseErrorType::Invalid_Parameter;
 use crate::errors::{DNS_error, Parse_error};
 use serde::{Deserialize, Serialize};
@@ -43,10 +45,7 @@ impl DNS_Opcodes {
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
         match DNS_Opcodes::from_repr(usize::from(val)) {
             Some(x) => Ok(x),
-            None => Err(DNS_error::new(
-                Invalid_Opcode,
-                &format!("{val}"),
-            )),
+            None => Err(DNS_error::new(Invalid_Opcode, &format!("{val}"))),
         }
     }
 }
@@ -107,7 +106,7 @@ impl DNS_Class {
             Ok(x)
         } else {
             debug!("Error wrong class value {}", val);
-            Err(DNS_error::new( Invalid_Class, &format!("{val}"), ))
+            Err(DNS_error::new(Invalid_Class, &format!("{val}")))
         }
     }
 }
@@ -266,7 +265,7 @@ impl DNS_RR_type {
                 if val > 65280 {
                     Ok(Private)
                 } else {
-                    Err(DNS_error::new( Invalid_RR, &format!("{val}")))
+                    Err(DNS_error::new(Invalid_RR, &format!("{val}")))
                 }
             }
         }
@@ -407,7 +406,10 @@ pub(crate) fn tlsa_cert_usage(u: u8) -> Result<&'static str, Parse_error> {
         1 => Ok("PKIX-EE"),
         2 => Ok("DANE-TA"),
         3 => Ok("DANE-EE"),
-        _ => Err(Parse_error::new( Invalid_Parameter, "Unknown certificate usage", )),
+        _ => Err(Parse_error::new(
+            Invalid_Parameter,
+            "Unknown certificate usage",
+        )),
     }
 }
 
@@ -415,7 +417,7 @@ pub(crate) fn tlsa_selector(u: u8) -> Result<&'static str, Parse_error> {
     match u {
         0 => Ok("All"),
         1 => Ok("Pubkey"),
-        _ => Err(Parse_error::new( Invalid_Parameter,"Unknown TLSA selector")),
+        _ => Err(Parse_error::new(Invalid_Parameter, "Unknown TLSA selector")),
     }
 }
 
