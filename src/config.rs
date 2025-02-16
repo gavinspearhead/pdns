@@ -396,9 +396,6 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
         };
         *config = new_config.clone();
     }
-
-    config.create_db = *matches.get_one::<bool>("create_database").unwrap_or(&false);
-
     config.http_server = matches
         .get_one::<String>("http_server")
         .unwrap_or(&config.http_server)
@@ -452,9 +449,7 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
         .clone();
     config.daemon = *matches.get_one::<bool>("daemon").unwrap_or(&config.daemon);
     config.debug = *matches.get_one::<bool>("debug").unwrap_or(&config.debug);
-    config.promisc = *matches
-        .get_one::<bool>("promisc")
-        .unwrap_or(&config.promisc);
+    config.promisc = *matches.get_one::<bool>("promisc").unwrap_or(&config.promisc);
     config.toplistsize = *matches
         .get_one::<usize>("toplistsize")
         .unwrap_or(&config.toplistsize);
@@ -497,23 +492,14 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
         .unwrap_or(&config.export_stats)
         .clone();
     config.syslog = *matches.get_one::<bool>("syslog").unwrap_or(&config.syslog);
-    config.syslog = *matches
-        .get_one::<bool>("nosyslog")
-        .unwrap_or(&config.syslog);
-    config.additional = *matches
-        .get_one::<bool>("additional")
-        .unwrap_or(&config.additional);
-    config.additional = *matches
-        .get_one::<bool>("noadditional")
-        .unwrap_or(&config.additional);
-    config.authority = *matches
-        .get_one::<bool>("authority")
-        .unwrap_or(&config.authority);
-    config.authority = *matches
-        .get_one::<bool>("noauthority")
-        .unwrap_or(&config.authority);
+    config.syslog = *matches.get_one::<bool>("nosyslog").unwrap_or(&config.syslog);
+    config.additional = *matches.get_one::<bool>("additional").unwrap_or(&config.additional);
+    config.additional = *matches.get_one::<bool>("noadditional").unwrap_or(&config.additional);
+    config.authority = *matches.get_one::<bool>("authority").unwrap_or(&config.authority);
+    config.authority = *matches.get_one::<bool>("noauthority").unwrap_or(&config.authority);
     config.capture_tcp = *matches.get_one::<bool>("capture_tcp").unwrap_or(&config.capture_tcp);
     config.capture_tcp = *matches.get_one::<bool>("no_capture_tcp").unwrap_or(&config.capture_tcp);
+    config.create_db = *matches.get_one::<bool>("create_database").unwrap_or(&false);
 
     let rr_types = parse_rrtypes(&matches.get_one("rrtypes").unwrap_or(&empty_str).clone());
     // let rr_types = parse_rrtypes(config.rr_type);

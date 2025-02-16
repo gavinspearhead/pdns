@@ -30,12 +30,12 @@ pub(crate) struct Statistics {
     pub answers: u128,
     pub additional: u128,
     pub authority: u128,
+    pub udp: u128,
+    pub tcp: u128,
     #[serde(deserialize_with = "deserialize_ignore_any")]
     pub sources: Rank<IpAddr>,
     #[serde(deserialize_with = "deserialize_ignore_any")]
     pub destinations: Rank<IpAddr>,
-    pub udp: u128,
-    pub tcp: u128,
     #[serde(deserialize_with = "deserialize_ignore_any")]
     pub topdomain: Rank<String>,
     #[serde(deserialize_with = "deserialize_ignore_any")]

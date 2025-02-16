@@ -9,17 +9,17 @@ use unic_idna::to_unicode;
 pub(crate) struct DNS_record {
     pub(crate) rr_type: DNS_RR_type,
     pub(crate) class: DNS_Class,
-    pub(crate) ttl: u32,
-    pub(crate) name: String,
-    pub(crate) rdata: String,
-    pub(crate) count: u64,
-    pub(crate) timestamp: DateTime<Utc>,
-    pub(crate) domain: String,
-    pub(crate) asn: u32,
-    pub(crate) asn_owner: String,
-    pub(crate) prefix: String,
     pub(crate) error: DnsReplyType,
     pub(crate) extended_error: DNSExtendedError,
+    pub(crate) ttl: u32,
+    pub(crate) count: u64,
+    pub(crate) asn: u32,
+    pub(crate) timestamp: DateTime<Utc>,
+    pub(crate) name: String,
+    pub(crate) rdata: String,
+    pub(crate) domain: String,
+    pub(crate) asn_owner: String,
+    pub(crate) prefix: String,
 }
 
 impl DNS_record {}

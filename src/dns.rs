@@ -112,6 +112,7 @@ impl DNS_Class {
 }
 
 impl fmt::Display for DNS_Class {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_str())
     }
@@ -271,6 +272,7 @@ impl DNS_RR_type {
         }
     }
 
+    #[inline]
     pub(crate) fn collect_dns_rr_types() -> Vec<DNS_RR_type> {
         DNS_RR_type::iter().collect::<Vec<_>>()
     }
@@ -281,6 +283,7 @@ impl DNS_RR_type {
 }
 
 impl fmt::Display for DNS_RR_type {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_str())
     }
@@ -557,6 +560,7 @@ impl SVC_Param_Keys {
 }
 
 impl fmt::Display for SVC_Param_Keys {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_str())
     }

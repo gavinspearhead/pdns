@@ -10,8 +10,8 @@ pub(crate) struct Rank<T>
 where
     T: Eq + std::hash::Hash + fmt::Display + serde::Serialize + Clone + Debug,
 {
-    rank: HashMap<T, usize>,
     size: usize,
+    rank: HashMap<T, usize>,
 }
 
 impl<T> Default for Rank<T>

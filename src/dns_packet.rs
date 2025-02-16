@@ -42,6 +42,7 @@ impl DNS_Protocol {
 }
 
 impl fmt::Display for DNS_Protocol {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_str())
     }
@@ -67,7 +68,6 @@ fn parse_question(
     *stats.qclass.entry(class).or_insert(0) += 1;
     stats.total_time_stats.add(packet_info.timestamp, 1);
 
-    let len = offset - offset_in;
     if rcode == DnsReplyType::NXDOMAIN {
         stats.topnx.add(&name);
         stats.blocked_time_stats.add(packet_info.timestamp, 1);
@@ -96,7 +96,8 @@ fn parse_question(
         };
         packet_info.add_dns_record(rec);
     }
-    Ok(len + 4)
+    let len = 4+ offset - offset_in;
+    Ok(len)
 }
 
 fn parse_edns(
@@ -276,7 +277,6 @@ fn parse_answer(
     }
     let rrtype_val = dns_read_u16(packet, offset)?;
     let rrtype = parse_rrtype(rrtype_val)?;
-    //debug!("rrtype: {rrtype}");
     if rrtype == DNS_RR_type::OPT {
         offset += 2;
         let len = parse_edns(packet_info, packet, offset, stats)?;
@@ -394,28 +394,20 @@ pub(crate) fn parse_dns(
     *stats.errors.entry(rcode).or_insert(0) += 1;
 
     for _ in 0..questions {
-        // let query = dns_parse_slice(packet, offset..)?;
         offset += parse_question(packet_info, packet, offset, stats, rcode, skip_list)?;
     }
-    // tracing::debug!("Answers {}", answers);
     for _ in 0..answers {
-        // debug!("answer {_i} of {answers} offset {offset}");
         offset += parse_answer(packet_info, packet, offset, stats, config, skip_list)?;
     }
     if config.authority {
-        // tracing::debug!("Authority {}", authority);
         for _ in 0..authority {
-            //   debug!("authority {_i} of {authority} offset {offset}");
             offset += parse_answer(packet_info, packet, offset, stats, config, skip_list)?;
         }
     }
     if config.additional {
-        //  debug!("Additional {}", additional);
         for _i in 0..additional {
-            //debug!("additional {_i} of {additional} offset {offset} data: {:x?}", &
             offset += parse_answer(packet_info, packet, offset, stats, config, skip_list)?;
         }
     }
-    //  debug!("{packet_info}");
     Ok(())
 }

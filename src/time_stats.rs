@@ -5,9 +5,9 @@ use tracing::debug;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 
 pub(crate) struct Bucket {
-    pub(crate) items: Vec<u64>,
     last_post: usize,
     last_group: usize,
+    pub(crate) items: Vec<u64>,
 }
 
 impl Bucket {

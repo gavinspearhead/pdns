@@ -59,16 +59,16 @@ impl Error for TcpConnection_error {
 #[serde_as]
 #[derive(Debug, Clone, Serialize, PartialEq, PartialOrd)]
 struct Tcp_connection {
-    in_data: Tcp_data,
     #[serde(with = "chrono::serde::ts_seconds")]
-    ts: DateTime<Utc>,
+    timestamp: DateTime<Utc>,
+    in_data: Tcp_data,
 }
 
 impl Tcp_connection {
     pub fn new(seq_nr: u32, timestamp: DateTime<Utc>, max_size: u32) -> Tcp_connection {
         Tcp_connection {
             in_data: Tcp_data::new(seq_nr, max_size),
-            ts: timestamp,
+            timestamp,
         }
     }
     #[inline]
@@ -156,7 +156,7 @@ impl TCP_Connections {
         let mut min_idle = 1;
         // debug!("Checking timeout before: Size : {}", self.connections.len());
         self.connections.retain(|_, v| {
-            let idle_time = (now - v.ts.timestamp()) as u64;
+            let idle_time = (now - v.timestamp.timestamp()) as u64;
             min_idle = min_idle.min(self.timelimit - idle_time);
             //  debug!("Check timeout after: {} {}", v.ts, idle_time);
             idle_time < self.timelimit

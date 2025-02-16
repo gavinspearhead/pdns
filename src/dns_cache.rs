@@ -5,8 +5,8 @@ use crate::dns_record::DNS_record;
 
 #[derive(Debug, Clone)]
 pub(crate) struct DNS_Cache {
-    items: HashMap<(DNS_RR_type, String, String), DNS_record>,
     timeout: i64,
+    items: HashMap<(DNS_RR_type, String, String), DNS_record>,
 }
 
 impl DNS_Cache {

@@ -13,6 +13,7 @@ use errors::Parse_error;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use tcp_connection::TCP_Connections;
+
 fn parse_tcp(
     packet: &[u8],
     packet_info: &mut Packet_info,
@@ -33,7 +34,7 @@ fn parse_tcp(
     let len = u32::try_from(packet.len() - usize::from(hl))?;
     let flags = packet[13];
     //let _wsize = dns_read_u16(packet, 14)?;
-    let seqnr = dns_read_u32(packet, 4)?;
+    let seq_nr = dns_read_u32(packet, 4)?;
 
     packet_info.set_dest_port(dp);
     packet_info.set_source_port(sp);
@@ -45,7 +46,7 @@ fn parse_tcp(
         dp,
         packet_info.s_addr,
         packet_info.d_addr,
-        seqnr,
+        seq_nr,
         dns_data,
         flags,
     );
@@ -91,7 +92,6 @@ fn parse_udp(
     packet_info.set_source_port(sp);
     packet_info.set_data_len(u32::from(len) - 8);
 
-    //if dp == 53 || sp == 53 || dp == 5353 || sp == 5353 || dp == 5355 || sp == 5355 {
     if matches!(dp, 53 | 5353 | 5355) || matches!(sp, 53 | 5353 | 5355) {
         stats.udp += 1;
         parse_dns(
@@ -119,7 +119,6 @@ fn parse_ip_data(
         // TCP
         if config.capture_tcp {
             packet_info.set_protocol(DNS_Protocol::TCP);
-
             parse_tcp(packet, packet_info, stats, tcp_list, config, skip_list)
         } else {
             Ok(())
