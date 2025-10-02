@@ -7,6 +7,7 @@ fn prefix_str(mut s1: String, s2: &str) -> String {
     s1
 }
 
+#[derive(Debug, Clone, Default)]
 pub(crate) struct Skip_List {
     entries: Vec<Regex>,
 }
@@ -16,6 +17,10 @@ impl Skip_List {
         Skip_List {
             entries: Vec::new(),
         }
+    }
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
     }
 
     pub fn parse_skiplist(&mut self, file_contents: &str) {
@@ -55,6 +60,9 @@ impl Skip_List {
 
     #[must_use]
     pub fn match_skip_list(&self, name: &str) -> bool {
+        if self.is_empty() {
+            return false;
+        }
         let clean_name = name.strip_suffix('.').unwrap_or(name);
         self.entries.iter().any(|r| r.is_match(clean_name))
     }

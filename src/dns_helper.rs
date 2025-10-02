@@ -1,13 +1,17 @@
-use crate::errors::ParseErrorType::{Invalid_DNS_Packet, Invalid_packet_index, Invalid_timestamp};
-use crate::{
-    dns::{DNS_Class, DNS_RR_type},
-    errors::{DNS_error, Parse_error},
+use crate::dns_class::DNS_Class;
+use crate::dns_rr_type::DNS_RR_type;
+use crate::errors::ParseErrorType::{
+    Invalid_DNS_Packet, Invalid_Parameter, Invalid_packet_index, Invalid_timestamp,
 };
+use crate::errors::{DNS_error, Parse_error};
 use byteorder::{BigEndian, ByteOrder as _};
 use chrono::DateTime;
 use data_encoding::BASE32HEX_NOPAD;
+use log::debug;
+use std::fmt::Write;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::ops::RangeBounds;
+// Add this at the top of the file
 /*
 #[inline]
 pub(crate) fn is_between<T: PartialOrd>(value: &T, min: &T, max: &T) -> bool {
@@ -72,8 +76,130 @@ pub(crate) fn dns_read_u8(packet: &[u8], offset: usize) -> Result<u8, Parse_erro
     Ok(r)
 }
 
+pub fn dns_append_u64(data: &mut Vec<u8>, value: u64) {
+    data.extend_from_slice(&value.to_be_bytes());
+}
+
+pub fn dns_append_u32(data: &mut Vec<u8>, value: u32) {
+    data.extend_from_slice(&value.to_be_bytes());
+}
+
+pub fn dns_append_u16(data: &mut Vec<u8>, value: u16) {
+    data.extend_from_slice(&value.to_be_bytes());
+}
+
+pub fn dns_append_u8(data: &mut Vec<u8>, value: u8) {
+    data.extend_from_slice(&value.to_be_bytes());
+}
+#[inline]
 pub(crate) fn base32hex_encode(input: &[u8]) -> String {
     BASE32HEX_NOPAD.encode(input)
+}
+
+pub fn parse_nsec_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, Parse_error> {
+    let len = bitmap.len();
+    let mut res: Vec<u16> = Vec::new();
+    let mut offset = 0;
+    while offset < len {
+        let high_byte = (u16::from(dns_read_u8(bitmap, offset)?)) << 8;
+        let size = usize::from(dns_read_u8(bitmap, offset + 1)?);
+        for i in 0..size {
+            let mut pos: u8 = 0x80;
+            for j in 0..8 {
+                if dns_read_u8(bitmap, offset + 2 + i)? & pos != 0 {
+                    let Ok(x) = (usize::from(high_byte) | ((8 * i) + j)).try_into() else {
+                        return Err(Parse_error::new(Invalid_Parameter, ""));
+                    };
+                    res.push(x);
+                }
+                pos >>= 1;
+            }
+        }
+        offset += size + 2;
+    }
+    Ok(res)
+}
+
+pub fn map_bitmap_to_rr(bitmap: &[u16]) -> Result<String, Parse_error> {
+    let mut res = String::new();
+    for i in bitmap {
+        let Ok(x) = DNS_RR_type::find(*i) else {
+            return Err(Parse_error::new(Invalid_Parameter, ""));
+        };
+        write!(res, "{x} ").map_err(|_| Parse_error::new(Invalid_Parameter, ""))?;
+    }
+    Ok(res)
+}
+
+pub fn parse_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, Parse_error> {
+    let mut res: Vec<u16> = Vec::new();
+    for (i, item) in bitmap.iter().enumerate() {
+        let mut pos: u8 = 0x80;
+        for j in 0..8 {
+            if item & pos != 0 {
+                let Ok(x) = ((8 * i) + j).try_into() else {
+                    return Err(Parse_error::new(Invalid_Parameter, ""));
+                };
+                res.push(x);
+            }
+            pos >>= 1;
+        }
+    }
+    Ok(res)
+}
+
+pub fn build_bitmap_from_vec(indices: &[u16]) -> Result<Vec<u8>, Parse_error> {
+    if indices.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Find the highest bit index to size the bitmap
+    let &max_idx = indices.iter().max().unwrap();
+    let needed_len = (usize::from(max_idx) / 8) + 1;
+    let mut bitmap = vec![0u8; needed_len];
+
+    // Set bits (MSB-first in each byte, same as parse_bitmap_vec expects)
+    for &idx in indices {
+        let idx_usize = usize::from(idx);
+        let byte = idx_usize / 8;
+        let bit_in_byte = idx_usize % 8; // 0..=7
+        let shift = 7u8 - (bit_in_byte as u8);
+        bitmap[byte] |= 1u8 << shift;
+    }
+
+    Ok(bitmap)
+}
+#[must_use]
+pub fn process_bitmap(bitmap: &Vec<u16>) -> Vec<u8> {
+    let mut bitmap_bytes = Vec::new();
+    let mut window_bytes = Vec::new();
+    let mut current_window = bitmap[0] >> 8;
+
+    for &rr_type in bitmap {
+        let window = rr_type >> 8;
+        if window != current_window {
+            if !window_bytes.is_empty() {
+                bitmap_bytes.push(current_window as u8);
+                bitmap_bytes.push(window_bytes.len() as u8);
+                bitmap_bytes.extend_from_slice(&window_bytes);
+            }
+            current_window = window;
+            window_bytes.clear();
+        }
+        let byte_offset = (rr_type & 0xFF) / 8;
+        while window_bytes.len() <= byte_offset as usize {
+            window_bytes.push(0);
+        }
+        window_bytes[byte_offset as usize] |= 1 << (7 - (rr_type & 0x07));
+    }
+
+    if !window_bytes.is_empty() {
+        bitmap_bytes.push(current_window as u8);
+        bitmap_bytes.push(window_bytes.len() as u8);
+        bitmap_bytes.extend_from_slice(&window_bytes);
+    }
+
+    bitmap_bytes
 }
 
 pub(crate) fn dns_parse_slice<T>(packet: &[u8], range: T) -> Result<&[u8], Parse_error>
@@ -125,6 +251,110 @@ pub(crate) fn parse_ipv6(data: &[u8]) -> Result<IpAddr, Parse_error> {
         }
     };
     Ok(IpAddr::V6(Ipv6Addr::from(r)))
+}
+#[derive(Debug, Clone)]
+struct elem {
+    name: String,
+    pos: usize,
+}
+
+impl elem {
+    fn new(name: &str, pos: usize) -> elem {
+        elem {
+            name: name.to_string(),
+            pos,
+        }
+    }
+}
+#[derive(Debug, Clone, Default)]
+pub struct names_list {
+    name_list: Vec<elem>,
+}
+
+impl names_list {
+    #[must_use]
+    pub fn new() -> names_list {
+        names_list { name_list: vec![] }
+    }
+
+    pub(crate) fn add(&mut self, name: &str, pos: usize) {
+        self.name_list.push(elem::new(name, pos));
+    }
+    pub(crate) fn find_longest_match(&self, name: &str) -> (usize, usize) {
+        let mut longest = Vec::new();
+        let parts: Vec<&str> = name.split('.').collect();
+        let mut pos = 0;
+        for x in &self.name_list {
+            let mut common_suffix = Vec::new();
+            let xparts: Vec<&str> = x.name.split('.').collect();
+            for (a, b) in parts.iter().rev().zip(xparts.iter().rev()) {
+                if a == b {
+                    common_suffix.push(*a);
+                } else {
+                    break;
+                }
+            }
+            if longest.join("").len() < common_suffix.join("").len() {
+                longest = common_suffix;
+                // println!("{} {} {} {}", x.name.len(), longest.join(".").len(), x.name, longest.join(""));
+                pos = x.pos + (x.name.len() - longest.join(".").len());
+            }
+        }
+        longest.reverse();
+        let suf = longest.join(".");
+        //println!("suffix {suf} pos {pos}");
+        (suf.len(), pos)
+    }
+}
+
+mod tests_names_list {
+    use crate::dns_helper::names_list;
+
+    #[test]
+    fn test_dns_rr() {
+        let mut n = names_list::new();
+        n.add("www.homes.com", 1);
+        n.add("www.home.com", 1);
+        n.add("www.future.com", 1);
+
+        assert_eq!(n.find_longest_match("intra.home.com"), (8, 1));
+    }
+}
+
+pub(crate) fn dns_format_name(name_in: &str, names: &mut names_list, pos_in: usize) -> Vec<u8> {
+    debug_assert!(name_in.len() <= 255 && !name_in.is_empty());
+
+    let mut res: Vec<u8> = Vec::with_capacity(name_in.len() + 2);
+    debug!("{names:?}");
+
+    let mut name = name_in.trim_end_matches('.');
+    let (len, pos) = names.find_longest_match(name);
+    if len != 0 {
+        name = &name[0..name.len() - len];
+    } else {
+        names.add(name_in, pos_in);
+    }
+    debug!("name now is : {name}");
+    let parts: Vec<&str> = name.split('.').collect();
+    debug!("name parts is: {parts:?}");
+    for x in parts {
+        debug_assert!(x.len() <= 63);
+        debug!("x: {} {x}", x.len());
+        if !x.is_empty() {
+            res.push(x.len() as u8);
+            // res.push(0xc0);
+            res.append(x.as_bytes().to_vec().as_mut());
+        }
+    }
+    if len != 0 {
+        let ptr = 0xc000 | (pos as u16);
+        res.push((ptr >> 8) as u8);
+        res.push((ptr & 0xff) as u8);
+    } else {
+        res.push(0);
+    }
+    debug!("RES now is: {res:x?}");
+    res
 }
 
 #[cfg(test)]
@@ -233,4 +463,35 @@ mod tests {
         )
         .is_err());
     }
+}
+
+use std::collections::BTreeMap;
+
+pub(crate) fn encode_nsec3_bitmap(rr_types: &[u16]) -> Vec<u8> {
+    let mut windows: BTreeMap<u8, Vec<u8>> = BTreeMap::new();
+
+    for &rr_type in rr_types {
+        let window = (rr_type / 256) as u8;
+        let offset = (rr_type % 256) as usize;
+        let byte_index = offset / 8;
+        let bitmap = windows.entry(window).or_insert_with(|| vec![0u8; 32]);
+        let bit_position = 7 - (offset % 8); // MSB is bit 0
+
+        if byte_index >= bitmap.len() {
+            bitmap.resize(byte_index + 1, 0);
+        }
+
+        bitmap[byte_index] |= 1 << bit_position;
+    }
+
+    // Assemble the final result
+    let mut result = Vec::new();
+    for (window, bitmap) in windows {
+        let length = bitmap.iter().rposition(|&b| b != 0).map_or(0, |i| i + 1);
+        result.push(window);
+        result.push(length as u8);
+        result.extend_from_slice(&bitmap[..length]);
+    }
+
+    result
 }

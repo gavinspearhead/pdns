@@ -3,7 +3,6 @@ use serde::Serialize;
 use std::cmp::Ordering::Equal;
 use std::fmt::Debug;
 use std::{collections::HashMap, fmt};
-use tracing::debug;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Rank<T>
@@ -52,7 +51,7 @@ where
             }
         }
         if let Some(k) = min_key {
-            debug!("Remove k={} minv={} maxv={}", k, min_val, max_val);
+            //debug!("Remove k={} minv={} maxv={}", k, min_val, max_val);
             self.rank.remove(&k.clone());
             (2 * min_val + max_val) / 3
         } else {

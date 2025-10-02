@@ -2,10 +2,8 @@ use clap::{arg, ArgAction, Command};
 use serde::{Deserialize, Serialize};
 use serde_json::Error;
 
-use crate::{
-    dns::DNS_RR_type,
-    version::{AUTHOR, DESCRIPTION, PROGNAME, VERSION},
-};
+use crate::dns_rr_type::DNS_RR_type;
+use crate::version::{AUTHOR, DESCRIPTION, PROGNAME, VERSION};
 use std::{fs::File, io::BufReader, str::FromStr as _};
 use tracing::{debug, error};
 
@@ -40,18 +38,18 @@ pub(crate) struct Config {
     pub export_stats: String,
     pub live_dump_port: u16,
     pub live_dump_host: String,
+    pub log_file: String,
     pub clean_interval: i64,
     pub additional: bool,
     pub authority: bool,
-    pub log_file: String,
     pub syslog: bool,
     pub create_db: bool,
-    pub tcp_memory: u32,
     pub capture_tcp: bool,
+    pub tcp_memory: u32,
 }
 
 impl Config {
-    pub(crate) fn new() -> Config {
+    pub fn new() -> Config {
         let mut c = Config {
             rr_type: Vec::<DNS_RR_type>::new(),
             interface: String::new(),
@@ -107,22 +105,23 @@ pub(crate) fn parse_rrtypes(config_str: &str) -> Vec<DNS_RR_type> {
     } else if config_str == "*" {
         return DNS_RR_type::collect_dns_rr_types();
     }
-
-    let mut rrtypes: Vec<DNS_RR_type> = Vec::new();
-    let elems = config_str.split(',').map(str::trim);
-    for i in elems {
-        if let Ok(a) = DNS_RR_type::from_string(i) {
-            rrtypes.push(a);
-        } else {
-            error!("Invalid RR type: {i}");
-        }
-    }
+    let rrtypes: Vec<DNS_RR_type> = config_str
+        .split(',')
+        .map(str::trim)
+        .filter_map(|i| {
+            DNS_RR_type::from_string(i)
+                .map_err(|_| error!("Invalid RR type: {i}"))
+                .ok()
+        })
+        .collect();
     rrtypes
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{config::parse_rrtypes, dns::DNS_RR_type};
+    use crate::config::parse_rrtypes;
+    use crate::dns_rr_type::DNS_RR_type;
+
     #[test]
     fn test_parse_rrtypes1() {
         assert_eq!(
@@ -299,26 +298,28 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
                     .required(false)
                     .action(ArgAction::SetTrue)
                     .long_help("Create a database"),
-            ).arg(
-            arg!(--no_capture_tcp)
-                .required(false)
-                .action(ArgAction::SetFalse)
-                .conflicts_with("capture_tcp")
-                .long_help("Do not capture DNS traffic on TCP"),
-            ).arg(
-            arg!(--capture_tcp)
-                .required(false)
-                .action(ArgAction::SetTrue)
-                .long_help("Capture DNS traffic on TCP"),
             )
             .arg(
-                arg!(-C --promisc)
+                arg!(--no_capture_tcp)
+                    .required(false)
+                    .action(ArgAction::SetFalse)
+                    .conflicts_with("capture_tcp")
+                    .long_help("Do not capture DNS traffic on TCP"),
+            )
+            .arg(
+                arg!(--capture_tcp)
+                    .required(false)
+                    .action(ArgAction::SetTrue)
+                    .long_help("Capture DNS traffic on TCP"),
+            )
+            .arg(
+                arg!(-C - -promisc)
                     .required(false)
                     .action(ArgAction::SetTrue)
                     .long_help("Put the interface is promiscuous mode when capturing"),
             )
             .arg(
-                arg!(-D --daemon)
+                arg!(-D - -daemon)
                     .required(false)
                     .action(ArgAction::SetTrue)
                     .long_help("Start as a background process (daemon)"),
@@ -449,7 +450,9 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
         .clone();
     config.daemon = *matches.get_one::<bool>("daemon").unwrap_or(&config.daemon);
     config.debug = *matches.get_one::<bool>("debug").unwrap_or(&config.debug);
-    config.promisc = *matches.get_one::<bool>("promisc").unwrap_or(&config.promisc);
+    config.promisc = *matches
+        .get_one::<bool>("promisc")
+        .unwrap_or(&config.promisc);
     config.toplistsize = *matches
         .get_one::<usize>("toplistsize")
         .unwrap_or(&config.toplistsize);
@@ -492,13 +495,27 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
         .unwrap_or(&config.export_stats)
         .clone();
     config.syslog = *matches.get_one::<bool>("syslog").unwrap_or(&config.syslog);
-    config.syslog = *matches.get_one::<bool>("nosyslog").unwrap_or(&config.syslog);
-    config.additional = *matches.get_one::<bool>("additional").unwrap_or(&config.additional);
-    config.additional = *matches.get_one::<bool>("noadditional").unwrap_or(&config.additional);
-    config.authority = *matches.get_one::<bool>("authority").unwrap_or(&config.authority);
-    config.authority = *matches.get_one::<bool>("noauthority").unwrap_or(&config.authority);
-    config.capture_tcp = *matches.get_one::<bool>("capture_tcp").unwrap_or(&config.capture_tcp);
-    config.capture_tcp = *matches.get_one::<bool>("no_capture_tcp").unwrap_or(&config.capture_tcp);
+    config.syslog = *matches
+        .get_one::<bool>("nosyslog")
+        .unwrap_or(&config.syslog);
+    config.additional = *matches
+        .get_one::<bool>("additional")
+        .unwrap_or(&config.additional);
+    config.additional = *matches
+        .get_one::<bool>("noadditional")
+        .unwrap_or(&config.additional);
+    config.authority = *matches
+        .get_one::<bool>("authority")
+        .unwrap_or(&config.authority);
+    config.authority = *matches
+        .get_one::<bool>("noauthority")
+        .unwrap_or(&config.authority);
+    config.capture_tcp = *matches
+        .get_one::<bool>("capture_tcp")
+        .unwrap_or(&config.capture_tcp);
+    config.capture_tcp = *matches
+        .get_one::<bool>("no_capture_tcp")
+        .unwrap_or(&config.capture_tcp);
     config.create_db = *matches.get_one::<bool>("create_database").unwrap_or(&false);
 
     let rr_types = parse_rrtypes(&matches.get_one("rrtypes").unwrap_or(&empty_str).clone());

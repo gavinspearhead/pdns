@@ -2,12 +2,11 @@ use chrono::{DateTime, Datelike as _, Timelike as _, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub(crate) struct Bucket {
     last_post: usize,
     last_group: usize,
-    pub(crate) items: Vec<u64>,
+    items: Vec<u64>,
 }
 
 impl Bucket {
@@ -19,6 +18,10 @@ impl Bucket {
         }
     }
 
+    #[inline]
+    fn get_item(&self) -> &Vec<u64> {
+        self.items.as_ref()
+    }
     fn add(&mut self, position: u32, count: u64, group_val: u32) {
         let pos = position as usize;
         let len = self.items.len();
@@ -89,6 +92,15 @@ mod tests {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub(crate) enum STAT_ITEM {
+    MONTH,
+    MINUTE,
+    HOUR,
+    DAY,
+    SECOND,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub(crate) struct Time_stats {
     pub(crate) per_month: Bucket,
     pub(crate) per_minute: Bucket,
@@ -112,7 +124,7 @@ impl Time_stats {
         let m = time_stamp.minute();
         let s = time_stamp.second();
         let h = time_stamp.hour();
-        let d = time_stamp.day0(); //correct because start at 1
+        let d = time_stamp.day0();
         let mon = time_stamp.month0();
         let year = time_stamp.year() as u32;
         self.per_month.add(mon, count, year);
@@ -120,5 +132,15 @@ impl Time_stats {
         self.per_minute.add(m, count, h);
         self.per_hour.add(h, count, d);
         self.per_second.add(s, count, m);
+    }
+
+    pub(crate) fn get_item(&self, stat_item: &STAT_ITEM) -> &Vec<u64> {
+        match stat_item {
+            STAT_ITEM::MONTH => self.per_month.get_item(),
+            STAT_ITEM::MINUTE => self.per_minute.get_item(),
+            STAT_ITEM::HOUR => self.per_hour.get_item(),
+            STAT_ITEM::DAY => self.per_day.get_item(),
+            STAT_ITEM::SECOND => self.per_second.get_item(),
+        }
     }
 }

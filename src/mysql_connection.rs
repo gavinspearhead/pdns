@@ -7,8 +7,9 @@ use std::process::exit;
 use std::str::FromStr;
 use tracing::debug;
 
+use crate::config::Config;
 use crate::dns_record::DNS_record;
-use crate::{config::Config, dns::DnsReplyType};
+use crate::dns_reply_type::DnsReplyType;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Mysql_connection {
@@ -30,7 +31,7 @@ impl Mysql_connection {
                 .disable_statement_logging()
                 .log_slow_statements(log::LevelFilter::Warn, std::time::Duration::from_secs(1)),
             Err(err) => {
-                error!("Failed to connect to the database: {:?}", err);
+                error!("Failed to connect to the database: {err:?}");
                 exit(1);
             }
         };
@@ -43,7 +44,7 @@ impl Mysql_connection {
                 Mysql_connection { pool: mysql_pool }
             }
             Err(err) => {
-                error!("Failed to connect to the database: {:?}", err);
+                error!("Failed to connect to the database: {err:?}");
                 exit(1);
             }
         }
@@ -185,7 +186,7 @@ impl Mysql_connection {
             }
         }
     }
-    pub(crate) fn clean_database(self, config: &Config) {
+    pub fn clean_database(self, config: &Config) {
         if config.clean_interval <= 0 {
             return;
         }

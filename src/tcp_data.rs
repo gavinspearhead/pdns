@@ -1,7 +1,7 @@
 use serde_with::serde_derive::Serialize;
 use tracing::debug;
 
-#[derive(Debug, Clone, Serialize, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Default, Serialize, PartialEq, PartialOrd)]
 pub(crate) struct Tcp_data {
     init_seqnr: u32,
     max_tcp_len: usize,
@@ -22,8 +22,8 @@ impl Tcp_data {
         if data.is_empty() {
             return;
         }
-        let pos = (seqnr - self.init_seqnr) as usize;
-        if pos > self.max_tcp_len {
+        let pos = seqnr.wrapping_sub(self.init_seqnr) as usize;
+        if pos >= self.max_tcp_len {
             debug!("Weird sequence number: {pos} - packet too big");
             return;
         }

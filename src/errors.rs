@@ -23,11 +23,14 @@ pub(crate) enum ParseErrorType {
     Invalid_NSEC3PARAM,
     Invalid_Parameter,
     Invalid_Domain_name,
+    Invalid_Data,
+    Invalid_IPAddress,
+    Skipped_Message,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Parse_error {
-    error_type: ParseErrorType,
+pub struct Parse_error {
+    pub(crate) error_type: ParseErrorType,
     error_str: String,
     value: String,
 }
@@ -55,6 +58,9 @@ impl Parse_error {
             ParseErrorType::Invalid_NSEC3PARAM => "Invalid NSEC3PARAM format",
             ParseErrorType::Invalid_Parameter => "Invalid Parameter",
             ParseErrorType::Invalid_Domain_name => "Invalid domain name",
+            ParseErrorType::Invalid_Data => "Invalid Data",
+            ParseErrorType::Invalid_IPAddress => "Invalid IP Address",
+            ParseErrorType::Skipped_Message => "Skipped Message",
         };
         Parse_error {
             error_type: err_t,
@@ -79,12 +85,14 @@ impl Error for Parse_error {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
 pub(crate) enum DNS_Error_Type {
     Invalid_RR,
+    Invalid_Param,
     Invalid_Class,
     Invalid_reply_type,
     Invalid_Opcode,
     Invalid_Extended_Error_Code,
     Invalid_Extended_Option_Code,
 }
+
 
 #[derive(Debug, Clone)]
 pub(crate) struct DNS_error {
@@ -97,6 +105,7 @@ impl DNS_error {
     pub(crate) fn new(err_t: DNS_Error_Type, val: &str) -> DNS_error {
         let s = match err_t {
             DNS_Error_Type::Invalid_Class => "Invalid Class",
+            DNS_Error_Type::Invalid_Param => "Invalid Parameter",
             DNS_Error_Type::Invalid_RR => "Invalid RR Type",
             DNS_Error_Type::Invalid_reply_type => "Invalid Reply type",
             DNS_Error_Type::Invalid_Opcode => "Invalid Opcode",

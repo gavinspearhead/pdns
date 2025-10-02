@@ -39,6 +39,8 @@ pub(crate) enum EDNSOptionCodes {
     EDNSServerTag = 17,
     ReportChannel = 18,
     ZoneVersion = 19,
+    MQtype_query = 20,
+    MQtype_response = 21,
     UmbrellaIdent = 20292,
     DeviceID = 26946,
 }
@@ -83,6 +85,7 @@ impl fmt::Display for EDNSOptionCodes {
     Ord,
     Hash,
 )]
+
 pub(crate) enum DNSExtendedError {
     #[default]
     None = 0xffff,
@@ -117,6 +120,7 @@ pub(crate) enum DNSExtendedError {
     Unable_To_Conform_To_Policy = 28,
     Synthesized = 29,
     Invalid_Query_Type = 30,
+    Private = 65534,
 }
 
 impl DNSExtendedError {
@@ -128,10 +132,16 @@ impl DNSExtendedError {
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
         match DNSExtendedError::from_repr(usize::from(val)) {
             Some(x) => Ok(x),
-            None => Err(DNS_error::new(
-                Invalid_Extended_Error_Code,
-                &format!("{val}"),
-            )),
+            None => {
+                if (49152..65535).contains(&val) {
+                    Ok(DNSExtendedError::Private)
+                } else {
+                    Err(DNS_error::new(
+                        Invalid_Extended_Error_Code,
+                        &format!("{val}"),
+                    ))
+                }
+            }
         }
     }
 }

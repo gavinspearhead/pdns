@@ -1,35 +1,13 @@
-use crate::dns::DNS_RR_type;
-use crate::dns_packet::DNS_Protocol;
+use std::fmt::Write;
+use crate::dns_protocol::DNS_Protocol;
 use crate::dns_record::DNS_record;
+use crate::dns_rr_type::DNS_RR_type;
 use asn_db2::{Database, IpEntry};
 use chrono::{DateTime, Utc};
 use std::{
-    collections::VecDeque,
     fmt,
     net::{IpAddr, Ipv4Addr},
-    sync::{Arc, Mutex},
 };
-
-#[derive(Debug, Clone)]
-pub(crate) struct Packet_Queue {
-    queue: Arc<Mutex<VecDeque<Option<Packet_info>>>>,
-}
-
-impl Packet_Queue {
-    pub(crate) fn new() -> Packet_Queue {
-        Packet_Queue {
-            queue: Arc::new(Mutex::new(VecDeque::new())),
-        }
-    }
-    #[inline]
-    pub(crate) fn push_back(&self, packet_info: Option<Packet_info>) {
-        self.queue.lock().unwrap().push_back(packet_info);
-    }
-    #[inline]
-    pub(crate) fn pop_front(&self) -> Option<Option<Packet_info>> {
-        self.queue.lock().unwrap().pop_front()
-    }
-}
 
 #[derive(Debug, Clone)]
 pub(crate) struct Packet_info {
@@ -101,7 +79,7 @@ impl Packet_info {
     pub fn to_csv(&self) -> String {
         let mut s = String::new();
         for i in &self.dns_records {
-            s += &format!(
+            write!(s,
                 "{},{},{},{},{},{},{},{},{}\n",
                 self.s_addr,
                 self.d_addr,
@@ -112,14 +90,14 @@ impl Packet_info {
                 i.name,
                 i.rdata,
                 1
-            );
+            ).unwrap();
         }
         s
     }
     pub fn to_json(&self) -> String {
         let mut s = String::new();
         for i in &self.dns_records {
-            s += &format!(
+            write!(s,
                 "{{ 
                    \"source_ip\" : {},
                    \"destination_ip\" : {},
@@ -140,7 +118,7 @@ impl Packet_info {
                 i.name,
                 i.rdata,
                 1
-            );
+            ).unwrap();
         }
         s
     }

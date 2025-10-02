@@ -1,4 +1,7 @@
-use crate::dns::{DNS_Class, DNS_RR_type, DnsReplyType};
+use crate::dns_class::DNS_Class;
+use crate::dns_protocol::DNS_Protocol;
+use crate::dns_reply_type::DnsReplyType;
+use crate::dns_rr_type::DNS_RR_type;
 use crate::packet_info::Packet_info;
 use core::fmt;
 use serde::{Deserialize, Serialize};
@@ -11,7 +14,6 @@ use std::{
 };
 use strum_macros::{AsRefStr, EnumIter, EnumString, FromRepr, IntoStaticStr};
 use tracing::{debug, error};
-use crate::dns_packet::DNS_Protocol;
 
 #[derive(
     Debug,
@@ -161,14 +163,14 @@ impl Filter {
     fn matches(&self, packet_info: &Packet_info) -> bool {
         match self.expr.0 {
             Filter_fields::PROTOCOL => {
-                let Ok(prot) = DNS_Protocol::from_str(&*self.expr.2.to_uppercase()) else {
+                let Ok(prot) = DNS_Protocol::from_str(&self.expr.2.to_uppercase()) else {
                     return false;
                 };
                 if self.expr.1 == Filter_operator::EQUAL {
                     return packet_info.protocol == prot;
                 } else if self.expr.1 == Filter_operator::NOT_EQUAL {
                     return packet_info.protocol != prot;
-                };
+                }
                 false
             }
             Filter_fields::SRC_IP => {
@@ -474,7 +476,7 @@ pub(crate) struct Live_dump {
 }
 
 impl Live_dump {
-    pub(crate) fn new(addr: &str, port: u16) -> Live_dump {
+    pub fn new(addr: &str, port: u16) -> Live_dump {
         if addr.is_empty() || port == 0 {
             debug!("Live dump disabled");
             return Live_dump {
@@ -497,7 +499,7 @@ impl Live_dump {
         }
     }
 
-    pub(crate) fn accept(&mut self) {
+    pub fn accept(&mut self) {
         if let Some(listener) = &self.listener {
             loop {
                 match listener.accept() {
@@ -520,7 +522,7 @@ impl Live_dump {
         }
     }
 
-    pub(crate) fn write_all(&mut self, p1: &Packet_info) {
+    pub fn write_all(&mut self, p1: &Packet_info) {
         let mut x = Vec::new();
 
         let tmp_str = &format!("{p1:#}");
@@ -538,7 +540,7 @@ impl Live_dump {
         }
     }
 
-    pub(crate) fn read_all(&mut self) {
+    pub fn read_all(&mut self) {
         let mut buf: [u8; 128] = [0; 128];
         let mut peek_buf: [u8; 128] = [0; 128];
         for stream in &mut self.streams {
@@ -584,7 +586,7 @@ impl Live_dump {
                     Err(_) => {
                         debug!("Read error");
                     }
-                };
+                }
             }
         }
     }

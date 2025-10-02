@@ -1,10 +1,12 @@
-use crate::dns::{DNS_Class, DNS_RR_type, DnsReplyType};
+use crate::dns_class::DNS_Class;
+use crate::dns_reply_type::DnsReplyType;
+use crate::dns_rr_type::DNS_RR_type;
 use crate::edns::DNSExtendedError;
 use chrono::{DateTime, Utc};
 use std::fmt;
 use unic_idna::to_unicode;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 
 pub(crate) struct DNS_record {
     pub(crate) rr_type: DNS_RR_type,
@@ -36,14 +38,14 @@ impl fmt::Display for DNS_record {
                 },
             );
             let s = if name == self.name || res != Ok(()) {
-                String::new()
+                ""
             } else {
-                format!("({name}) ")
+                &format!("({name}) ")
             };
 
             writeln!(
                 f,
-                "  {} {s}{} {} {} {} {} {} {} {} ({}) {} {} {}",
+                "  {} {s}{} {} {} {} {} {} {}{} {} {} {}",
                 snailquote::escape(&self.name),
                 self.class,
                 self.rr_type,
@@ -52,8 +54,11 @@ impl fmt::Display for DNS_record {
                 self.timestamp,
                 self.domain,
                 self.prefix,
-                self.asn,
-                self.asn_owner,
+                if self.asn != 0 {
+                    &format!("{} ({}) ", self.asn, self.asn_owner)
+                } else {
+                    ""
+                },
                 self.error,
                 self.extended_error.to_str(),
                 self.count,
@@ -64,7 +69,7 @@ impl fmt::Display for DNS_record {
                 "Name: {} ({})      Domain: {}
         RData: {}
         RR Type: {}    Class: {}     TTL: {}      Error: {}      ExtError: {}    Count: {}
-        Time: {}      Prefix: {}   ASN: {}        ASN Owner: {}",
+        Time: {}      Prefix: {}{}",
                 snailquote::escape(&self.name),
                 to_unicode(
                     &self.name,
@@ -81,12 +86,18 @@ impl fmt::Display for DNS_record {
                 self.class,
                 self.ttl,
                 self.error,
-                self.extended_error,
+                self.extended_error.to_str(),
                 self.count,
                 self.timestamp,
                 self.prefix,
-                self.asn,
-                self.asn_owner,
+                if self.asn != 0 {
+                    &format!(
+                        "     ASN: {}        ASN Owner: {}",
+                        self.asn, self.asn_owner
+                    )
+                } else {
+                    ""
+                },
             )
         }
     }

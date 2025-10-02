@@ -24,7 +24,7 @@ pub(crate) enum TCP_Connections_Error_Type {
     NotFound,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct TcpConnection_error {
     //error_type: TCP_Connections_Error_Type,
     error_str: String,
@@ -57,7 +57,7 @@ impl Error for TcpConnection_error {
     }
 }
 #[serde_as]
-#[derive(Debug, Clone, Serialize, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Serialize, PartialEq, PartialOrd, Default)]
 struct Tcp_connection {
     #[serde(with = "chrono::serde::ts_seconds")]
     timestamp: DateTime<Utc>,
@@ -77,7 +77,7 @@ impl Tcp_connection {
     }
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Default)]
 
 pub(crate) struct TCP_Connections {
     #[serde(with = "vectorize")]
@@ -87,9 +87,9 @@ pub(crate) struct TCP_Connections {
 }
 
 impl TCP_Connections {
-    const SYN_FLAG:u8 = 2;
-    const FIN_FLAG:u8 = 1;
-    const RESET_FLAG:u8 = 4;
+    const SYN_FLAG: u8 = 2;
+    const FIN_FLAG: u8 = 1;
+    const RESET_FLAG: u8 = 4;
     pub fn new(maxsize: u32) -> TCP_Connections {
         TCP_Connections {
             connections: HashMap::new(),
@@ -167,32 +167,29 @@ impl TCP_Connections {
             min_idle = min_idle.min(self.timelimit);
         }
         //        debug!( "Checking timeout after Size : {} {min_idle}", self.connections.len() );
-        min_idle 
+        min_idle
     }
 
     pub fn process_data(
         &mut self,
         sp: u16,
         dp: u16,
-        src: IpAddr,
-        dst: IpAddr,
+        src: &IpAddr,
+        dst: &IpAddr,
         seq_nr: u32,
         data: &[u8],
         flags: u8,
     ) -> Option<Tcp_data> {
         if (flags & Self::FIN_FLAG != 0) || (flags & Self::RESET_FLAG != 0) {
             // FIN flag or reset
-            self.add_data(sp, dp, &src, &dst, seq_nr, data);
-            return match self.get_data(sp, dp, &src, &dst) {
-                Ok(x) => {
-                    let y = x.to_owned();
-                    let _ = self.remove(sp, dp, &src, &dst);
-                    Some(y)
-                }
-                Err(_e) => {
-                    let _ = self.remove(sp, dp, &src, &dst);
-                    None
-                }
+            self.add_data(sp, dp, src, dst, seq_nr, data);
+            return if let Ok(x) = self.get_data(sp, dp, src, dst) {
+                let y = x.to_owned();
+                let _ = self.remove(sp, dp, src, dst);
+                Some(y)
+            } else {
+                let _ = self.remove(sp, dp, src, dst).ok();
+                None
             };
         } else if (flags & Self::SYN_FLAG != 0) || (flags.trailing_zeros() >= 3) {
             // SYN flag or no flag
@@ -201,7 +198,7 @@ impl TCP_Connections {
                 // on syn we need to increment the seq nr
                 sn += 1;
             }
-            self.add_data(sp, dp, &src, &dst, sn, data);
+            self.add_data(sp, dp, src, dst, sn, data);
             return None;
         }
         None

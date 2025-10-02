@@ -1,11 +1,13 @@
 use crate::config::Config;
 use crate::statistics::Statistics;
 use crate::tcp_connection::TCP_Connections;
+use crate::time_stats::STAT_ITEM::{DAY, HOUR, MINUTE, MONTH, SECOND};
 use crate::version::VERSION;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use log::debug;
 use parking_lot::Mutex;
 use std::sync::Arc;
+
 async fn get_version() -> impl Responder {
     HttpResponse::Ok().json(VERSION)
 }
@@ -50,19 +52,19 @@ async fn get_success(
     match path.as_slice() {
         [] => HttpResponse::Ok().json(stats_data.success_time_stats),
         [part1] if part1 == "day" => {
-            HttpResponse::Ok().json(stats_data.success_time_stats.per_day.items)
+            HttpResponse::Ok().json(stats_data.success_time_stats.get_item(&DAY))
         }
         [part1] if part1 == "minute" => {
-            HttpResponse::Ok().json(stats_data.success_time_stats.per_minute.items)
+            HttpResponse::Ok().json(stats_data.success_time_stats.get_item(&MINUTE))
         }
         [part1] if part1 == "hour" => {
-            HttpResponse::Ok().json(stats_data.success_time_stats.per_hour.items)
+            HttpResponse::Ok().json(stats_data.success_time_stats.get_item(&HOUR))
         }
         [part1] if part1 == "second" => {
-            HttpResponse::Ok().json(stats_data.success_time_stats.per_second.items)
+            HttpResponse::Ok().json(stats_data.success_time_stats.get_item(&SECOND))
         }
         [part1] if part1 == "month" => {
-            HttpResponse::Ok().json(stats_data.success_time_stats.per_month.items)
+            HttpResponse::Ok().json(stats_data.success_time_stats.get_item(&MONTH))
         }
         _ => HttpResponse::NotFound().body("Invalid route"),
     }
@@ -76,19 +78,19 @@ async fn get_total(
     match path.as_slice() {
         [] => HttpResponse::Ok().json(stats_data.total_time_stats),
         [part1] if part1 == "day" => {
-            HttpResponse::Ok().json(stats_data.total_time_stats.per_day.items)
+            HttpResponse::Ok().json(stats_data.total_time_stats.get_item(&DAY))
         }
         [part1] if part1 == "minute" => {
-            HttpResponse::Ok().json(stats_data.total_time_stats.per_minute.items)
+            HttpResponse::Ok().json(stats_data.total_time_stats.get_item(&MINUTE))
         }
         [part1] if part1 == "hour" => {
-            HttpResponse::Ok().json(stats_data.total_time_stats.per_hour.items)
+            HttpResponse::Ok().json(stats_data.total_time_stats.get_item(&HOUR))
         }
         [part1] if part1 == "second" => {
-            HttpResponse::Ok().json(stats_data.total_time_stats.per_second.items)
+            HttpResponse::Ok().json(stats_data.total_time_stats.get_item(&SECOND))
         }
         [part1] if part1 == "month" => {
-            HttpResponse::Ok().json(stats_data.total_time_stats.per_month.items)
+            HttpResponse::Ok().json(stats_data.total_time_stats.get_item(&MONTH))
         }
         _ => HttpResponse::NotFound().body("Invalid route"),
     }
@@ -102,19 +104,19 @@ async fn get_blocked(
     match path.as_slice() {
         [] => HttpResponse::Ok().json(stats_data.blocked_time_stats),
         [part1] if part1 == "day" => {
-            HttpResponse::Ok().json(stats_data.blocked_time_stats.per_day.items)
+            HttpResponse::Ok().json(stats_data.blocked_time_stats.get_item(&DAY))
         }
         [part1] if part1 == "minute" => {
-            HttpResponse::Ok().json(stats_data.blocked_time_stats.per_minute.items)
+            HttpResponse::Ok().json(stats_data.blocked_time_stats.get_item(&MINUTE))
         }
         [part1] if part1 == "hour" => {
-            HttpResponse::Ok().json(stats_data.blocked_time_stats.per_hour.items)
+            HttpResponse::Ok().json(stats_data.blocked_time_stats.get_item(&HOUR))
         }
         [part1] if part1 == "second" => {
-            HttpResponse::Ok().json(stats_data.blocked_time_stats.per_second.items)
+            HttpResponse::Ok().json(stats_data.blocked_time_stats.get_item(&SECOND))
         }
         [part1] if part1 == "month" => {
-            HttpResponse::Ok().json(stats_data.blocked_time_stats.per_month.items)
+            HttpResponse::Ok().json(stats_data.blocked_time_stats.get_item(&MONTH))
         }
         _ => HttpResponse::NotFound().body("Invalid route"),
     }
@@ -145,6 +147,46 @@ async fn get_config(config: web::Data<Config>) -> impl Responder {
 async fn get_debug(tcp_list: web::Data<Arc<Mutex<TCP_Connections>>>) -> impl Responder {
     let tcp_data = tcp_list.lock().clone();
     HttpResponse::Ok().json(&tcp_data)
+}
+
+async fn get_endpoints() -> impl Responder {
+    let endpoints = vec![
+        "/",
+        "/success",
+        "/success/day",
+        "/success/minute",
+        "/success/hour",
+        "/success/second",
+        "/success/month",
+        "/blocked",
+        "/blocked/day",
+        "/blocked/minute",
+        "/blocked/hour",
+        "/blocked/second",
+        "/blocked/month",
+        "/total",
+        "/total/day",
+        "/total/minute",
+        "/total/hour",
+        "/total/second",
+        "/total/month",
+        "/stats",
+        "/opcodes",
+        "/ext_errors",
+        "/errors",
+        "/version",
+        "/qtypes",
+        "/qclass",
+        "/aclass",
+        "/atypes",
+        "/sources",
+        "/destinations",
+        "/top_domains",
+        "/topnx",
+        "/config",
+        "/debug"
+    ];
+    HttpResponse::Ok().json(endpoints)
 }
 #[actix_web::main]
 pub(crate) async fn listen(
@@ -194,6 +236,7 @@ pub(crate) async fn listen(
             .route("/topnx", web::get().to(get_topnx))
             .route("/config", web::get().to(get_config))
             .route("/debug", web::get().to(get_debug))
+            .route("/", web::get().to(get_endpoints))
     })
     .bind(format!("{}:{}", config.http_server, config.http_port))?
     .run()
