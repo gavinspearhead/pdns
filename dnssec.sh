@@ -1,0 +1,21 @@
+dig    ok.ok.ok.bad-dnssec.wb.sidnlabs.nl  $1
+dig    ok.bogussig.ok.bad-dnssec.wb.sidnlabs.nl $1
+dig    signotincepted.bad-dnssec.wb.sidnlabs.nl $1
+dig    ok.ok.sigexpired.bad-dnssec.wb.sidnlabs.nl $1
+dig    unknownalgorithm.ok.ok.bad-dnssec.wb.sidnlabs.nl $1
+dig bad-dnssec.wb.sidnlabs.nl. $1
+dig bogussig.bad-dnssec.wb.sidnlabs.nl. $1
+dig nods.bad-dnssec.wb.sidnlabs.nl.	 $1
+dig ok.bad-dnssec.wb.sidnlabs.nl. $1
+dig sigexpired.bad-dnssec.wb.sidnlabs.nl. $1
+dig signotincepted.bad-dnssec.wb.sidnlabs.nl. $1
+dig unknownalgorithm.bad-dnssec.wb.sidnlabs.nl. $1
+dig  	sigfail.ippacket.stream $1
+dig rhybar.cz $1
+dig 	dnssec-failed.org	 $1
+dig 	ok.ok.ok.nsec3.tjeb.nl $1
+dig servfail.sidnlabs.nl $1
+dig 	www.nsec3-opt-out.wb.sidnlabs.nl	 $1
+dig 	everett.org $1
+dig spaarbeleg.nl ns $1
+dig szn-broken-dnssec.cz $1
