@@ -176,10 +176,11 @@ dig +short @f.root-servers.net hostname.bind chaos txt $1
 dig +nocmd +nocomments +noquestion +nostats +multiline any any.dns.netmeister.org. $1
 dig www.dns-as.org avc $1
 dig resolver64.dns4all.eu resinfo $1
+dig resolver.dns4all.eu resinfo $1
 dig _dns.resolver.arpa svcb @1.1.1.1
 dig _dns.resolver.arpa svcb @8.8.8.8
 dig _dns.resolver.arpa svcb @9.9.9.9
 dig https defo.ie
 dig zagreb._deleg.nlnetlabs.nl. SVCB
-
+dig type666 xs4all.nl
 

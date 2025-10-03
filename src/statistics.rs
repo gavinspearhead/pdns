@@ -20,6 +20,17 @@ use tracing::debug;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub(crate) struct Statistics {
+    pub queries: u128,
+    pub answers: u128,
+    pub additional: u128,
+    pub authority: u128,
+    pub skipped: u128,
+    pub erroneous: u128,
+    pub udp: u128,
+    pub tcp: u128,
+    pub ipv6: u128,
+    pub ipv4: u128,
+    pub truncated: u128,
     #[serde(serialize_with = "ordered_map")]
     pub errors: HashMap<DnsReplyType, u128>,
     #[serde(serialize_with = "ordered_map")]
@@ -34,16 +45,6 @@ pub(crate) struct Statistics {
     pub opcodes: HashMap<DNS_Opcodes, u128>,
     #[serde(serialize_with = "ordered_map")]
     pub extended_error: HashMap<DNSExtendedError, u128>,
-    pub queries: u128,
-    pub answers: u128,
-    pub additional: u128,
-    pub authority: u128,
-    pub udp: u128,
-    pub tcp: u128,
-    pub ipv6: u128,
-    pub ipv4: u128,
-
-    pub truncated: u128,
     #[serde(deserialize_with = "deserialize_ignore_any")]
     pub sources: Rank<IpAddr>,
     #[serde(deserialize_with = "deserialize_ignore_any")]
@@ -55,8 +56,6 @@ pub(crate) struct Statistics {
     pub total_time_stats: Time_stats,
     pub blocked_time_stats: Time_stats,
     pub success_time_stats: Time_stats,
-    pub skipped: u128,
-    pub erronous: u128,
 }
 
 impl Statistics {
@@ -86,7 +85,7 @@ impl Statistics {
             success_time_stats: Time_stats::new(),
             blocked_time_stats: Time_stats::new(),
             skipped: 0,
-            erronous: 0,
+            erroneous: 0,
         }
     }
 
