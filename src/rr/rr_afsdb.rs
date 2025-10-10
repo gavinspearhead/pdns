@@ -22,10 +22,11 @@ impl RR_AFSDB {
         self.subtype = pref;
         self.hostname = afsdb.to_string();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_AFSDB, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_AFSDB, Parse_error> {
         let mut afsdb = RR_AFSDB::new();
-        afsdb.subtype = dns_read_u16(rdata, 0)?;
-        (afsdb.hostname, _) = dns_parse_name(rdata, 2)?;
+        let mut offset = offset_in;
+        afsdb.subtype = dns_read_u16(packet, offset)?;
+        (afsdb.hostname, _) = dns_parse_name(packet, offset + 2)?;
         Ok(afsdb)
     }
 }

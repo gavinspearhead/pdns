@@ -47,25 +47,25 @@ impl RR_SIG {
         self.name = name;
         self.signature = signature;
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_SIG, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize ) -> Result<RR_SIG, Parse_error> {
         let mut a = RR_SIG::new();
-        let mut pos = 0;
-        a.type_covered = dns_read_u16(rdata, pos)?;
+        let mut pos = offset_in;
+        a.type_covered = dns_read_u16(packet, pos)?;
         pos += 2;
-        a.algorithm = dns_read_u8(rdata, pos)?;
+        a.algorithm = dns_read_u8(packet, pos)?;
         pos += 1;
-        a.labels = dns_read_u8(rdata, pos)?;
+        a.labels = dns_read_u8(packet, pos)?;
         pos += 1;
-        a.orig_ttl = dns_read_u32(rdata, pos)?;
+        a.orig_ttl = dns_read_u32(packet, pos)?;
         pos += 4;
-        a.expiration = dns_read_u32(rdata, pos)?;
+        a.expiration = dns_read_u32(packet, pos)?;
         pos += 4;
-        a.inception = dns_read_u32(rdata, pos)?;
+        a.inception = dns_read_u32(packet, pos)?;
         pos += 4;
-        a.key_tag = dns_read_u16(rdata, pos)?;
+        a.key_tag = dns_read_u16(packet, pos)?;
         pos += 2;
-        (a.name, pos) = dns_parse_name(rdata, pos)?;
-        a.signature = dns_parse_slice(rdata, pos..)?.to_vec();
+        (a.name, pos) = dns_parse_name(packet, pos)?;
+        a.signature = dns_parse_slice(packet, pos..)?.to_vec();
         Ok(a)
     }
 }

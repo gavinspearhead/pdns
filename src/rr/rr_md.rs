@@ -13,8 +13,8 @@ impl RR_MD {
         RR_MD(RR_MB::new())
     }
 
-    pub fn parse(rdata: &[u8], offset: usize) -> Result<Self, Parse_error> {
-        Ok(RR_MD(RR_MB::parse(rdata, offset)?))
+    pub fn parse(packet: &[u8], offset: usize) -> Result<Self, Parse_error> {
+        Ok(RR_MD(RR_MB::parse(packet, offset)?))
     }
 
     pub fn set(&mut self, domain: &str) {

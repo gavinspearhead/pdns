@@ -58,7 +58,7 @@ impl RR_HTTPS {
                         offset + 4..offset + 4 + svc_param_len,
                     )?);
                     params.push(HttpsSvcParam::KeyValue(
-                        svc_val as u16,
+                        svc_val,
                         value.into_owned().into_bytes(),
                     ));
                 }
@@ -82,7 +82,7 @@ impl RR_HTTPS {
                     }
                     params.push(HttpsSvcParam::Mandatory(keys));
                 }
-                SVC_Param_Keys::docpath => {
+                SVC_Param_Keys::docpath | SVC_Param_Keys::alpn => {
                     let mut pos = 0;
                     let mut values: Vec<String> = vec![];
                     while pos < svc_param_len {
@@ -94,21 +94,6 @@ impl RR_HTTPS {
                             .into_owned(); // Convert to owned String
                         values.push(docpath);
                         pos += 1 + docpath_len;
-                    }
-                    params.push(HttpsSvcParam::Alpn(values));
-                }
-                SVC_Param_Keys::alpn => {
-                    let mut pos = 0;
-                    let mut values: Vec<String> = vec![];
-                    while pos < svc_param_len {
-                        let alpn_len = usize::from(dns_read_u8(rdata, offset + pos + 4)?);
-                        let alpn = String::from_utf8_lossy(dns_parse_slice(
-                            rdata,
-                            offset + pos + 4 + 1..offset + pos + 4 + 1 + alpn_len,
-                        )?)
-                            .into_owned(); // Convert to owned String
-                        values.push(alpn);
-                        pos += 1 + alpn_len;
                     }
                     params.push(HttpsSvcParam::Alpn(values));
                 }
@@ -240,7 +225,7 @@ impl std::fmt::Display for RR_HTTPS {
                 }
                 HttpsSvcParam::DocPath(addrs) => {
                     let mut res1 = String::new();
-                    res1.push_str("/");
+                    res1.push('/');
                     for addr in addrs {
                         res1.push_str(&format!("{addr}/,"));
                     }

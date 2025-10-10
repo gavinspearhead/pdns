@@ -20,10 +20,10 @@ impl RR_RT {
         self.pref = pref;
         self.rt = rt.to_string();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_RT, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize ) -> Result<RR_RT, Parse_error> {
         let mut rt = RR_RT::new();
-        rt.pref = dns_read_u16(rdata, 0)?;
-        (rt.rt, _) = dns_parse_name(rdata, 2)?;
+        rt.pref = dns_read_u16(packet, offset_in)?;
+        (rt.rt, _) = dns_parse_name(packet, offset_in+ 2)?;
         Ok(rt)
     }
 }

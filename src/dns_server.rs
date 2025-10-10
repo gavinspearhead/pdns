@@ -622,7 +622,7 @@ pub(crate) fn make_reply(
                 56039,
                 13,
                 2,
-                "4104805B43928FC573F0704A2C1B5A10BAA2878DE26B8535DDE77517C154CE9F".into(),
+                "4104805B43928FC573F0704A2C1B5A10BAA2878DE26B8535DDE77517C154CE9F".as_bytes(),
             );
             add_records_with_log(dns_answer, dns_query, &[&cds_record], 0, ttl)?;
         }
@@ -684,8 +684,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with(tracing_layers)
         .init();
     // Bind to local address and port
-    let host = "127.0.0.1";
-    let port = "5355";
+//    let host = "127.0.0.1";
+    let host = "0.0.0.0";
+    let port = "53";
+    //let port = "5355";
     let addr = &format!("{host}:{port}");
     debug!("UDP server listening on {addr}");
     let socket = UdpSocket::bind(addr.as_str())?;

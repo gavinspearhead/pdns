@@ -30,8 +30,9 @@ impl RR_NXT {
         offset_in: usize,
     ) -> Result<RR_NXT, Parse_error> {
         let mut a = RR_NXT::new();
-        (a.next, _) = dns_parse_name(packet, offset_in)?;
-        a.bitmap = parse_bitmap_vec(&rdata[a.next.len() + 2..])?;
+        let mut offset = offset_in;
+        (a.next, offset) = dns_parse_name(packet, offset)?;
+        a.bitmap = parse_bitmap_vec(&rdata[offset - offset_in ..])?;
         Ok(a)
     }
 }

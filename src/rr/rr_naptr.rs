@@ -30,25 +30,26 @@ impl RR_NAPTR {
         self.re = re.to_string();
         self.repl = repl.to_string();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_NAPTR, Parse_error> {
+    pub(crate) fn parse(packet : &[u8], offset_in: usize) -> Result<RR_NAPTR, Parse_error> {
         let mut a = RR_NAPTR::new();
-        a.order = dns_read_u16(rdata, 0)?;
-        a.pref = dns_read_u16(rdata, 2)?;
-        let flag_len = usize::from(dns_read_u8(rdata, 4)?);
-        let mut offset: usize = 5;
-        a.flags = parse_dns_str(dns_parse_slice(rdata, offset..offset + flag_len)?)?;
+        let mut offset: usize = offset_in;
+        a.order = dns_read_u16(packet, offset)?;
+        a.pref = dns_read_u16(packet, offset+2)?;
+        let flag_len = usize::from(dns_read_u8(packet,  offset+4)?);
+        offset += 5;
+        a.flags = parse_dns_str(dns_parse_slice(packet, offset..offset + flag_len)?)?;
         offset += flag_len;
-        let srv_len = usize::from(dns_read_u8(rdata, offset)?);
+        let srv_len = usize::from(dns_read_u8(packet, offset)?);
         offset += 1;
-        a.srv = parse_dns_str(dns_parse_slice(rdata, offset..offset + srv_len)?)?;
+        a.srv = parse_dns_str(dns_parse_slice(packet, offset..offset + srv_len)?)?;
         offset += srv_len;
-        let re_len = usize::from(dns_read_u8(rdata, offset)?);
+        let re_len = usize::from(dns_read_u8(packet, offset)?);
         offset += 1;
         if re_len > 0 {
-            a.re.clone_from(&(parse_dns_str(dns_parse_slice(rdata, offset..offset + re_len)?)?));
+            a.re.clone_from(&(parse_dns_str(dns_parse_slice(packet, offset..offset + re_len)?)?));
         }
         offset += re_len;
-        (a.repl, _) = dns_parse_name(rdata, offset)?;
+        (a.repl, _) = dns_parse_name(packet, offset)?;
         Ok(a)
     }
 }

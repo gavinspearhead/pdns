@@ -152,12 +152,12 @@ impl TCP_Connections {
     }
 
     pub fn check_timeout(&mut self) -> u64 {
+        let mut min_idle: u64 = 1;
         let now = Utc::now().timestamp();
-        let mut min_idle = 1;
         // debug!("Checking timeout before: Size : {}", self.connections.len());
         self.connections.retain(|_, v| {
-            let idle_time = (now - v.timestamp.timestamp()) as u64;
-            min_idle = min_idle.min(self.timelimit - idle_time);
+            let idle_time = u64::try_from((now - v.timestamp.timestamp()).max(0)).unwrap_or(0);
+            min_idle = min_idle.min(self.timelimit.saturating_sub(idle_time));
             //  debug!("Check timeout after: {} {}", v.ts, idle_time);
             idle_time < self.timelimit
         });

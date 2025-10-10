@@ -1,4 +1,4 @@
-use serde_with::serde_derive::Serialize;
+use serde::Serialize;
 use tracing::debug;
 
 #[derive(Debug, Clone, Default, Serialize, PartialEq, PartialOrd)]

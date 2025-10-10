@@ -20,9 +20,9 @@ impl RR_MR {
         self.mb.set(mb);
     }
 
-    pub(crate) fn parse(rdata: &[u8], offset: usize) -> Result<RR_MR, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset: usize) -> Result<RR_MR, Parse_error> {
         Ok(RR_MR {
-            mb: RR_MB::parse(rdata, offset)?,
+            mb: RR_MB::parse(packet, offset)?,
         })
     }
 }

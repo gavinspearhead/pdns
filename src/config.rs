@@ -46,6 +46,8 @@ pub(crate) struct Config {
     pub create_db: bool,
     pub capture_tcp: bool,
     pub tcp_memory: u32,
+    pub stats_dump_interval: u32,
+    pub compress_stats: bool 
 }
 
 impl Config {
@@ -87,6 +89,8 @@ impl Config {
             create_db: false,
             tcp_memory: 10,
             capture_tcp: true,
+            stats_dump_interval: 3600,
+            compress_stats: false
         };
         c.rr_type.extend(vec![
             DNS_RR_type::A,

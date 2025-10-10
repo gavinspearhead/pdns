@@ -10,12 +10,15 @@ use crate::dns_opcodes::DNS_Opcodes;
 use crate::dns_reply_type::DnsReplyType;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::edns::DNSExtendedError;
+use crate::tcp_connection::TCP_Connections_Error_Type::NotFound;
 use crate::util::ordered_map;
 use chrono::Utc;
+use flate2::write::GzEncoder;
+use std::fs::remove_file;
 use std::io::{BufWriter, Write};
 use std::net::IpAddr;
 use std::path::Path;
-use std::{collections::HashMap, fs::File, io::BufReader};
+use std::{collections::HashMap, fs, fs::File, io::BufReader};
 use tracing::debug;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -89,7 +92,7 @@ impl Statistics {
         }
     }
 
-    pub(crate) fn import(
+    pub fn import(
         filename: &str,
         toplistsize: usize,
     ) -> Result<Statistics, Box<dyn std::error::Error>> {
@@ -103,21 +106,52 @@ impl Statistics {
         Ok(statistics)
     }
 
-    pub fn dump_stats(&self, config: &Config) -> std::io::Result<()> {
+    pub fn dump_stats(&self, config: &Config, unique: bool) -> std::io::Result<()> {
         if config.export_stats.is_empty() {
             return Ok(());
         }
         let filename_base = &config.export_stats;
         let mut count: u16 = 0;
         loop {
-            let date_as_string = Utc::now().to_rfc3339();
-            let filename = Path::new(filename_base).join(format!("stats-{date_as_string}.json"));
+            let filename = if unique {
+                let date_as_string = Utc::now().to_rfc3339();
+                Path::new(filename_base).join(format!("stats-{date_as_string}.json"))
+            } else {
+                let filename = Path::new(filename_base).join(if config.compress_stats {
+                    "stats.json.gz"
+                } else {
+                    "stats.json"
+                });
+                match remove_file(&filename) {
+                    Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        debug!("file does not exist: {filename:?}")
+                    }
+                    Err(e) => {
+                        debug!("Other error: {e}");
+                        return Err(e);
+                    }
+                    Ok(_) => {
+                        debug!("file removed: {filename:?}");
+                    }
+                }
+                filename
+            };
+
             match File::create_new(&filename) {
                 Ok(f) => {
-                    debug!("Dumping stats to {filename:?}");
-                    let mut writer = BufWriter::new(f);
-                    serde_json::to_writer_pretty(&mut writer, self)?;
-                    writer.flush()?;
+                    if config.compress_stats {
+                        debug!("Dumping and compressing stats to {filename:?}");
+                        let file = File::create(format!("{}", filename.to_string_lossy()))?;
+                        let encoder = GzEncoder::new(file, flate2::Compression::default());
+                        let mut writer = BufWriter::new(encoder);
+                        serde_json::to_writer_pretty(&mut writer, self)?;
+                        writer.flush()?;
+                    } else {
+                        debug!("Dumping stats to {filename:?}");
+                        let mut writer = BufWriter::new(f);
+                        serde_json::to_writer_pretty(&mut writer, self)?;
+                        writer.flush()?;
+                    }
                     return Ok(());
                 }
                 Err(e) => {

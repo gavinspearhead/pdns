@@ -62,21 +62,21 @@ enum ParseError {
 // Helper function to encode size/precision values as per RFC 1876.
 // The value is stored as a pair of four-bit unsigned integers,
 // representing a base and a power of ten.
-fn encode_precision_value(value_m: f64) -> Result<u8, ParseError> {
-    if value_m < 0.0 {
+fn encode_precision_value(value_meters: f64) -> Result<u8, ParseError> {
+    if value_meters < 0.0 {
         return Err(ParseError::InvalidValue(
             "Precision value cannot be negative.".into(),
         ));
     }
 
     // Convert meters to centimeters for encoding.
-    let value_cm = value_m * 100.0;
+    let value_centimeters = value_meters * 100.0;
 
     // Find the base and power
     for exp in 0..10 {
         let max_val = 9.0 * 10.0f64.powi(exp);
-        if value_cm <= max_val {
-            let base = (value_cm / 10.0f64.powi(exp)).ceil() as u8;
+        if value_centimeters <= max_val {
+            let base = (value_centimeters / 10.0f64.powi(exp)).ceil() as u8;
             return Ok((base << 4) | exp as u8);
         }
     }

@@ -78,8 +78,11 @@ fn parse_tcp(
                             stats.erroneous += 1;
                             debug!("Error parsing DNS packet: {:?}", e);
                         }
+                    } else {
+                        stats.erroneous += 1;
+                        debug!("Other error for DNS packet: {:?}", e);
                     }
-                    return Err(e.into());
+                    return Err(e);
                 }
             }
 
@@ -115,16 +118,15 @@ fn parse_udp(
             Ok(..) => {}
             Err(e) => {
                 if let Some(parse_error) = e.downcast_ref::<Parse_error>() {
-                    stats.erroneous += 1;
                     if parse_error.error_type == ParseErrorType::Skipped_Message {
                         stats.skipped += 1;
                     } else {
-                        stats.erroneous += 1;
                         debug!("Error parsing DNS packet: {:?}", e);
+                        stats.erroneous += 1;
                     }
                 } else {
-                    stats.erroneous += 1;
                     debug!("Other DNS error: {:?}", e);
+                    stats.erroneous += 1;
                 }
             }
         }

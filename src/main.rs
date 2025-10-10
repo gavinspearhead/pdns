@@ -210,7 +210,7 @@ fn poll(packet_queue: &Packet_Queue, config: &Config, rx: mpsc::Receiver<String>
         }
         let current_time = Utc::now().timestamp();
         if current_time > last_push + timeout || dns_cache.len() > dns_cache.get_max_size() {
-            debug!("Popping packets {current_time} {last_push:#?}:{timeout:#?}");
+            //debug!("Popping packets {current_time} {last_push:#?}:{timeout:#?}");
             db_insert(&mut dns_cache, &mut database_conn, &mut last_push, false);
         }
         match rx.try_recv() {
@@ -271,7 +271,7 @@ fn terminate_loop(stats: &Arc<Mutex<Statistics>>, config: &Arc<Config>) {
         debug!("Waiting for termination...");
         for sig in signals.forever() {
             debug!("Received signal: {:?}", sig);
-            stats_clone.lock().dump_stats(&config_clone).unwrap();
+            stats_clone.lock().dump_stats(&config_clone, true).unwrap();
             exit(-1);
         }
     });
@@ -348,6 +348,7 @@ fn capture_from_interface(
         let handle_http = s.spawn(|| {
             let _ = listen(&stats.clone(), &tcp_list.clone(), &config.clone());
         });
+        let handle_stats_dump = s.spawn(|| stats_dump(config, &stats.clone()));
         let handle_cleanup = s.spawn(|| cleanup_task(config));
         let handle_packet_loop = s.spawn(|| {
             packet_loop(cap_in, packet_queue, tcp_list, stats, config, skiplist);
@@ -361,7 +362,18 @@ fn capture_from_interface(
         handle_cleanup.join().unwrap();
         handle_tcp_list.join().unwrap();
         handle_poll.join().unwrap();
+        handle_stats_dump.join().unwrap();
     });
+}
+
+fn stats_dump(config: &Config, statistics: &Arc<Mutex<Statistics>>)  {
+    if config.stats_dump_interval > 0 {
+        debug!("stats interval {} to file {}", config.stats_dump_interval, &config.export_stats);
+        loop {
+            statistics.lock().dump_stats(&config, false).unwrap();
+            sleep(time::Duration::from_secs(config.stats_dump_interval as u64));
+        }
+    }
 }
 
 fn run(

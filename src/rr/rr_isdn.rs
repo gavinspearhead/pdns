@@ -47,6 +47,8 @@ impl DNSRecord for RR_ISDN {
     }
 
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+        debug_assert!(self.addr.len() < 256);
+        debug_assert!(self.sub_addr_str.len() < 256);
         let mut bytes = Vec::new();
         bytes.push(self.addr.len() as u8);
         bytes.extend(self.addr.as_bytes());

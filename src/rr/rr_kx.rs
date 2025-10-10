@@ -23,10 +23,11 @@ impl RR_KX {
         self.pref = pref;
         self.kx = kx.to_string();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_KX, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_KX, Parse_error> {
         let mut kx = RR_KX::new();
-        kx.pref = dns_read_u16(rdata, 0)?;
-        (kx.kx, _) = dns_parse_name(rdata, 2)?;
+        let offset = offset_in;
+        kx.pref = dns_read_u16(packet, offset)?;
+        (kx.kx, _) = dns_parse_name(packet, offset + 2)?;
         Ok(kx)
     }
 }

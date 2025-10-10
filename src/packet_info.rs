@@ -79,8 +79,8 @@ impl Packet_info {
     pub fn to_csv(&self) -> String {
         let mut s = String::new();
         for i in &self.dns_records {
-            write!(s,
-                "{},{},{},{},{},{},{},{},{}\n",
+            writeln!(s,
+                "{},{},{},{},{},{},{},{},{}",
                 self.s_addr,
                 self.d_addr,
                 self.timestamp,

@@ -51,20 +51,20 @@ impl RR_RRSIG {
         self.signer = signer.to_string();
         self.signature = signature.to_vec();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_RRSIG, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_RRSIG, Parse_error> {
         let mut a = RR_RRSIG::new();
-        let sig_rrtype_val = dns_read_u16(rdata, 0)?;
+        let sig_rrtype_val = dns_read_u16(packet, offset_in)?;
         a.sig_rrtype = parse_rrtype(sig_rrtype_val)
             .map_err(|_| Parse_error::new(Invalid_Parameter, &sig_rrtype_val.to_string()))?;
-        a.alg = dns_read_u8(rdata, 2)?;
-        a.labels = dns_read_u8(rdata, 3)?;
-        a.ttl = dns_read_u32(rdata, 4)?;
-        a.sig_exp = dns_read_u32(rdata, 8)?;
-        a.sig_inc = dns_read_u32(rdata, 12)?;
-        a.key_tag = dns_read_u16(rdata, 16)?;
+        a.alg = dns_read_u8(packet, offset_in+ 2)?;
+        a.labels = dns_read_u8(packet, offset_in+ 3)?;
+        a.ttl = dns_read_u32(packet, offset_in+ 4)?;
+        a.sig_exp = dns_read_u32(packet, offset_in+ 8)?;
+        a.sig_inc = dns_read_u32(packet, offset_in+ 12)?;
+        a.key_tag = dns_read_u16(packet, offset_in+ 16)?;
         let offset_out;
-        (a.signer, offset_out) = dns_parse_name(rdata, 18)?;
-        a.signature = dns_parse_slice(rdata, offset_out..)?.to_vec();
+        (a.signer, offset_out) = dns_parse_name(packet, offset_in + 18)?;
+        a.signature = dns_parse_slice(packet, offset_out..)?.to_vec();
         Ok(a)
     }
 }

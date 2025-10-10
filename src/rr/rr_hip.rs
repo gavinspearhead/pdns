@@ -30,6 +30,7 @@ impl RR_HIP {
         }
     }
     pub fn set(&mut self, hit_alg: u8, hit: &[u8], hip_pk: &[u8], rendezvous: &str) {
+        debug_assert!(hit.len() < 256);
         self.hit_len = hit.len() as u8;
         self.hit_alg = hit_alg;
         self.pk_len = hip_pk.len() as u16;
@@ -37,7 +38,7 @@ impl RR_HIP {
         self.hip_pk = hip_pk.into();
         self.rendezvous = rendezvous.to_string();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_HIP, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8], packet: &[u8], offset_in: usize) -> Result<RR_HIP, Parse_error> {
         let mut a = RR_HIP::new();
         a.hit_len = dns_read_u8(rdata, 0)?;
         a.hit_alg = dns_read_u8(rdata, 1)?;
@@ -46,7 +47,7 @@ impl RR_HIP {
         let pk_len = usize::from(a.pk_len);
         a.hit = dns_parse_slice(rdata, 4..4 + hit_len)?.to_vec();
         a.hip_pk = dns_parse_slice(rdata, 4 + hit_len..4 + hit_len + pk_len)?.to_vec();
-        (a.rendezvous, _) = dns_parse_name(rdata, 4 + hit_len + pk_len)?;
+        (a.rendezvous, _) = dns_parse_name(packet, offset_in + 4 + hit_len + pk_len)?;
         Ok(a)
     }
 }

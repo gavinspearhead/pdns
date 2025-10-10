@@ -21,10 +21,10 @@ impl RR_LP {
         self.fqdn = fqdn.to_string();
     }
 
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_LP, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_LP, Parse_error> {
         let mut lp = RR_LP::new();
-        lp.prio = dns_read_u16(rdata, 0)?;
-        (lp.fqdn, _) = dns_parse_name(rdata, 2)?;
+        lp.prio = dns_read_u16(packet, offset_in)?;
+        (lp.fqdn, _) = dns_parse_name(packet, offset_in + 2)?;
         Ok(lp)
     }
 }

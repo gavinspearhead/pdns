@@ -182,5 +182,5 @@ dig _dns.resolver.arpa svcb @8.8.8.8
 dig _dns.resolver.arpa svcb @9.9.9.9
 dig https defo.ie
 dig zagreb._deleg.nlnetlabs.nl. SVCB
-dig type666 xs4all.nl
+#dig type666 xs4all.nl
 

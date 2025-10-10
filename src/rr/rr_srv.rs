@@ -23,13 +23,13 @@ impl RR_SRV {
         self.port = port;
         self.target = target.to_string();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_SRV, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_SRV, Parse_error> {
         let mut a = RR_SRV::new();
-
-        a.prio = dns_read_u16(rdata, 0)?;
-        a.weight = dns_read_u16(rdata, 2)?;
-        a.port = dns_read_u16(rdata, 4)?;
-        (a.target, _) = dns_parse_name(rdata, 6)?;
+        let mut offset = offset_in;
+        a.prio = dns_read_u16(packet, offset)?;
+        a.weight = dns_read_u16(packet, offset + 2)?;
+        a.port = dns_read_u16(packet, offset + 4)?;
+        (a.target, _) = dns_parse_name(packet,offset +  6)?;
         Ok(a)
     }
 }

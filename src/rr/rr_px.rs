@@ -22,13 +22,13 @@ impl RR_PX {
         self.map822 = map822.to_string();
         self.mapx400 = mapx400.to_string();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_PX, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_PX, Parse_error> {
         let mut a = RR_PX::new();
-        let mut offset = 0;
-        a.pref = dns_read_u16(rdata, offset)?;
+        let mut offset = offset_in;
+        a.pref = dns_read_u16(packet, offset)?;
         offset += 2;
-        (a.map822, offset) = dns_parse_name(rdata, offset)?;
-        (a.mapx400, _) = dns_parse_name(rdata, offset)?;
+        (a.map822, offset) = dns_parse_name(packet, offset)?;
+        (a.mapx400, _) = dns_parse_name(packet, offset)?;
         Ok(a)
     }
 }

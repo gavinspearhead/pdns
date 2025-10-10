@@ -42,8 +42,9 @@ impl dns_answer {
         self.header.ancount = 0;
         self.header.arcount = 0;
         self.header.nscount = 0;
-        self.header.qdcount = 1;
-        self.header.rcode = DnsReplyType::NOERROR;
+        self.header.qdcount = 0;
+        self.header.rcode = DnsReplyType::YXDOMAIN;
+        //self.header.rcode = DnsReplyType::NOERROR;
         Ok(())
     }
 

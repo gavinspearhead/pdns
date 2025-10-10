@@ -33,7 +33,7 @@ impl RR_AMTRELAY {
     pub(crate) fn parse(
         rdata: &[u8],
         packet: &[u8],
-        offset: usize,
+        offset_in: usize,
     ) -> Result<RR_AMTRELAY, Parse_error> {
         let mut a = RR_AMTRELAY::new();
         a.precedence = dns_read_u8(rdata, 0)?;
@@ -41,7 +41,7 @@ impl RR_AMTRELAY {
         a.dbit = a.rtype >> 7;
         a.rtype &= 0x7f;
         a.relay = match a.rtype {
-            3 => dns_parse_name(packet, offset + 2)?.0,
+            3 => dns_parse_name(packet, offset_in + 2)?.0,
             2 => parse_ipv6(&rdata[2..18])?.to_string(),
             1 => parse_ipv4(&rdata[2..6])?.to_string(),
             _ => return Err(Parse_error::new(Invalid_Parameter, &a.rtype.to_string())),

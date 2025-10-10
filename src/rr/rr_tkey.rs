@@ -41,25 +41,25 @@ impl RR_TKEY {
         self.key = key;
         self.other = other;
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_TKEY, Parse_error> {
+ pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_TKEY, Parse_error> {
         let mut a = RR_TKEY::new();
-        let mut pos = 0;
-        (a.name, pos) = dns_parse_name(rdata, pos)?;
-        a.inception = dns_read_u32(rdata, pos)?;
+        let mut pos = offset_in;
+        (a.name, pos) = dns_parse_name(packet, pos)?;
+        a.inception = dns_read_u32(packet, pos)?;
         pos += 4;
-        a.expiration = dns_read_u32(rdata, pos)?;
+        a.expiration = dns_read_u32(packet, pos)?;
         pos += 4;
-        a.mode = dns_read_u16(rdata, pos)?;
+        a.mode = dns_read_u16(packet, pos)?;
         pos += 2;
-        a.error = dns_read_u16(rdata, pos)?;
+        a.error = dns_read_u16(packet, pos)?;
         pos += 2;
-        let key_size = usize::from(dns_read_u16(rdata, pos)?);
+        let key_size = usize::from(dns_read_u16(packet, pos)?);
         pos += 2;
-        a.key = dns_parse_slice(rdata, pos..pos + key_size)?.to_vec();
+        a.key = dns_parse_slice(packet, pos..pos + key_size)?.to_vec();
         pos += key_size;
-        let other_len = usize::from(dns_read_u16(rdata, pos)?);
+        let other_len = usize::from(dns_read_u16(packet, pos)?);
         pos += 2;
-        a.other = dns_parse_slice(rdata, pos..pos + other_len)?.to_vec();
+        a.other = dns_parse_slice(packet, pos..pos + other_len)?.to_vec();
 
         Ok(a)
     }

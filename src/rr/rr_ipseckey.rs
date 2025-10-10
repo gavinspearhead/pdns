@@ -39,7 +39,7 @@ impl RR_IPSECKEY {
         self.pubkey = pubkey.into();
         self.name = name.to_string();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_IPSECKEY, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8], packet: &[u8], offset_in: usize) -> Result<RR_IPSECKEY, Parse_error> {
         let mut a = RR_IPSECKEY::new();
         a.precedence = dns_read_u8(rdata, 0)?;
         a.gw_type = dns_read_u8(rdata, 1)?;
@@ -58,7 +58,8 @@ impl RR_IPSECKEY {
                 a.name = parse_ipv6(dns_parse_slice(rdata, 3..19)?)?.to_string();
             } // IPv6 Address
             3 => {
-                (a.name, pk_offset) = dns_parse_name(rdata, 3)?;
+                (a.name, pk_offset) = dns_parse_name(packet, offset_in + 3)?;
+                pk_offset -= offset_in;
             } // a FQDN
             e => {
                 return Err(Parse_error::new(Invalid_Resource_Record, &e.to_string()));

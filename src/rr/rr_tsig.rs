@@ -41,25 +41,25 @@ impl RR_TSIG {
         self.error = error;
         self.other = other;
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_TSIG, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_TSIG, Parse_error> {
         let mut a = RR_TSIG::new();
-        let mut pos = 0;
-        (a.name, pos) = dns_parse_name(rdata, pos)?;
-        a.time_signed = dns_read_u48(rdata, pos)?;
+        let mut pos = offset_in;
+        (a.name, pos) = dns_parse_name(packet, pos)?;
+        a.time_signed = dns_read_u48(packet, pos)?;
         pos += 6;
-        a.fudge = dns_read_u16(rdata, pos)?;
+        a.fudge = dns_read_u16(packet, pos)?;
         pos += 2;
-        let mac_size = usize::from(dns_read_u16(rdata, pos)?);
+        let mac_size = usize::from(dns_read_u16(packet, pos)?);
         pos += 2;
-        a.mac = dns_parse_slice(rdata, pos..pos + mac_size)?.to_vec();
+        a.mac = dns_parse_slice(packet, pos..pos + mac_size)?.to_vec();
         pos += mac_size;
-        a.orig_id = dns_read_u16(rdata, pos)?;
+        a.orig_id = dns_read_u16(packet, pos)?;
         pos += 2;
-        a.error = dns_read_u16(rdata, pos)?;
+        a.error = dns_read_u16(packet, pos)?;
         pos += 2;
-        let other_len = usize::from(dns_read_u16(rdata, pos)?);
+        let other_len = usize::from(dns_read_u16(packet, pos)?);
         pos += 2;
-        a.other = dns_parse_slice(rdata, pos..pos + other_len)?.to_vec();
+        a.other = dns_parse_slice(packet, pos..pos + other_len)?.to_vec();
         Ok(a)
     }
 }

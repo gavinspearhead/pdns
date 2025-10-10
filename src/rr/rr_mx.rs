@@ -23,8 +23,8 @@ impl RR_MX {
         self.pref = pref;
         self.mx = mx.to_string();
     }
-    pub(crate) fn parse(rdata: &[u8], packet: &[u8], offset: usize) -> Result<RR_MX, Parse_error> {
-        let pref = dns_read_u16(rdata, 0)?;
+    pub(crate) fn parse(packet: &[u8], offset: usize) -> Result<RR_MX, Parse_error> {
+        let pref = dns_read_u16(packet, offset)?;
         let (mx, _) = dns_parse_name(packet, offset + 2)?;
         Ok(RR_MX { pref, mx })
     }

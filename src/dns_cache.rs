@@ -3,7 +3,6 @@ use crate::dns_rr_type::DNS_RR_type;
 use chrono::Utc;
 use std::cmp::max;
 use std::{collections::HashMap, fmt};
-use tracing::debug;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct DNS_Cache {
@@ -71,7 +70,7 @@ impl DNS_Cache {
             }
         });
 
-        debug!("expired: {:?} {}", expired_records.len(), self.items.len());
+       // debug!("expired: {:?} {}", expired_records.len(), self.items.len());
         (expired_records, max(0, self.timeout - first_timeout))
     }
 }

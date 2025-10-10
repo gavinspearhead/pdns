@@ -110,12 +110,12 @@ fn parse_edns_extended_dns_error(
     stats: &mut Statistics,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let info_code = DNSExtendedError::find(dns_read_u16(rdata, offset + 4)?)?;
-    debug!("info code {info_code}");
-    let info_text = std::str::from_utf8(dns_parse_slice(
+   // debug!("info code {info_code}");
+    /*let info_text = std::str::from_utf8(dns_parse_slice(
         rdata,
         offset + 6..offset + 4 + option_length,
-    )?)?;
-    debug!("infotext {info_text}");
+    )?)?;*/
+   // debug!("infotext {info_text}");
     if !packet_info.dns_records.is_empty() {
         packet_info.dns_records[0].extended_error = info_code;
     }
@@ -330,14 +330,11 @@ fn parse_edns(
     //let payload_size = dns_read_u16(packet, offset_in)?;
     let e_rcode = u16::from(dns_read_u8(packet, offset_in + 2)?);
     if e_rcode != 0 {
-        match packet_info.dns_records.first() {
-            Some(x) => {
-                let mut rec = x.clone();
-                rec.error = DnsReplyType::find(rec.error as u16 | (e_rcode << 4))?;
-                debug!("EDNS error code {}", rec.error);
-                packet_info.dns_records[0] = rec;
-            }
-            _ => {}
+        if let Some(x) = packet_info.dns_records.first() {
+            let mut rec = x.clone();
+            rec.error = DnsReplyType::find(rec.error as u16 | (e_rcode << 4))?;
+        //    debug!("EDNS error code {}", rec.error);
+            packet_info.dns_records[0] = rec;
         }
     }
     let data_length = usize::from(dns_read_u16(packet, offset_in + 6)?);

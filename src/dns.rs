@@ -160,6 +160,10 @@ pub enum SVC_Param_Keys {
 }
 
 impl SVC_Param_Keys {
+    #[inline]
+    pub(crate) fn to_str(self) -> &'static str {
+        self.into()
+    }
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
         match SVC_Param_Keys::from_repr(usize::from(val)) {
             Some(x) => Ok(x),
@@ -171,6 +175,6 @@ impl SVC_Param_Keys {
 impl fmt::Display for SVC_Param_Keys {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{:?}", self.to_str())
     }
 }
