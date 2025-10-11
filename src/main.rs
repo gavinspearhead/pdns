@@ -370,7 +370,10 @@ fn stats_dump(config: &Config, statistics: &Arc<Mutex<Statistics>>)  {
     if config.stats_dump_interval > 0 {
         debug!("stats interval {} to file {}", config.stats_dump_interval, &config.export_stats);
         loop {
-            statistics.lock().dump_stats(&config, false).unwrap();
+            match statistics.lock().dump_stats(&config, false) {
+                Err(e) => {error!("Cannot dump stats: {e}")}
+                Ok(_) => {}
+            }
             sleep(time::Duration::from_secs(config.stats_dump_interval as u64));
         }
     }
