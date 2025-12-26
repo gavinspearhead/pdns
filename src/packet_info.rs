@@ -1,15 +1,15 @@
-use std::fmt::Write;
 use crate::dns_protocol::DNS_Protocol;
 use crate::dns_record::DNS_record;
 use crate::dns_rr_type::DNS_RR_type;
 use asn_db2::{Database, IpEntry};
 use chrono::{DateTime, Utc};
+use std::fmt::Write;
 use std::{
     fmt,
     net::{IpAddr, Ipv4Addr},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub(crate) struct Packet_info {
     pub timestamp: DateTime<Utc>,
     pub s_addr: IpAddr,
@@ -79,7 +79,8 @@ impl Packet_info {
     pub fn to_csv(&self) -> String {
         let mut s = String::new();
         for i in &self.dns_records {
-            writeln!(s,
+            writeln!(
+                s,
                 "{},{},{},{},{},{},{},{},{}",
                 self.s_addr,
                 self.d_addr,
@@ -90,14 +91,16 @@ impl Packet_info {
                 i.name,
                 i.rdata,
                 1
-            ).unwrap();
+            )
+            .unwrap();
         }
         s
     }
     pub fn to_json(&self) -> String {
         let mut s = String::new();
         for i in &self.dns_records {
-            write!(s,
+            write!(
+                s,
                 "{{ 
                    \"source_ip\" : {},
                    \"destination_ip\" : {},
@@ -118,7 +121,8 @@ impl Packet_info {
                 i.name,
                 i.rdata,
                 1
-            ).unwrap();
+            )
+            .unwrap();
         }
         s
     }

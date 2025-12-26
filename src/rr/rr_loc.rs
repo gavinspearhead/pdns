@@ -21,7 +21,7 @@ use std::str::FromStr;
 
 // The struct to hold the parsed binary representation of the LOC record.
 // This structure directly maps to the on-the-wire format specified in RFC 1876.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Hash, Eq, PartialOrd, Ord, Copy)]
 pub struct RR_LOC {
     version: u8,
     size: u8,
@@ -43,9 +43,9 @@ impl Default for RR_LOC {
             size: default_size_encoded,
             hor_prec: default_hor_prec_encoded,
             ver_prec: default_ver_prec_encoded,
-            lat:  0x80000000, // Equator (0 degrees latitude)
-            lon: 0x80000000, // Prime Meridian (0 degrees longitude)
-            alt: (100000.0_f64 * 100.0).round() as u32, // Altitude of 0m, relative to -100000m
+            lat: 0x8000_0000, // Equator (0 degrees latitude)
+            lon: 0x8000_0000, // Prime Meridian (0 degrees longitude)
+            alt: (100_000.0_f64 * 100.0).round() as u32, // Altitude of 0m, relative to -100000m
         }
     }
 }
@@ -115,7 +115,7 @@ fn parse_loc_record(loc_str: &str) -> Result<RR_LOC, ParseError> {
     let mut lat_val = (lat_seconds * 1000.0).round() as u32;
 
     // RFC 1876: Latitude of the equator is 2^31. North is above, South is below.
-    let equator: u32 = 0x80000000;
+    let equator: u32 = 0x8000_0000;
     if lat_dir == "N" {
         lat_val += equator;
     } else if lat_dir == "S" {
@@ -140,7 +140,7 @@ fn parse_loc_record(loc_str: &str) -> Result<RR_LOC, ParseError> {
     let mut lon_val = (lon_seconds * 1000.0).round() as u32;
 
     // RFC 1876: Longitude of the prime meridian is 2^31. East is above, West is below.
-    let prime_meridian: u32 = 0x80000000;
+    let prime_meridian: u32 = 0x8000_0000;
     if lon_dir == "E" {
         lon_val += prime_meridian;
     } else if lon_dir == "W" {
@@ -150,15 +150,15 @@ fn parse_loc_record(loc_str: &str) -> Result<RR_LOC, ParseError> {
     }
 
     // --- Parsing Altitude ---
-    let alt_str = parts[8];
-    if !alt_str.ends_with('m') {
+    let alt_string = parts[8];
+    if !alt_string.ends_with('m') {
         return Err(ParseError::InvalidUnit);
     }
-    let alt_m = f64::from_str(&alt_str[..alt_str.len() - 1])
-        .map_err(|_| ParseError::InvalidNumber(alt_str.to_string()))?;
+    let alt_mtr = f64::from_str(&alt_string[..alt_string.len() - 1])
+        .map_err(|_| ParseError::InvalidNumber(alt_string.to_string()))?;
 
     // RFC 1876: Altitude is in centimeters, offset by 100,000m.
-    let alt_cm = (alt_m + 100000.0) * 100.0;
+    let alt_cm = (alt_mtr + 100_000.0) * 100.0;
     let alt_val = alt_cm.round() as u32;
 
     // --- Parsing Size and Precision ---

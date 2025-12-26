@@ -1,12 +1,12 @@
 use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8};
 use crate::errors::ParseErrorType::{Invalid_Domain_name, Invalid_packet_index};
 use crate::errors::Parse_error;
+use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use tracing::debug;
-use once_cell::sync::Lazy;
 
 const MAX_DOMAIN_NAME_LENGTH: usize = 253;
-const MAX_DOMAIN_NAME_LENGTH_WITH_DOT: usize = 254;
+const MAX_DOMAIN_NAME_LENGTH_WITH_DOT: usize = MAX_DOMAIN_NAME_LENGTH + 1;
 const MAX_RECURSION_DEPTH: usize = 63;
 const MAX_LABEL_LENGTH: usize = 63;
 static DNS_NAME_REGEX: Lazy<regex::Regex> = Lazy::new(|| {
@@ -28,6 +28,7 @@ mod tests {
         assert!(is_valid_dns_name("domaine-xample.com."));
         assert!(is_valid_dns_name("domain.example.com."));
         assert!(is_valid_dns_name("."));
+        assert!(is_valid_dns_name("nic.energy"));
 
         // Invalid names
         assert!(!is_valid_dns_name("")); // Empty
@@ -49,21 +50,35 @@ mod tests {
 
         // Length restrictions
         assert!(!is_valid_dns_name(&"a".repeat(MAX_DOMAIN_NAME_LENGTH + 1))); // Domain name too long
-        assert!(!is_valid_dns_name(&format!("{}.com", "a".repeat(MAX_LABEL_LENGTH + 1)))); // Label too long
-        let max_domain = format!("{}.{}.{}.com",
-                                 "a".repeat(MAX_LABEL_LENGTH),
-                                 "b".repeat(MAX_LABEL_LENGTH),
-                                 "c".repeat(MAX_LABEL_LENGTH - 10));
+        assert!(!is_valid_dns_name(&format!(
+            "{}.com",
+            "a".repeat(MAX_LABEL_LENGTH + 1)
+        ))); // Label too long
+        let max_domain = format!(
+            "{}.{}.{}.com",
+            "a".repeat(MAX_LABEL_LENGTH),
+            "b".repeat(MAX_LABEL_LENGTH),
+            "c".repeat(MAX_LABEL_LENGTH - 10)
+        );
         assert!(is_valid_dns_name(&max_domain)); // Maximum valid length with max length labels
-        assert!(is_valid_dns_name(&format!("{}.com", "a".repeat(MAX_LABEL_LENGTH)))); // Maximum valid label length
-        let over_max_domain = format!("{}.{}.{}.{}.{}.com",
-                                      "a".repeat(MAX_LABEL_LENGTH),
-                                      "b".repeat(MAX_LABEL_LENGTH),
-                                      "c".repeat(MAX_LABEL_LENGTH),
-                                      "e".repeat(MAX_LABEL_LENGTH),
-                                      "d".repeat(MAX_LABEL_LENGTH));
+        assert!(is_valid_dns_name(&format!(
+            "{}.com",
+            "a".repeat(MAX_LABEL_LENGTH)
+        ))); // Maximum valid label length
+        let over_max_domain = format!(
+            "{}.{}.{}.{}.{}.com",
+            "a".repeat(MAX_LABEL_LENGTH),
+            "b".repeat(MAX_LABEL_LENGTH),
+            "c".repeat(MAX_LABEL_LENGTH),
+            "e".repeat(MAX_LABEL_LENGTH),
+            "d".repeat(MAX_LABEL_LENGTH)
+        );
         assert!(!is_valid_dns_name(&over_max_domain)); // Exceeds max length with max length labels
-        assert!(is_valid_dns_name(&format!("{}.{}.com", "a".repeat(MAX_LABEL_LENGTH), "b".repeat(MAX_LABEL_LENGTH)))); // Combined labels too long
+        assert!(is_valid_dns_name(&format!(
+            "{}.{}.com",
+            "a".repeat(MAX_LABEL_LENGTH),
+            "b".repeat(MAX_LABEL_LENGTH)
+        ))); // Combined labels too long
     }
 
     #[test]
@@ -73,13 +88,15 @@ mod tests {
         assert!(is_valid_dns_name(&format!("{}.example.com", max_label)));
 
         // Maximum total length (253 chars)
-        let max_labels = (0..4).map(|i| format!("{}{}", "a".repeat(61), i))
+        let max_labels = (0..4)
+            .map(|i| format!("{}{}", "a".repeat(61), i))
             .collect::<Vec<_>>()
             .join(".");
         assert!(is_valid_dns_name(&max_labels));
 
         // Maximum number of labels
-        let max_label_count = (0..63).map(|i| format!("a{}", i))
+        let max_label_count = (0..63)
+            .map(|i| format!("a{}", i))
             .collect::<Vec<_>>()
             .join(".");
         assert!(is_valid_dns_name(&max_label_count));
@@ -108,10 +125,11 @@ mod tests {
     }
 }
 
-fn is_valid_dns_name(name: &str) -> bool
-{
-    if name.is_empty() || name.len() > MAX_DOMAIN_NAME_LENGTH_WITH_DOT ||
-        (name.len() > MAX_DOMAIN_NAME_LENGTH && !name.ends_with('.')) {
+fn is_valid_dns_name(name: &str) -> bool {
+    if name.is_empty()
+        || name.len() > MAX_DOMAIN_NAME_LENGTH_WITH_DOT
+        || (name.len() > MAX_DOMAIN_NAME_LENGTH && !name.ends_with('.'))
+    {
         return false;
     }
 
@@ -180,11 +198,11 @@ fn dns_parse_name_internal(
             let label = dns_parse_slice(packet, idx..idx + label_len)?;
             match std::str::from_utf8(label) {
                 Ok(t) => {
-                    if name.len() + t.len() + 1 > MAX_DOMAIN_NAME_LENGTH_WITH_DOT {
+                    if name.len() + t.len() > MAX_DOMAIN_NAME_LENGTH {
                         return Err(Parse_error::new(Invalid_Domain_name, &name));
                     }
-                    name.push_str(t)
-                },
+                    name.push_str(t);
+                }
                 Err(_) => {
                     return Err(Parse_error::new(Invalid_packet_index, &format!("{idx}")));
                 }

@@ -4,7 +4,7 @@ use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::Parse_error;
 use std::fmt::Display;
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
 pub struct RR_TXT {
     txt: Vec<String>,
 }
@@ -26,7 +26,6 @@ impl RR_TXT {
             txt.set(&parse_dns_str(r)?);
             pos += 1 + tlen;
         }
-
         Ok(txt)
     }
 }

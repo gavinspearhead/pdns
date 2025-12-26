@@ -3,7 +3,7 @@ use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::{ParseErrorType, Parse_error};
 use std::fmt::{Display, Formatter};
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
 pub struct RR_NULL {
     rdata: Vec<u8>,
 }

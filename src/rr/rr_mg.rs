@@ -5,7 +5,7 @@ use crate::errors::Parse_error;
 use crate::rr::rr_mb::RR_MB;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RR_MG {
     mb: RR_MB,
 }

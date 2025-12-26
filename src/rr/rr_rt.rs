@@ -5,7 +5,7 @@ use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::Parse_error;
 use std::fmt::{Display, Formatter};
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct RR_RT {
     pref: u16,
     rt: String,
@@ -20,10 +20,10 @@ impl RR_RT {
         self.pref = pref;
         self.rt = rt.to_string();
     }
-    pub(crate) fn parse(packet: &[u8], offset_in: usize ) -> Result<RR_RT, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_RT, Parse_error> {
         let mut rt = RR_RT::new();
         rt.pref = dns_read_u16(packet, offset_in)?;
-        (rt.rt, _) = dns_parse_name(packet, offset_in+ 2)?;
+        (rt.rt, _) = dns_parse_name(packet, offset_in + 2)?;
         Ok(rt)
     }
 }

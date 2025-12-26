@@ -1,7 +1,7 @@
 use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list, parse_dns_str};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::{ParseErrorType, Parse_error};
+use crate::errors::Parse_error;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default)]
@@ -26,10 +26,7 @@ impl RR_CAA {
         caa.flag = dns_read_u8(rdata, 0)?;
         let tag_len = usize::from(dns_read_u8(rdata, 1)?);
         let r = dns_parse_slice(rdata, 2..2 + tag_len)?;
-        let Ok(tag) = std::str::from_utf8(r) else {
-            return Err(Parse_error::new(ParseErrorType::Invalid_DNS_Packet, ""));
-        };
-        caa.tag = tag.to_string();
+        caa.tag = parse_dns_str(r)?;
         let r = dns_parse_slice(rdata, 2 + tag_len..)?;
         caa.value = parse_dns_str(r)?;
         Ok(caa)

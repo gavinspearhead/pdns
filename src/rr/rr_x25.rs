@@ -23,10 +23,9 @@ impl RR_X25 {
         if len + 1 != rdata.len() {
             return Err(Parse_error::new(Invalid_Parameter, "Invalid X25 format"));
         }
-        let addr = dns_parse_slice(rdata, 1..=len)?;
-        let mut a = RR_X25::new();
-        a.addr = parse_dns_str(addr)?;
-        Ok(a)
+        Ok(RR_X25 {
+            addr: parse_dns_str(dns_parse_slice(rdata, 1..=len)?)?,
+        })
     }
 }
 

@@ -1,7 +1,8 @@
 use crate::config::Config;
-use crate::dns_helper::{self, dns_parse_slice, dns_read_u16, dns_read_u32};
+use crate::dns_helper::{self, dns_parse_slice, dns_read_u16, dns_read_u32, dns_read_u8};
 use crate::dns_packet::parse_dns;
 use crate::dns_protocol::DNS_Protocol;
+use crate::errors::ParseErrorType;
 use crate::errors::ParseErrorType::{
     Invalid_DNS_Packet, Invalid_IP_Version, Invalid_IPv4_Header, Invalid_IPv6_Header,
     Invalid_TCP_Header, Invalid_UDP_Header, Packet_Too_Small,
@@ -13,9 +14,8 @@ use crate::{errors, tcp_connection};
 use errors::Parse_error;
 use parking_lot::Mutex;
 use std::sync::Arc;
-use tracing::debug;
 use tcp_connection::TCP_Connections;
-use crate::errors::ParseErrorType;
+use tracing::debug;
 
 fn parse_tcp(
     packet: &[u8],
@@ -33,9 +33,9 @@ fn parse_tcp(
     if !(matches!(dp, 53 | 5353 | 5355) || matches!(sp, 53 | 5353 | 5355)) {
         return Err(Parse_error::new(Invalid_DNS_Packet, "").into());
     }
-    let hl = usize::from((packet[12] >> 4) * 4);
+    let hl = usize::from((dns_read_u8(packet, 12)? >> 4) * 4);
     let len = u32::try_from(packet.len() - hl)?;
-    let flags = packet[13];
+    let flags = dns_read_u8(packet, 13)?;
     //let _wsize = dns_read_u16(packet, 14)?;
     let seq_nr = dns_read_u32(packet, 4)?;
 
@@ -44,7 +44,7 @@ fn parse_tcp(
     packet_info.set_data_len(len);
 
     let dns_data = dns_parse_slice(packet, hl..)?;
-    let r = tcp_list.lock().process_data(
+    let tcp_record = tcp_list.lock().process_data(
         sp,
         dp,
         &packet_info.s_addr,
@@ -53,11 +53,18 @@ fn parse_tcp(
         dns_data,
         flags,
     );
-    if let Some(d) = r {
-        let data = d.data();
+    if let Some(tcp_data) = tcp_record {
+        let data = tcp_data.data();
         let data_len = data.len();
         if data_len == 0 {
             return Ok(());
+        }
+        if data_len < 2 {
+            return Err(Parse_error::new(
+                Invalid_TCP_Header,
+                "TCP data too short for DNS length field",
+            )
+            .into());
         }
         stats.tcp += 1;
         let mut offset = 0;
@@ -114,7 +121,13 @@ fn parse_udp(
 
     if matches!(dp, 53 | 5353 | 5355) || matches!(sp, 53 | 5353 | 5355) {
         stats.udp += 1;
-        match parse_dns( dns_parse_slice(packet, 8..)?, packet_info, stats, config, skip_list, ) {
+        match parse_dns(
+            dns_parse_slice(packet, 8..)?,
+            packet_info,
+            stats,
+            config,
+            skip_list,
+        ) {
             Ok(..) => {}
             Err(e) => {
                 if let Some(parse_error) = e.downcast_ref::<Parse_error>() {
@@ -172,7 +185,7 @@ fn parse_ipv4(
 ) -> Result<(), Box<dyn std::error::Error>> {
     stats.ipv4 += 1;
     if packet.len() < 20 {
-        return Err(Parse_error::new(Invalid_IPv4_Header, "").into());
+        return Err(Parse_error::new(Invalid_IPv4_Header, "Incomplete Header").into());
     }
     if packet[0] >> 4 != 4 {
         return Err(Parse_error::new(Invalid_IP_Version, &format!("{:x}", &packet[0] >> 4)).into());

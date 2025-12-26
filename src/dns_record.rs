@@ -3,11 +3,10 @@ use crate::dns_reply_type::DnsReplyType;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::edns::DNSExtendedError;
 use chrono::{DateTime, Utc};
+use idna::domain_to_unicode;
 use std::fmt;
-use unic_idna::to_unicode;
 
-#[derive(Debug, Clone, Default)]
-
+#[derive(Debug, Clone, Default, PartialOrd, Ord, Eq, PartialEq, Hash)]
 pub(crate) struct DNS_record {
     pub(crate) rr_type: DNS_RR_type,
     pub(crate) class: DNS_Class,
@@ -29,24 +28,18 @@ impl DNS_record {}
 impl fmt::Display for DNS_record {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if f.alternate() {
-            let (name, res) = to_unicode(
-                &self.name,
-                unic_idna::Flags {
-                    transitional_processing: false,
-                    verify_dns_length: true,
-                    use_std3_ascii_rules: true,
-                },
-            );
-            let s = if name == self.name || res != Ok(()) {
-                ""
+            let (name, res) = domain_to_unicode(&self.name);
+            let unicode_name = if name == self.name || res.is_err() {
+                String::new()
             } else {
-                &format!("({name}) ")
+                format!("({name}) ")
             };
 
-            writeln!(
+            write!(
                 f,
-                "  {} {s}{} {} {} {} {} {} {}{} {} {} {}",
+                "  {} {}{} {} {} {} {} {} {}",
                 snailquote::escape(&self.name),
+                unicode_name,
                 self.class,
                 self.rr_type,
                 self.rdata,
@@ -54,32 +47,28 @@ impl fmt::Display for DNS_record {
                 self.timestamp,
                 self.domain,
                 self.prefix,
-                if self.asn != 0 {
-                    &format!("{} ({}) ", self.asn, self.asn_owner)
-                } else {
-                    ""
-                },
+            )?;
+
+            if self.asn != 0 {
+                write!(f, "{} ({}) ", self.asn, self.asn_owner)?;
+            }
+
+            writeln!(
+                f,
+                "{} {} {}",
                 self.error,
                 self.extended_error.to_str(),
                 self.count,
             )
         } else {
-            writeln!(
+            write!(
                 f,
                 "Name: {} ({})      Domain: {}
-        RData: {}
-        RR Type: {}    Class: {}     TTL: {}      Error: {}      ExtError: {}    Count: {}
-        Time: {}      Prefix: {}{}",
+            RData: {}
+            RR Type: {}    Class: {}     TTL: {}      Error: {}      ExtError: {}    Count: {}
+            Time: {}      Prefix: {}",
                 snailquote::escape(&self.name),
-                to_unicode(
-                    &self.name,
-                    unic_idna::Flags {
-                        transitional_processing: false,
-                        verify_dns_length: true,
-                        use_std3_ascii_rules: true
-                    }
-                )
-                .0,
+                domain_to_unicode(&self.name).0,
                 self.domain,
                 self.rdata,
                 self.rr_type,
@@ -90,15 +79,16 @@ impl fmt::Display for DNS_record {
                 self.count,
                 self.timestamp,
                 self.prefix,
-                if self.asn != 0 {
-                    &format!(
-                        "     ASN: {}        ASN Owner: {}",
-                        self.asn, self.asn_owner
-                    )
-                } else {
-                    ""
-                },
-            )
+            )?;
+
+            if self.asn != 0 {
+                write!(
+                    f,
+                    "     ASN: {}        ASN Owner: {}",
+                    self.asn, self.asn_owner
+                )?;
+            }
+            writeln!(f)
         }
     }
 }

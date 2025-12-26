@@ -56,16 +56,16 @@ impl RR_NSEC3 {
         self.bitmap = sorted_bitmap.iter().map(u16::from).collect();
     }
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_NSEC3, Parse_error> {
-        let mut a = RR_NSEC3::new();
-        a.hash_alg = dns_read_u8(rdata, 0)?;
-        a.flags = dns_read_u8(rdata, 1)?;
-        a.iterations = dns_read_u16(rdata, 2)?;
+        let mut nsec3 = RR_NSEC3::new();
+        nsec3.hash_alg = dns_read_u8(rdata, 0)?;
+        nsec3.flags = dns_read_u8(rdata, 1)?;
+        nsec3.iterations = dns_read_u16(rdata, 2)?;
         let salt_len = usize::from(dns_read_u8(rdata, 4)?);
-        a.salt = dns_parse_slice(rdata, 5..5 + salt_len)?.to_vec();
+        nsec3.salt = dns_parse_slice(rdata, 5..5 + salt_len)?.to_vec();
         let hash_len = usize::from(dns_read_u8(rdata, 5 + salt_len)?);
-        a.next_owner = dns_parse_slice(rdata, 6 + salt_len..6 + salt_len + hash_len)?.to_vec();
-        a.bitmap = parse_nsec_bitmap_vec(&rdata[6 + salt_len + hash_len..])?;
-        Ok(a)
+        nsec3.next_owner = dns_parse_slice(rdata, 6 + salt_len..6 + salt_len + hash_len)?.to_vec();
+        nsec3.bitmap = parse_nsec_bitmap_vec(&rdata[6 + salt_len + hash_len..])?;
+        Ok(nsec3)
     }
 }
 

@@ -27,6 +27,7 @@ use tracing::{debug, error};
     Deserialize,
     AsRefStr,
     FromRepr,
+    Default,
 )]
 
 pub(crate) enum Filter_fields {
@@ -36,6 +37,7 @@ pub(crate) enum Filter_fields {
     DST_PORT,
     PROTOCOL,
     REPLY_CODE,
+    #[default]
     NAME,
     CLASS,
     RR_TYPE,
@@ -85,8 +87,10 @@ mod dns_filter_fields_tests {
     Serialize,
     Deserialize,
     AsRefStr,
+    Default,
 )]
 enum Filter_operator {
+    #[default]
     EQUAL,
     NOT_EQUAL,
     START_WITH,
@@ -108,7 +112,7 @@ impl fmt::Display for Filter_operator {
 }
 type SimpleExpr = (Filter_fields, Filter_operator, String);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
 pub(crate) struct Filter {
     // FIELD = VALUE OR (FIELD = VALUE AND FIELD = VALUE)
     // operators =, !=, $=, ^=

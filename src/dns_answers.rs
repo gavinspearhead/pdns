@@ -29,7 +29,7 @@ impl dns_answer {
             offset: 0,
         }
     }
-    pub(crate) fn set_rcode(&mut self, rcode: DnsReplyType) {
+    pub fn set_rcode(&mut self, rcode: DnsReplyType) {
         self.header.rcode = rcode;
     }
 
@@ -125,7 +125,7 @@ pub fn write_data_record(
 ) -> Result<usize, Box<dyn std::error::Error>> {
     let mut name = dns_format_name(name_in, names, offset);
     let name_len = name.len();
-    let rdlen = answer_slice.len() as u16;
+    let rdlen = u16::try_from(answer_slice.len())?;
     debug!("rdlen: {:?} {:?}", rdlen, answer_slice);
     buf.append(&mut name);
     buf.extend_from_slice((rr_type as u16).to_be().as_bytes());

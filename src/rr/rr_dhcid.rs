@@ -24,11 +24,11 @@ impl RR_DHCID {
         self.digest = digest.to_vec();
     }
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_DHCID, Parse_error> {
-        let mut a = RR_DHCID::new();
-        a.id_type_code = dns_read_u16(rdata, 0)?;
-        a.digest_type_code = dns_read_u8(rdata, 2)?;
-        a.digest = dns_parse_slice(rdata, 3..)?.to_vec();
-        Ok(a)
+        let mut dhcid = RR_DHCID::new();
+        dhcid.id_type_code = dns_read_u16(rdata, 0)?;
+        dhcid.digest_type_code = dns_read_u8(rdata, 2)?;
+        dhcid.digest = dns_parse_slice(rdata, 3..)?.to_vec();
+        Ok(dhcid)
     }
 }
 

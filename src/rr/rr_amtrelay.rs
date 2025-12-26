@@ -6,7 +6,7 @@ use crate::errors::ParseErrorType::Invalid_Parameter;
 use crate::errors::Parse_error;
 use std::fmt::{Display, Formatter};
 use std::net::Ipv4Addr;
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RR_AMTRELAY {
     precedence: u8,
     dbit: u8,

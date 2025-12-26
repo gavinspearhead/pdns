@@ -1,12 +1,12 @@
 use super::super::dns_record_trait::DNSRecord;
-use crate::dns_helper::{names_list, parse_ipv4};
+use crate::dns_helper::names_list;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::ParseErrorType::{Invalid_Parameter, Invalid_Resource_Record};
+use crate::errors::ParseErrorType::Invalid_Resource_Record;
 use crate::errors::Parse_error;
 use std::fmt::{Display, Formatter};
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::Ipv4Addr;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RR_A {
     addr: Ipv4Addr,
 }
@@ -55,10 +55,9 @@ impl RR_A {
             ));
         }
 
-        match parse_ipv4(rdata)? {
-            IpAddr::V4(v4_addr) => Ok(RR_A { addr: v4_addr }),
-            IpAddr::V6(_) => Err(Parse_error::new(Invalid_Parameter, "Expected IPv4 address")),
-        }
+        Ok(RR_A {
+            addr: Ipv4Addr::new(rdata[0], rdata[1], rdata[2], rdata[3]),
+        })
     }
 }
 

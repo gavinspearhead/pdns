@@ -18,16 +18,6 @@ pub(crate) fn is_between<T: PartialOrd>(value: &T, min: &T, max: &T) -> bool {
     value >= min && value <= max
 }*/
 
-#[inline]
-pub(crate) fn parse_rrtype(rrtype: u16) -> Result<DNS_RR_type, DNS_error> {
-    DNS_RR_type::find(rrtype)
-}
-
-#[inline]
-pub(crate) fn parse_class(class: u16) -> Result<DNS_Class, DNS_error> {
-    DNS_Class::find(class)
-}
-
 pub(crate) fn timestamp_to_str(timestamp: u32) -> Result<String, Parse_error> {
     let Some(dt) = DateTime::from_timestamp(i64::from(timestamp), 0) else {
         return Err(Parse_error::new(Invalid_timestamp, &timestamp.to_string()));
@@ -273,10 +263,12 @@ pub struct names_list {
 
 impl names_list {
     #[must_use]
+    #[inline]
     pub fn new() -> names_list {
         names_list { name_list: vec![] }
     }
 
+    #[inline]
     pub(crate) fn add(&mut self, name: &str, pos: usize) {
         self.name_list.push(elem::new(name, pos));
     }

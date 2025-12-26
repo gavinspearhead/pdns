@@ -97,11 +97,7 @@ impl TCP_Connections {
             max_tcp_len: maxsize,
         }
     }
-    /* #[inline]
-        pub fn len(&self) -> usize {
-            self.connections.len()
-        }
-    */
+
     pub fn add_data(
         &mut self,
         sp: u16,
@@ -110,7 +106,6 @@ impl TCP_Connections {
         dst: &IpAddr,
         seqnr: u32,
         data: &[u8],
-        // _timestamp: DateTime<Utc>,
     ) {
         let c = self
             .connections

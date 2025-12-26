@@ -4,7 +4,7 @@ use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::Parse_error;
 use crate::rr::rr_mb::RR_MB;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RR_MD(RR_MB);
 
 impl RR_MD {

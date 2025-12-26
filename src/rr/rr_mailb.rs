@@ -6,7 +6,7 @@ use crate::rr::rr_maila::RR_MAILA;
 use std::fmt::{Display, Formatter};
 use std::net::Ipv4Addr;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Hash, PartialEq, Eq, PartialOrd, Ord, Copy)]
 pub struct RR_MAILB(RR_MAILA);
 
 impl RR_MAILB {

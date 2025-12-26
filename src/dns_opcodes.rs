@@ -63,4 +63,8 @@ mod dns_opcodes_tests {
     fn test_dns_opcodes1() {
         assert_eq!(DNS_Opcodes::find(4).unwrap(), DNS_Opcodes::Notify);
     }
+    #[test]
+    fn test_dns_opcodes2() {
+        assert!(DNS_Opcodes::find(114).is_err());
+    }
 }

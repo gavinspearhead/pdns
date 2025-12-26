@@ -4,7 +4,7 @@ use chrono::Utc;
 use std::cmp::max;
 use std::{collections::HashMap, fmt};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub(crate) struct DNS_Cache {
     timeout: i64,
     max_size: usize,
@@ -70,7 +70,7 @@ impl DNS_Cache {
             }
         });
 
-       // debug!("expired: {:?} {}", expired_records.len(), self.items.len());
+        // debug!("expired: {:?} {}", expired_records.len(), self.items.len());
         (expired_records, max(0, self.timeout - first_timeout))
     }
 }

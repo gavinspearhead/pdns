@@ -5,7 +5,7 @@ use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::Parse_error;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RR_KX {
     pref: u16,
     kx: String,
@@ -14,10 +14,7 @@ pub struct RR_KX {
 impl RR_KX {
     #[must_use]
     pub fn new() -> RR_KX {
-        RR_KX {
-            pref: 0,
-            kx: String::new(),
-        }
+        RR_KX::default()
     }
     pub fn set(&mut self, pref: u16, kx: &str) {
         self.pref = pref;

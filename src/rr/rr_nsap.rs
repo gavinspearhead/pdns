@@ -4,7 +4,7 @@ use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::Parse_error;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,  PartialEq, Eq, Ord, PartialOrd)]
 pub struct RR_NSAP {
     nsap: Vec<u8>,
 }
@@ -24,9 +24,9 @@ impl RR_NSAP {
         self.nsap = nsap.to_vec();
     }
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_NSAP, Parse_error> {
-        let mut a = RR_NSAP::new();
-        a.nsap = rdata.to_vec();
-        Ok(a)
+        Ok(RR_NSAP {
+            nsap: rdata.to_vec(),
+        })
     }
 }
 

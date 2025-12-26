@@ -6,7 +6,7 @@ use crate::errors::Parse_error;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use std::fmt::{Display, Formatter};
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
 pub struct RR_KEY {
     flags: u16,
     protocol: u8,
@@ -17,18 +17,13 @@ pub struct RR_KEY {
 impl RR_KEY {
     #[must_use]
     pub fn new() -> RR_KEY {
-        RR_KEY {
-            flags: 0,
-            protocol: 0,
-            alg: 0,
-            key: Vec::new(),
-        }
+        RR_KEY::default()
     }
     pub fn set(&mut self, flags: u16, protocol: u8, alg: u8, key: &[u8]) {
         self.flags = flags;
         self.protocol = protocol;
         self.alg = alg;
-        self.key = Vec::from(key);
+        self.key = key.to_vec();
     }
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_KEY, Parse_error> {
         let mut a = RR_KEY::new();

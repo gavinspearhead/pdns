@@ -1,7 +1,7 @@
 use crate::dns::dnssec_algorithm;
 use crate::dns_helper::{
     dns_format_name, dns_parse_slice, dns_read_u16, dns_read_u32, dns_read_u8, names_list,
-    parse_rrtype, timestamp_to_str,
+    timestamp_to_str,
 };
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DNSRecord;
@@ -52,20 +52,20 @@ impl RR_RRSIG {
         self.signature = signature.to_vec();
     }
     pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_RRSIG, Parse_error> {
-        let mut a = RR_RRSIG::new();
+        let mut rr_sig = RR_RRSIG::new();
         let sig_rrtype_val = dns_read_u16(packet, offset_in)?;
-        a.sig_rrtype = parse_rrtype(sig_rrtype_val)
+        rr_sig.sig_rrtype = DNS_RR_type::find(sig_rrtype_val)
             .map_err(|_| Parse_error::new(Invalid_Parameter, &sig_rrtype_val.to_string()))?;
-        a.alg = dns_read_u8(packet, offset_in+ 2)?;
-        a.labels = dns_read_u8(packet, offset_in+ 3)?;
-        a.ttl = dns_read_u32(packet, offset_in+ 4)?;
-        a.sig_exp = dns_read_u32(packet, offset_in+ 8)?;
-        a.sig_inc = dns_read_u32(packet, offset_in+ 12)?;
-        a.key_tag = dns_read_u16(packet, offset_in+ 16)?;
+        rr_sig.alg = dns_read_u8(packet, offset_in + 2)?;
+        rr_sig.labels = dns_read_u8(packet, offset_in + 3)?;
+        rr_sig.ttl = dns_read_u32(packet, offset_in + 4)?;
+        rr_sig.sig_exp = dns_read_u32(packet, offset_in + 8)?;
+        rr_sig.sig_inc = dns_read_u32(packet, offset_in + 12)?;
+        rr_sig.key_tag = dns_read_u16(packet, offset_in + 16)?;
         let offset_out;
-        (a.signer, offset_out) = dns_parse_name(packet, offset_in + 18)?;
-        a.signature = dns_parse_slice(packet, offset_out..)?.to_vec();
-        Ok(a)
+        (rr_sig.signer, offset_out) = dns_parse_name(packet, offset_in + 18)?;
+        rr_sig.signature = dns_parse_slice(packet, offset_out..)?.to_vec();
+        Ok(rr_sig)
     }
 }
 

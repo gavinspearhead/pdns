@@ -21,9 +21,8 @@ impl RR_NSAP_PTR {
         self.nsap_ptr = nsap_ptr.to_string();
     }
     pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_NSAP_PTR, Parse_error> {
-        let mut a = RR_NSAP_PTR::new();
-        (a.nsap_ptr, _) = dns_parse_name(packet, offset_in)?.clone();
-        Ok(a)
+        let (nsap_ptr, _) = dns_parse_name(packet, offset_in)?;
+        Ok(RR_NSAP_PTR { nsap_ptr })
     }
 
     pub fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {

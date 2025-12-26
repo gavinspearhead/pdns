@@ -1,12 +1,12 @@
 use crate::dns::{tlsa_algorithm, tlsa_cert_usage, tlsa_selector};
-use crate::dns_helper::{dns_read_u8, names_list};
+use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::ParseErrorType::Invalid_Resource_Record;
 use crate::errors::Parse_error;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
 pub struct RR_TLSA {
     cert_usage: u8,
     selector: u8,
@@ -33,7 +33,7 @@ impl RR_TLSA {
         a.cert_usage = dns_read_u8(rdata, 0)?;
         a.selector = dns_read_u8(rdata, 1)?;
         a.alg_type = dns_read_u8(rdata, 2)?;
-        a.cad = rdata[3..].into();
+        a.cad = dns_parse_slice(rdata, 3..)?.to_vec();
         Ok(a)
     }
 }

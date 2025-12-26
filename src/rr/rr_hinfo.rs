@@ -12,10 +12,7 @@ pub struct RR_HINFO {
 impl RR_HINFO {
     #[must_use]
     pub fn new() -> RR_HINFO {
-        RR_HINFO {
-            cpu: String::new(),
-            os: String::new(),
-        }
+        RR_HINFO::default()
     }
     pub fn set(&mut self, cpu: &str, os: &str) {
         assert!(cpu.len() < 256 && os.len() < 256);

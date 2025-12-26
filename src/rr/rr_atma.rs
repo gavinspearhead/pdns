@@ -1,4 +1,4 @@
-use crate::dns_helper::{dns_read_u8, names_list};
+use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::Parse_error;
@@ -21,7 +21,7 @@ impl RR_ATMA {
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_ATMA, Parse_error> {
         let mut rr = RR_ATMA::new();
         rr.format = dns_read_u8(rdata, 0)?;
-        rr.address = rdata[1..].to_vec();
+        rr.address = dns_parse_slice(rdata, 1..)?.to_vec();
         Ok(rr)
     }
 }

@@ -24,12 +24,12 @@ impl RR_DSYNC {
         self.target = target.to_string();
     }
 
-    pub(crate) fn parse(packet: &[u8],offset_in: usize) -> Result<Self, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<Self, Parse_error> {
         let (target, _) = dns_parse_name(packet, offset_in + 5)?;
         Ok(Self {
             rrtype: dns_read_u16(packet, offset_in)?,
-            scheme: dns_read_u8(packet, offset_in+ 2)?,
-            port: dns_read_u16(packet, offset_in+ 3)?,
+            scheme: dns_read_u8(packet, offset_in + 2)?,
+            port: dns_read_u16(packet, offset_in + 3)?,
             target,
         })
     }

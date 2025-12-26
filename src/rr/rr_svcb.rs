@@ -14,10 +14,10 @@ impl RR_SVCB {
     }
 
     pub fn parse(rdata: &[u8]) -> Result<Self, Parse_error> {
-        Ok(RR_SVCB(RR_HTTPS::parse(rdata,)?))
+        Ok(RR_SVCB(RR_HTTPS::parse(rdata)?))
     }
 
-    pub fn set(&mut self, domain: &str, prio:u16, params: &[HttpsSvcParam]) {
+    pub fn set(&mut self, domain: &str, prio: u16, params: &[HttpsSvcParam]) {
         self.0.set(domain, prio, params);
     }
 }

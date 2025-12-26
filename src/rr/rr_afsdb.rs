@@ -4,7 +4,7 @@ use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::Parse_error;
 use std::fmt::{Display, Formatter};
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RR_AFSDB {
     subtype: u16,
     hostname: String,
@@ -23,11 +23,11 @@ impl RR_AFSDB {
         self.hostname = afsdb.to_string();
     }
     pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_AFSDB, Parse_error> {
-        let mut afsdb = RR_AFSDB::new();
-        let mut offset = offset_in;
-        afsdb.subtype = dns_read_u16(packet, offset)?;
-        (afsdb.hostname, _) = dns_parse_name(packet, offset + 2)?;
-        Ok(afsdb)
+        let (hostname, _) = dns_parse_name(packet, offset_in + 2)?;
+        Ok(RR_AFSDB {
+            subtype: dns_read_u16(packet, offset_in)?,
+            hostname,
+        })
     }
 }
 

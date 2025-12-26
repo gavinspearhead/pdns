@@ -193,6 +193,10 @@ mod tests1 {
     fn test_dns_rr1() {
         assert_eq!(DNS_RR_type::from_str("HTTPS").unwrap(), DNS_RR_type::HTTPS);
         assert_eq!(DNS_RR_type::from_str("AAAA").unwrap(), DNS_RR_type::AAAA);
+        assert_eq!(
+            DNS_RR_type::from_str("NSEC3PARAM").unwrap(),
+            DNS_RR_type::NSEC3PARAM
+        );
     }
 
     #[test]
@@ -201,5 +205,6 @@ mod tests1 {
         assert_eq!(DNS_RR_type::find(28).unwrap(), DNS_RR_type::AAAA);
         assert_eq!(DNS_RR_type::find(65534).unwrap(), DNS_RR_type::Private);
         assert!(DNS_RR_type::find(0).is_err());
+        assert!(DNS_RR_type::find(999).is_err());
     }
 }

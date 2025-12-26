@@ -6,7 +6,7 @@ use crate::errors::Parse_error;
 use std::fmt::{Display, Formatter};
 use std::net::{IpAddr, Ipv4Addr};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Copy)]
 pub struct RR_MAILA {
     pub(crate) addr: Ipv4Addr,
 }
@@ -28,12 +28,11 @@ impl RR_MAILA {
         self.addr = addr;
     }
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_MAILA, Parse_error> {
-        let mut a = RR_MAILA::new();
-        a.addr = match parse_ipv4(rdata)? {
+        let addr = match parse_ipv4(rdata)? {
             IpAddr::V4(addr) => addr,
             IpAddr::V6(_) => return Err(Parse_error::new(Invalid_Parameter, "")),
         };
-        Ok(a)
+        Ok(RR_MAILA { addr })
     }
 }
 

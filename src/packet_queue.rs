@@ -1,14 +1,15 @@
-use crate::packet_info::Packet_info;
+use chrono::{DateTime, Utc};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Packet_Queue {
-    queue: Arc<Mutex<VecDeque<Option<Packet_info>>>>,
+    queue: Arc<Mutex<VecDeque<Option<(Vec<u8>, DateTime<Utc>)>>>>,
 }
 
 impl Packet_Queue {
     const INITIAL_QUEUE_SIZE: usize = 32;
+    const MAX_QUEUE_SIZE: usize = 1024;
     pub fn new() -> Packet_Queue {
         Packet_Queue {
             queue: Arc::new(Mutex::new(VecDeque::with_capacity(
@@ -17,11 +18,14 @@ impl Packet_Queue {
         }
     }
     #[inline]
-    pub fn push_back(&self, packet_info: Option<Packet_info>) {
-        self.queue.lock().unwrap().push_back(packet_info);
+    pub fn push_back(&self, packet: Option<(Vec<u8>, DateTime<Utc>)>) {
+        let mut queue = self.queue.lock().unwrap();
+        if queue.len() < Self::MAX_QUEUE_SIZE {
+            queue.push_back(packet);
+        }
     }
     #[inline]
-    pub fn pop_front(&self) -> Option<Option<Packet_info>> {
+    pub fn pop_front(&self) -> Option<Option<(Vec<u8>, DateTime<Utc>)>> {
         self.queue.lock().unwrap().pop_front()
     }
 }

@@ -1,55 +1,44 @@
-use crate::dns_helper::{dns_parse_slice, names_list, parse_dns_str};
+use crate::dns_helper::names_list;
 use crate::dns_record_trait::DNSRecord;
+use crate::dns_rr::RR_TXT;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::Parse_error;
-use std::fmt::Display;
+use std::fmt::{Display, Formatter};
 
-#[derive(Default, Clone, Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct RR_NINFO {
-    ninfo: Vec<String>,
+    txt: RR_TXT,
 }
 
 impl RR_NINFO {
     #[must_use]
-    pub fn new() -> RR_NINFO {
-        RR_NINFO::default()
+    pub fn new() -> Self {
+        Self { txt: RR_TXT::new() }
     }
-    pub fn set(&mut self, ninfo: &str) {
-        self.ninfo.push(ninfo.to_string());
-    }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_NINFO, Parse_error> {
-        let mut ninfo = RR_NINFO::new();
-        let mut pos = 0;
-        while pos < rdata.len() {
-            let tlen = usize::from(rdata[pos]);
-            let r = dns_parse_slice(rdata, (1 + pos)..=(pos + tlen))?;
-            ninfo.set(&parse_dns_str(r)?);
-            pos += 1 + tlen;
-        }
 
-        Ok(ninfo)
+    pub fn set(&mut self, txt: &str) {
+        self.txt.set(txt);
+    }
+
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_NINFO, Parse_error> {
+        Ok(RR_NINFO {
+            txt: RR_TXT::parse(rdata)?,
+        })
     }
 }
 
 impl Display for RR_NINFO {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.ninfo.join(" "))
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.txt.fmt(f)
     }
 }
+
 impl DNSRecord for RR_NINFO {
     fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::NINFO
+        DNS_RR_type::WALLET
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
-        let mut result = Vec::new();
-        for s in &self.ninfo {
-            let bytes = s.as_bytes();
-            let len = bytes.len();
-            debug_assert!(len < 255);
-            result.push(len as u8); // Prefix with length
-            result.extend_from_slice(bytes); // Append string bytes
-        }
-        result
+    fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {
+        self.txt.to_bytes(names, offset)
     }
 }

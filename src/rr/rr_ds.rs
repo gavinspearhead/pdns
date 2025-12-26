@@ -20,7 +20,7 @@ impl RR_DS {
         self.inner.set(key_tag, algorithm, digest_type, digest);
     }
 
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_DS, Parse_error> {
+    pub fn parse(rdata: &[u8]) -> Result<RR_DS, Parse_error> {
         Ok(RR_DS {
             inner: RR_CDS::parse(rdata)?,
         })

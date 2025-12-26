@@ -106,6 +106,7 @@ use crate::rr::rr_ptr::RR_PTR;
 use crate::rr::rr_px::RR_PX;
 use crate::rr::rr_resinfo::RR_RESINFO;
 use crate::rr::rr_rp::RR_RP;
+use crate::rr::rr_rrsig::RR_RRSIG;
 use crate::rr::rr_rt::RR_RT;
 use crate::rr::rr_sink::RR_SINK;
 use crate::rr::rr_soa::RR_SOA;
@@ -303,12 +304,12 @@ pub(crate) fn make_reply(
 
         DNS_RR_type::GID => {
             let mut gid_record = RR_GID::new();
-            gid_record.set(0x1234567);
+            gid_record.set(0x0123_4567);
             add_records_with_log(dns_answer, dns_query, &[&gid_record], 0, ttl)?;
         }
         DNS_RR_type::UID => {
             let mut uid_record = RR_UID::new();
-            uid_record.set(1234567);
+            uid_record.set(1_234_567);
             add_records_with_log(dns_answer, dns_query, &[&uid_record], 0, ttl)?;
         }
         DNS_RR_type::CAA => {
@@ -321,7 +322,7 @@ pub(crate) fn make_reply(
             soa_record.set(
                 "ns1.nu.nl.",
                 "dns-admin.nu.nl.",
-                773629602,
+                773_629_602,
                 900,
                 901,
                 1800,
@@ -360,7 +361,7 @@ pub(crate) fn make_reply(
         DNS_RR_type::CSYNC => {
             let mut csync_record = RR_CSYNC::new();
             csync_record.set(
-                2021071001,
+                2_021_071_001,
                 3,
                 &[
                     DNS_RR_type::A,
@@ -502,7 +503,7 @@ pub(crate) fn make_reply(
         }
         DNS_RR_type::IPN => {
             let mut ipn_record = RR_IPN::new();
-            ipn_record.set(0xdeadbeefcafebabeu64);
+            ipn_record.set(0xdead_beef_cafe_babe_u64);
             add_records_with_log(dns_answer, dns_query, &[&ipn_record], 0, ttl)?;
         }
         DNS_RR_type::RESINFO => {
@@ -513,9 +514,19 @@ pub(crate) fn make_reply(
             add_records_with_log(dns_answer, dns_query, &[&res_info_record], 0, ttl)?;
         }
         DNS_RR_type::RRSIG => {
-            let mut px_record = RR_RP::new();
-            px_record.set("jschauma.netmeister.org.", "contact.netmeister.org.");
-            add_records_with_log(dns_answer, dns_query, &[&px_record], 0, ttl)?;
+            let mut rrsig_record = RR_RRSIG::new();
+            rrsig_record.set(
+                DNS_RR_type::A,
+                1,
+                1,
+                64,
+                10223333,
+                10223333,
+                1234,
+                "test@foo.nl",
+                &[2, 3, 4, 5, 4, 45, 45, 4],
+            );
+            add_records_with_log(dns_answer, dns_query, &[&rrsig_record], 0, ttl)?;
         }
         DNS_RR_type::RP => {
             let mut px_record = RR_RP::new();
@@ -608,7 +619,7 @@ pub(crate) fn make_reply(
         }
         DNS_RR_type::NID => {
             let mut nid_record = RR_NID::new();
-            nid_record.set(0, 0x00144fffff20ee64);
+            nid_record.set(0, 0x0014_4fff_ff20_ee64);
             add_records_with_log(dns_answer, dns_query, &[&nid_record], 0, ttl)?;
         }
         DNS_RR_type::CLA => {
@@ -677,14 +688,14 @@ fn add_records_with_log(
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let layers = vec![fmt::Layer::default().boxed()];
     let filter = filter::LevelFilter::DEBUG;
-    let (filter, reload_handle) = reload::Layer::new(filter);
-    let (tracing_layers, reload_handle1) = reload::Layer::new(layers);
+    let (filter, _reload_handle) = reload::Layer::new(filter);
+    let (tracing_layers, _reload_handle1) = reload::Layer::new(layers);
     tracing_subscriber::registry()
         .with(filter)
         .with(tracing_layers)
         .init();
     // Bind to local address and port
-//    let host = "127.0.0.1";
+    //    let host = "127.0.0.1";
     let host = "0.0.0.0";
     let port = "53";
     //let port = "5355";

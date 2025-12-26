@@ -24,18 +24,19 @@ impl RR_SINK {
         self.val = val.to_vec();
     }
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_SINK, Parse_error> {
-        let mut a = RR_SINK::new();
-        a.coding = dns_read_u8(rdata, 0)?;
         let mut offset = 1;
-        if a.coding == 0 {
-            // weird bind thing
-            a.coding = dns_read_u8(rdata, 1)?;
+        let mut coding = dns_read_u8(rdata, 0)?;
+
+        if coding == 0 {
+            coding = dns_read_u8(rdata, 1)?;
             offset = 2;
         }
-        a.subcoding = dns_read_u8(rdata, offset)?;
-        a.val = dns_parse_slice(rdata, offset + 1..)?.to_vec();
 
-        Ok(a)
+        Ok(RR_SINK {
+            coding,
+            subcoding: dns_read_u8(rdata, offset)?,
+            val: dns_parse_slice(rdata, offset + 1..)?.to_vec(),
+        })
     }
 }
 

@@ -62,7 +62,6 @@ impl RR_APL {
             let mut af = ApItem::new();
             af.address_family = dns_read_u16(rdata, pos)?;
             af.prefix_length = dns_read_u8(rdata, pos + 2)?;
-
             af.afd_length = dns_read_u8(rdata, pos + 3)?;
             af.negation = af.afd_length >> 7;
             af.afd_length &= 0x7f;

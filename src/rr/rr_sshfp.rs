@@ -1,5 +1,5 @@
 use crate::dns::{sshfp_algorithm, sshfp_fp_type};
-use crate::dns_helper::{dns_parse_slice, names_list};
+use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::ParseErrorType::Invalid_Resource_Record;
@@ -24,15 +24,15 @@ impl RR_SSHFP {
         self.fingerprint = fingeprint;
     }
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_SSHFP, Parse_error> {
-        let mut a = RR_SSHFP::new();
+        let mut sshfp = RR_SSHFP::new();
 
         if rdata.len() < 3 {
             return Err(Parse_error::new(Invalid_Resource_Record, ""));
         }
-        a.alg = rdata[0];
-        a.fp_type = rdata[1];
-        a.fingerprint = dns_parse_slice(rdata, 2..)?.to_vec();
-        Ok(a)
+        sshfp.alg = dns_read_u8(rdata, 0)?;
+        sshfp.fp_type = dns_read_u8(rdata, 1)?;
+        sshfp.fingerprint = dns_parse_slice(rdata, 2..)?.to_vec();
+        Ok(sshfp)
     }
 
     #[must_use]

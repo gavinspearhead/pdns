@@ -41,7 +41,7 @@ impl RR_TKEY {
         self.key = key;
         self.other = other;
     }
- pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_TKEY, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_TKEY, Parse_error> {
         let mut a = RR_TKEY::new();
         let mut pos = offset_in;
         (a.name, pos) = dns_parse_name(packet, pos)?;

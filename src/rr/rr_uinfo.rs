@@ -1,6 +1,5 @@
 use crate::dns_rr::RR_TXT;
 
-
 use crate::dns_helper::names_list;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;

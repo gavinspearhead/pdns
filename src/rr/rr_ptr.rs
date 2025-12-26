@@ -4,7 +4,7 @@ use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::Parse_error;
 use std::fmt::{Display, Formatter};
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RR_PTR {
     ptr: String,
 }
@@ -18,7 +18,7 @@ impl RR_PTR {
         self.ptr = ptr.to_string();
     }
     pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_PTR, Parse_error> {
-        let (s, _offset_out) = dns_parse_name(packet, offset_in)?;
+        let (s, _) = dns_parse_name(packet, offset_in)?;
         Ok(RR_PTR { ptr: s })
     }
 }

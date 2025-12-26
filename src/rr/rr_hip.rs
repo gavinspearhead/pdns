@@ -38,7 +38,11 @@ impl RR_HIP {
         self.hip_pk = hip_pk.into();
         self.rendezvous = rendezvous.to_string();
     }
-    pub(crate) fn parse(rdata: &[u8], packet: &[u8], offset_in: usize) -> Result<RR_HIP, Parse_error> {
+    pub(crate) fn parse(
+        rdata: &[u8],
+        packet: &[u8],
+        offset_in: usize,
+    ) -> Result<RR_HIP, Parse_error> {
         let mut a = RR_HIP::new();
         a.hit_len = dns_read_u8(rdata, 0)?;
         a.hit_alg = dns_read_u8(rdata, 1)?;

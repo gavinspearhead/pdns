@@ -131,7 +131,7 @@ pub(crate) fn dns_parse_rdata(
         DNS_RR_type::GID => Ok(RR_GID::parse(rdata)?.to_string()),
         DNS_RR_type::GPOS => Ok(RR_GPOS::parse(rdata)?.to_string()),
         DNS_RR_type::HINFO => Ok(RR_HINFO::parse(rdata)?.to_string()),
-        DNS_RR_type::HHIT   => Ok(RR_HHIT::parse(rdata)?.to_string()),
+        DNS_RR_type::HHIT => Ok(RR_HHIT::parse(rdata)?.to_string()),
         DNS_RR_type::HIP => Ok(RR_HIP::parse(rdata, packet, offset_in)?.to_string()),
         DNS_RR_type::HTTPS => Ok(RR_HTTPS::parse(rdata)?.to_string()),
         DNS_RR_type::IPN => Ok(RR_IPN::parse(rdata)?.to_string()),

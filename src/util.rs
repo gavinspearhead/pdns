@@ -41,7 +41,7 @@ pub(crate) fn read_public_suffix_file(public_suffix_file: &str) -> publicsuffix:
             exit(-1);
         }
     } else {
-        error!("Cannot read file {public_suffix_file}",);
+        error!("Cannot read file {public_suffix_file}");
         exit(-1);
     }
 }

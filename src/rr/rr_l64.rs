@@ -5,7 +5,7 @@ use crate::errors::Parse_error;
 use std::fmt::{Display, Formatter};
 use std::net::Ipv6Addr;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RR_L64 {
     pub prio: u16,
     pub addr: Ipv6Addr,
@@ -30,15 +30,15 @@ impl RR_L64 {
         self.addr = addr;
     }
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_L64, Parse_error> {
-        let mut a = RR_L64::new();
-        a.prio = dns_read_u16(rdata, 0)?;
-        let mut r: [u8; 16] = [0; 16];
-        r[..8].copy_from_slice(dns_parse_slice(rdata, 2..(8 + 2))?);
-        a.addr = Ipv6Addr::from(r);
-        Ok(a)
+        let mut l64 = RR_L64::new();
+        l64.prio = dns_read_u16(rdata, 0)?;
+        let mut r = [0u8; 16];
+        r[..8].copy_from_slice(dns_parse_slice(rdata, 2..10)?);
+        l64.addr = Ipv6Addr::from(r);
+        Ok(l64)
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut result = Vec::new();
         result.extend_from_slice(&self.prio.to_be_bytes());

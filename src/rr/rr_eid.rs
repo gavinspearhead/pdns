@@ -4,7 +4,7 @@ use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::Parse_error;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Hash)]
 pub struct RR_EID {
     eid: Vec<u8>,
 }
@@ -18,9 +18,9 @@ impl RR_EID {
         self.eid = nsap.to_vec();
     }
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_EID, Parse_error> {
-        let mut a = RR_EID::new();
-        a.eid = rdata.to_vec();
-        Ok(a)
+        Ok(RR_EID {
+            eid: rdata.to_vec(),
+        })
     }
 }
 

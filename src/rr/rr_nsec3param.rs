@@ -26,15 +26,15 @@ impl RR_NSEC3PARAM {
         self.salt = salt.to_vec();
     }
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_NSEC3PARAM, Parse_error> {
-        let mut a = RR_NSEC3PARAM::new();
-        a.hash = dns_read_u8(rdata, 0)?;
-        a.flags = dns_read_u8(rdata, 1)?;
-        a.iterations = dns_read_u16(rdata, 2)?;
-        let salt_len = usize::from(dns_read_u8(rdata, 4)?);
-        if salt_len + 5 > rdata.len() {
-            return Err(Parse_error::new(Invalid_NSEC3PARAM, ""));
-        }
-        a.salt = dns_parse_slice(rdata, 5..5 + salt_len)?.to_vec();
+        let a = RR_NSEC3PARAM {
+            hash: dns_read_u8(rdata, 0)?,
+            flags: dns_read_u8(rdata, 1)?,
+            iterations: dns_read_u16(rdata, 2)?,
+            salt: {
+                let salt_len = usize::from(dns_read_u8(rdata, 4)?);
+                dns_parse_slice(rdata, 5..5 + salt_len)?.to_vec()
+            },
+        };
         Ok(a)
     }
 }

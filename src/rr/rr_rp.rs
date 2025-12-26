@@ -20,12 +20,11 @@ impl RR_RP {
         self.mailbox = mailbox.into();
         self.txt = txt.into();
     }
+    #[inline]
     pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_RP, Parse_error> {
-        let mut a = RR_RP::new();
-        let mut offset = offset_in;
-        (a.mailbox, offset) = dns_parse_name(packet, offset)?;
-        (a.txt, _) = dns_parse_name(packet, offset)?;
-        Ok(a)
+        let (mailbox, offset) = dns_parse_name(packet, offset_in)?;
+        let (txt, _) = dns_parse_name(packet, offset)?;
+        Ok(RR_RP { mailbox, txt })
     }
 }
 

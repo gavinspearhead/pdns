@@ -10,7 +10,7 @@ where
     T: Eq + std::hash::Hash + fmt::Display + serde::Serialize + Clone + Debug,
 {
     size: usize,
-    rank: HashMap<T, usize>,
+    rank: HashMap<T, u128>,
 }
 
 impl<T> Default for Rank<T>
@@ -36,10 +36,10 @@ where
         }
     }
 
-    pub fn remove_lowest(&mut self) -> usize {
+    pub fn remove_lowest(&mut self) -> u128 {
         let mut min_key = None;
-        let mut min_val: usize = 0;
-        let mut max_val: usize = 0;
+        let mut min_val: u128 = 0;
+        let mut max_val: u128 = 0;
 
         for (k, v) in &self.rank {
             if min_val == 0 || *v < min_val {
@@ -53,7 +53,7 @@ where
         if let Some(k) = min_key {
             //debug!("Remove k={} minv={} maxv={}", k, min_val, max_val);
             self.rank.remove(&k.clone());
-            (2 * min_val + max_val) / 3
+            min_val.saturating_mul(2).saturating_add(max_val) / 3
         } else {
             0
         }

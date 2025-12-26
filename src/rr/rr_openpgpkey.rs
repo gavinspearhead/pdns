@@ -20,9 +20,9 @@ impl RR_OPENPGPKEY {
         self.key = openpgpkey.to_vec();
     }
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_OPENPGPKEY, Parse_error> {
-        let mut openpgpkey = RR_OPENPGPKEY::new();
-        openpgpkey.key = rdata.to_vec();
-        Ok(openpgpkey)
+        Ok(RR_OPENPGPKEY {
+            key: rdata.to_vec(),
+        })
     }
 }
 

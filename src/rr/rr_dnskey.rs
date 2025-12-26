@@ -4,7 +4,7 @@ use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::Parse_error;
 use crate::rr::rr_cdnskey::RR_CDNSKEY;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
 pub struct RR_DNSKEY(RR_CDNSKEY);
 
 impl RR_DNSKEY {

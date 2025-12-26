@@ -184,7 +184,7 @@ async fn get_endpoints() -> impl Responder {
         "/top_domains",
         "/topnx",
         "/config",
-        "/debug"
+        "/debug",
     ];
     HttpResponse::Ok().json(endpoints)
 }

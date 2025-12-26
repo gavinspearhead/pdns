@@ -22,12 +22,11 @@ impl RR_URI {
         self.target_data = target_data.to_vec();
     }
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_URI, Parse_error> {
-        let mut a = RR_URI::new();
-
-        a.prio = dns_read_u16(rdata, 0)?;
-        a.weight = dns_read_u16(rdata, 2)?;
-        a.target_data = dns_parse_slice(rdata, 4..)?.to_vec();
-        Ok(a)
+        let mut uri = RR_URI::new();
+        uri.prio = dns_read_u16(rdata, 0)?;
+        uri.weight = dns_read_u16(rdata, 2)?;
+        uri.target_data = dns_parse_slice(rdata, 4..)?.to_vec();
+        Ok(uri)
     }
 }
 

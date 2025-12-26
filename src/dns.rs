@@ -142,7 +142,20 @@ pub(crate) fn cert_type_str(t: u16) -> Result<&'static str, Parse_error> {
     }
 }
 
-#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, EnumIter, IntoStaticStr, FromRepr)]
+#[derive(
+    Default,
+    Debug,
+    Copy,
+    Clone,
+    Ord,
+    PartialOrd,
+    Hash,
+    PartialEq,
+    Eq,
+    EnumIter,
+    IntoStaticStr,
+    FromRepr,
+)]
 pub enum SVC_Param_Keys {
     mandatory = 0,
     alpn = 1,

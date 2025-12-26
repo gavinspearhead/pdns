@@ -18,7 +18,6 @@ impl RR_HHIT {
         Self::default()
     }
 
-
     pub fn set(&mut self, prefix: u32, hid: u32, orchid_hash: [u8; 8]) {
         self.prefix = prefix;
         self.hid = hid;

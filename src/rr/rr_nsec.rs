@@ -34,11 +34,15 @@ impl RR_NSEC {
         sorted_bitmap.sort_by_key(|x| u16::from(*x));
         self.bitmap = sorted_bitmap.iter().map(u16::from).collect();
     }
-    pub(crate) fn parse(rdata: &[u8], packet: &[u8], offset_in: usize) -> Result<RR_NSEC, Parse_error> {
+    pub(crate) fn parse(
+        rdata: &[u8],
+        packet: &[u8],
+        offset_in: usize,
+    ) -> Result<RR_NSEC, Parse_error> {
         let mut a = RR_NSEC::new();
         let mut offset = offset_in;
         (a.domain, offset) = dns_parse_name(packet, offset)?;
-        a.bitmap = parse_nsec_bitmap_vec(dns_parse_slice(rdata, (offset - offset_in) .. )?)?;
+        a.bitmap = parse_nsec_bitmap_vec(dns_parse_slice(rdata, (offset - offset_in)..)?)?;
         Ok(a)
     }
 }

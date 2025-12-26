@@ -4,7 +4,7 @@ use crate::dns_rr::RR_TXT;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::Parse_error;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
 pub struct RR_AVC(RR_TXT);
 
 impl RR_AVC {

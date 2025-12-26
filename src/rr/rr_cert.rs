@@ -6,7 +6,7 @@ use crate::errors::Parse_error;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use std::fmt::{Display, Formatter};
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
 pub struct RR_CERT {
     cert_type: u16,
     key_tag: u16,

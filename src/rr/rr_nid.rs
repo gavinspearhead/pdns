@@ -4,7 +4,7 @@ use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::Parse_error;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct RR_NID {
     prio: u16,
     node_id: u64,
@@ -20,10 +20,11 @@ impl RR_NID {
         self.node_id = node_id;
     }
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_NID, Parse_error> {
-        let mut a = RR_NID::new();
-        a.prio = dns_read_u16(rdata, 0)?;
-        a.node_id = dns_read_u64(rdata, 2)?;
-        Ok(a)
+        let nid = RR_NID {
+            prio: dns_read_u16(rdata, 0)?,
+            node_id: dns_read_u64(rdata, 2)?,
+        };
+        Ok(nid)
     }
 }
 

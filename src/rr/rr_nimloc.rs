@@ -5,7 +5,7 @@ use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::Parse_error;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
 pub struct RR_NIMLOC(RR_NSAP);
 
 impl RR_NIMLOC {

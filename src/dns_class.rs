@@ -61,6 +61,9 @@ mod dns_class_tests {
     #[test]
     fn test_dns_class2() {
         assert_eq!(DNS_Class::IN.to_str(), "IN");
+        assert_eq!(DNS_Class::HS.to_str(), "HS");
+        assert_eq!(DNS_Class::CS.to_str(), "CS");
+        assert_eq!(DNS_Class::CH.to_str(), "CH");
     }
     #[test]
     fn test_dns_class1() {
@@ -69,5 +72,9 @@ mod dns_class_tests {
     #[test]
     fn test_dns_class3() {
         assert_eq!(DNS_Class::find(255).unwrap(), DNS_Class::ANY);
+    }
+    #[test]
+    fn test_dns_class4() {
+        assert!(DNS_Class::find(122).is_err());
     }
 }

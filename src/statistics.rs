@@ -18,7 +18,7 @@ use std::fs::remove_file;
 use std::io::{BufWriter, Write};
 use std::net::IpAddr;
 use std::path::Path;
-use std::{collections::HashMap, fs, fs::File, io::BufReader};
+use std::{collections::HashMap, fs::File, io::BufReader};
 use tracing::debug;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -124,13 +124,13 @@ impl Statistics {
                 });
                 match remove_file(&filename) {
                     Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => {
-                        debug!("file does not exist: {filename:?}")
+                        debug!("file does not exist: {filename:?}");
                     }
                     Err(e) => {
                         debug!("Other error: {e}");
                         return Err(e);
                     }
-                    Ok(_) => {
+                    Ok(()) => {
                         debug!("file removed: {filename:?}");
                     }
                 }

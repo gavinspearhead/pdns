@@ -93,7 +93,6 @@ pub(crate) enum DNS_Error_Type {
     Invalid_Extended_Option_Code,
 }
 
-
 #[derive(Debug, Clone)]
 pub(crate) struct DNS_error {
     //error_type: DNS_Error_Type,

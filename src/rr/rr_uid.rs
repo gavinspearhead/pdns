@@ -18,16 +18,14 @@ impl RR_UID {
         self.uid = uid;
     }
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_UID, Parse_error> {
-        let mut a = RR_UID::new();
-        a.uid = dns_read_u32(rdata, 0)?;
-        Ok(a)
+        let mut uid = RR_UID::new();
+        uid.uid = dns_read_u32(rdata, 0)?;
+        Ok(uid)
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(&self.uid.to_be_bytes());
-        bytes
+        self.uid.to_be_bytes().to_vec()
     }
 }
 
@@ -43,8 +41,6 @@ impl DNSRecord for RR_UID {
     }
 
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(&self.uid.to_be_bytes());
-        bytes
+        self.uid.to_be_bytes().to_vec()
     }
 }

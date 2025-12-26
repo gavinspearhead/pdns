@@ -1,11 +1,11 @@
 use crate::dns::{dnssec_algorithm, dnssec_digest};
-use crate::dns_helper::{dns_read_u16, dns_read_u8, names_list};
+use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, names_list};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::ParseErrorType::Invalid_Resource_Record;
 use crate::errors::Parse_error;
 use std::fmt::{Display, Formatter};
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
 pub struct RR_CDS {
     key_id: u16,
     alg: u8,
@@ -32,7 +32,7 @@ impl RR_CDS {
         cds.key_id = dns_read_u16(rdata, 0)?;
         cds.alg = dns_read_u8(rdata, 2)?;
         cds.dig_t = dns_read_u8(rdata, 3)?;
-        cds.dig = rdata[4..].into();
+        cds.dig = dns_parse_slice(rdata, 4..)?.to_vec();
         Ok(cds)
     }
 }

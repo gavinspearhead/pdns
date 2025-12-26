@@ -5,7 +5,7 @@ use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::Parse_error;
 use std::fmt::{Display, Formatter};
 use std::net::Ipv6Addr;
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct RR_A6 {
     prefix_len: usize,
     addr_suffix: Ipv6Addr,
@@ -52,21 +52,24 @@ impl RR_A6 {
         self.prefix_name = prefix_name.to_string();
     }
     pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_A6, Parse_error> {
-        let mut a6 = RR_A6::new();
         let prefix_len = usize::from(dns_read_u8(packet, offset_in)?);
         let len = (128 - prefix_len) / 8;
-        let mut r: [u8; 16] = [0; 16];
-        for i in 0..len {
-            r[15 - i] = dns_read_u8(packet, offset_in + len - i)?;
-        }
-        a6.addr_suffix = Ipv6Addr::from(r);
+        let mut addr_suffix = [0u8; 16];
         let mut prefix_name = String::new();
+
+        for i in 0..len {
+            addr_suffix[15 - i] = dns_read_u8(packet, offset_in + len - i)?;
+        }
+
         if prefix_len != 0 {
             (prefix_name, _) = dns_parse_name(packet, offset_in + 1 + len)?;
         }
-        a6.prefix_name = prefix_name;
-        a6.prefix_len = prefix_len;
-        Ok(a6)
+
+        Ok(RR_A6 {
+            addr_suffix: addr_suffix.into(),
+            prefix_name,
+            prefix_len,
+        })
     }
 }
 

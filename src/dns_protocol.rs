@@ -4,7 +4,19 @@ use std::fmt;
 use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
 
 #[derive(
-    Debug, EnumIter, Copy, Clone, PartialEq, Eq, EnumString, IntoStaticStr, FromRepr, Default,
+    Debug,
+    EnumIter,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    EnumString,
+    IntoStaticStr,
+    FromRepr,
+    Default,
+    Hash,
+    Ord,
+    PartialOrd,
 )]
 pub(crate) enum DNS_Protocol {
     #[default]

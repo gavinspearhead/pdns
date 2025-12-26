@@ -1,6 +1,6 @@
 use crate::dns::SVC_Param_Keys;
 use crate::dns_helper::{
-    dns_parse_slice, dns_read_u16, dns_read_u8, names_list, parse_ipv4, parse_ipv6,
+    dns_parse_slice, dns_read_u16, dns_read_u8, names_list, parse_dns_str, parse_ipv4, parse_ipv6,
 };
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DNSRecord;
@@ -9,8 +9,11 @@ use crate::errors::ParseErrorType::Invalid_Parameter;
 use crate::errors::Parse_error;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
+use std::fmt::Write;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-#[derive(Debug, Clone)]
+use strum_macros::{Display, EnumString};
+
+#[derive(Debug, Clone, EnumString, PartialEq, Eq, Display)]
 pub enum HttpsSvcParam {
     Alpn(Vec<String>),
     NoDefaultAlpn,
@@ -23,7 +26,7 @@ pub enum HttpsSvcParam {
     KeyValue(u16, Vec<u8>), // Catch-all for unknown or private keys
     Ohttp,
     Tls_supported_groups(Vec<u16>), // list of 16 bit numbers
-    DocPath(Vec<String>),  // like txt record 8 bit length / n byte string
+    DocPath(Vec<String>),           // like txt record 8 bit length / n byte string
 }
 
 #[derive(Debug, Clone, Default)]
@@ -34,10 +37,10 @@ pub struct RR_HTTPS {
 }
 
 impl RR_HTTPS {
-    pub(crate) fn new() -> RR_HTTPS {
+    pub fn new() -> RR_HTTPS {
         RR_HTTPS::default()
     }
-    pub(crate) fn set(&mut self, target: &str, prio: u16, param: &[HttpsSvcParam]) {
+    pub fn set(&mut self, target: &str, prio: u16, param: &[HttpsSvcParam]) {
         self.prio = prio;
         self.param = param.to_vec();
         self.target = target.to_string();
@@ -53,21 +56,17 @@ impl RR_HTTPS {
             let svc_param_len = dns_read_u16(rdata, offset + 2)? as usize;
             match svc_param_key {
                 SVC_Param_Keys::key_value => {
-                    let value = String::from_utf8_lossy(dns_parse_slice(
+                    let value = parse_dns_str(dns_parse_slice(
                         rdata,
                         offset + 4..offset + 4 + svc_param_len,
-                    )?);
-                    params.push(HttpsSvcParam::KeyValue(
-                        svc_val,
-                        value.into_owned().into_bytes(),
-                    ));
+                    )?)?;
+                    params.push(HttpsSvcParam::KeyValue(svc_val, value.into_bytes()));
                 }
                 SVC_Param_Keys::doh_path => {
-                    let doh_path = String::from_utf8_lossy(dns_parse_slice(
+                    let doh_path = parse_dns_str(dns_parse_slice(
                         rdata,
                         offset + 4..offset + 4 + svc_param_len,
-                    )?)
-                        .into_owned(); // Convert to owned String
+                    )?)?;
 
                     params.push(HttpsSvcParam::DohPath(doh_path));
                 }
@@ -87,11 +86,10 @@ impl RR_HTTPS {
                     let mut values: Vec<String> = vec![];
                     while pos < svc_param_len {
                         let docpath_len = usize::from(dns_read_u8(rdata, offset + pos + 4)?);
-                        let docpath = String::from_utf8_lossy(dns_parse_slice(
+                        let docpath = parse_dns_str(dns_parse_slice(
                             rdata,
                             offset + pos + 4 + 1..offset + pos + 4 + 1 + docpath_len,
-                        )?)
-                            .into_owned(); // Convert to owned String
+                        )?)?; // Convert to owned String
                         values.push(docpath);
                         pos += 1 + docpath_len;
                     }
@@ -181,7 +179,7 @@ impl std::fmt::Display for RR_HTTPS {
                 HttpsSvcParam::Mandatory(values) => {
                     let mut res1 = String::new();
                     for val in values {
-                        res1.push_str(&format!("{val},"));
+                        write!(res1, "{val},")?;
                     }
                     res1.pop();
                     write!(f, " mandatory={res1}")?;
@@ -190,7 +188,7 @@ impl std::fmt::Display for RR_HTTPS {
                 HttpsSvcParam::Alpn(values) => {
                     let mut res1 = String::new();
                     for val in values {
-                        res1.push_str(&format!("{val},"));
+                        write!(res1, "{val},")?;
                     }
                     res1.pop();
                     write!(f, " alpn={res1}")?;
@@ -210,7 +208,7 @@ impl std::fmt::Display for RR_HTTPS {
                 HttpsSvcParam::Tls_supported_groups(values) => {
                     let mut res1 = String::new();
                     for group in values {
-                        res1.push_str(&format!("{group},"));
+                        write!(res1, "{group},")?;
                     }
                     res1.pop();
                     write!(f, " tls_supported-groups={res1}")?;
@@ -218,7 +216,7 @@ impl std::fmt::Display for RR_HTTPS {
                 HttpsSvcParam::Ipv4Hint(addrs) => {
                     let mut res1 = String::new();
                     for addr in addrs {
-                        res1.push_str(&format!("{addr},"));
+                        write!(res1, "{addr},")?;
                     }
                     res1.pop();
                     write!(f, " ipv4hint={res1}")?;
@@ -227,7 +225,7 @@ impl std::fmt::Display for RR_HTTPS {
                     let mut res1 = String::new();
                     res1.push('/');
                     for addr in addrs {
-                        res1.push_str(&format!("{addr}/,"));
+                        write!(res1, "{addr}/,")?;
                     }
                     res1.pop();
                     write!(f, " ipv6hint={res1}")?;
@@ -235,7 +233,7 @@ impl std::fmt::Display for RR_HTTPS {
                 HttpsSvcParam::Ipv6Hint(addrs) => {
                     let mut res1 = String::new();
                     for addr in addrs {
-                        res1.push_str(&format!("{addr},"));
+                        write!(res1, "{addr},")?;
                     }
                     res1.pop();
                     write!(f, " ipv6hint={res1}")?;
@@ -263,6 +261,7 @@ impl DNSRecord for RR_HTTPS {
         // Add the target name
         for part in self.target.split('.') {
             if !part.is_empty() {
+                assert!(part.len() < 256);
                 result.push(part.len() as u8);
                 result.extend_from_slice(part.as_bytes());
             }
@@ -281,7 +280,9 @@ impl DNSRecord for RR_HTTPS {
                     }
                 }
                 HttpsSvcParam::Tls_supported_groups(values) => {
-                    result.extend_from_slice(&(SVC_Param_Keys::tls_supported_groups as u16).to_be_bytes());
+                    result.extend_from_slice(
+                        &(SVC_Param_Keys::tls_supported_groups as u16).to_be_bytes(),
+                    );
                     let param_len = 2 * values.len(); // length byte + string
                     result.extend_from_slice(&(param_len as u16).to_be_bytes());
                     for val in values {
@@ -296,6 +297,7 @@ impl DNSRecord for RR_HTTPS {
                     }
                     result.extend_from_slice(&(param_len as u16).to_be_bytes());
                     for val in values {
+                        assert!(val.len() < 256);
                         result.push(val.len() as u8);
                         result.extend_from_slice(val.as_bytes());
                     }
@@ -307,8 +309,7 @@ impl DNSRecord for RR_HTTPS {
                 }
 
                 HttpsSvcParam::Ohttp => {
-                    result
-                        .extend_from_slice(&(SVC_Param_Keys::ohttp as u16).to_be_bytes());
+                    result.extend_from_slice(&(SVC_Param_Keys::ohttp as u16).to_be_bytes());
                     result.extend_from_slice(&0u16.to_be_bytes());
                 }
                 HttpsSvcParam::NoDefaultAlpn => {
@@ -330,7 +331,7 @@ impl DNSRecord for RR_HTTPS {
                 }
                 HttpsSvcParam::DocPath(addrs) => {
                     result.extend_from_slice(&(SVC_Param_Keys::docpath as u16).to_be_bytes());
-                    let mut param_len:u16 = 0;
+                    let mut param_len: u16 = 0;
                     for addr in addrs {
                         param_len += addr.len() as u16 + 1;
                     }
@@ -342,7 +343,7 @@ impl DNSRecord for RR_HTTPS {
                 }
                 HttpsSvcParam::Ipv6Hint(addrs) => {
                     result.extend_from_slice(&(SVC_Param_Keys::ipv6hint as u16).to_be_bytes());
-                    result.extend_from_slice(&((addrs.len() *16) as u16).to_be_bytes());
+                    result.extend_from_slice(&((addrs.len() * 16) as u16).to_be_bytes());
                     for addr in addrs {
                         result.extend_from_slice(&addr.octets());
                     }

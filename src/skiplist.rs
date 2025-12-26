@@ -2,6 +2,7 @@ use regex::Regex;
 use std::{fs::File, io::Read};
 use tracing::{debug, error};
 
+#[inline]
 fn prefix_str(mut s1: String, s2: &str) -> String {
     s1.insert_str(0, s2);
     s1
@@ -14,9 +15,7 @@ pub(crate) struct Skip_List {
 
 impl Skip_List {
     pub fn new() -> Skip_List {
-        Skip_List {
-            entries: Vec::new(),
-        }
+        Skip_List::default()
     }
     #[inline]
     pub fn is_empty(&self) -> bool {

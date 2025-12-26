@@ -1,11 +1,8 @@
 use crate::config::Config;
 use crate::dns::{dnssec_algorithm, dnssec_digest};
-use crate::errors::Parse_error;
-use crate::errors::ParseErrorType;
 use crate::dns_class::DNS_Class;
 use crate::dns_helper::{
     self, dns_parse_slice, dns_read_u128, dns_read_u16, dns_read_u32, dns_read_u64, dns_read_u8,
-    parse_class, parse_rrtype,
 };
 use crate::dns_name::dns_parse_name;
 use crate::dns_opcodes::DNS_Opcodes;
@@ -14,13 +11,15 @@ use crate::dns_reply_type::DnsReplyType;
 use crate::dns_rr::dns_parse_rdata;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::edns::{DNSExtendedError, EDNSOptionCodes};
+use crate::errors::ParseErrorType;
+use crate::errors::Parse_error;
 use crate::packet_info::Packet_info;
 use crate::skiplist::Skip_List;
 use crate::statistics::Statistics;
 use publicsuffix::Psl as _;
 use tracing::{debug, error};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Hash, PartialEq, Eq, Ord, PartialOrd)]
 pub(crate) struct dns_question {
     pub dns_rr_type: DNS_RR_type,
     pub dns_class_type: DNS_Class,
@@ -48,8 +47,8 @@ impl dns_question {
         }
         let rrtype_val = dns_read_u16(packet, offset)?;
         let class_val = dns_read_u16(packet, offset + 2)?;
-        self.dns_rr_type = parse_rrtype(rrtype_val)?;
-        self.dns_class_type = parse_class(class_val)?;
+        self.dns_rr_type = DNS_RR_type::find(rrtype_val)?;
+        self.dns_class_type = DNS_Class::find(class_val)?;
         Ok(offset)
     }
 }
@@ -106,16 +105,16 @@ fn parse_edns_extended_dns_error(
     packet_info: &mut Packet_info,
     rdata: &[u8],
     offset: usize,
-    option_length: usize,
+    _option_length: usize,
     stats: &mut Statistics,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let info_code = DNSExtendedError::find(dns_read_u16(rdata, offset + 4)?)?;
-   // debug!("info code {info_code}");
+    // debug!("info code {info_code}");
     /*let info_text = std::str::from_utf8(dns_parse_slice(
         rdata,
         offset + 6..offset + 4 + option_length,
     )?)?;*/
-   // debug!("infotext {info_text}");
+    // debug!("infotext {info_text}");
     if !packet_info.dns_records.is_empty() {
         packet_info.dns_records[0].extended_error = info_code;
     }
@@ -333,7 +332,7 @@ fn parse_edns(
         if let Some(x) = packet_info.dns_records.first() {
             let mut rec = x.clone();
             rec.error = DnsReplyType::find(rec.error as u16 | (e_rcode << 4))?;
-        //    debug!("EDNS error code {}", rec.error);
+            //    debug!("EDNS error code {}", rec.error);
             packet_info.dns_records[0] = rec;
         }
     }
@@ -400,7 +399,7 @@ fn parse_answer(
         return Err(Parse_error::new(ParseErrorType::Skipped_Message, &name).into());
     }
     let rrtype_val = dns_read_u16(packet, offset)?;
-    let rrtype = parse_rrtype(rrtype_val)?;
+    let rrtype = DNS_RR_type::find(rrtype_val)?;
     if rrtype == DNS_RR_type::OPT {
         offset += 2;
         let len = parse_edns(packet_info, packet, offset, stats)?;
@@ -408,12 +407,12 @@ fn parse_answer(
         return Ok(len);
     }
     let class_val = dns_read_u16(packet, offset + 2)?;
-    let class = parse_class(class_val)?;
+    let class = DNS_Class::find(class_val)?;
     *stats.atypes.entry(rrtype).or_insert(0) += 1;
     *stats.aclass.entry(class).or_insert(0) += 1;
 
     let ttl = dns_read_u32(packet, offset + 4)?;
-    let data_len: usize = dns_read_u16(packet, offset + 8)?.into();
+    let data_len: usize = dns_read_u16(packet, offset + 8)? as usize;
 
     if !config.rr_type.contains(&rrtype) {
         let len = (offset - offset_in) + 10 + data_len;
@@ -456,7 +455,7 @@ pub(crate) fn find_domain(publicsuffixlist: &publicsuffix::List, name: &str) -> 
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq, Ord, PartialOrd)]
 pub(crate) struct dns_header {
     // Transaction ID
     pub id: u16,
@@ -480,25 +479,9 @@ pub(crate) struct dns_header {
 }
 
 impl dns_header {
+    #[inline]
     pub fn new() -> dns_header {
-        dns_header {
-            flags: 0,
-            id: 0,
-            qr: 0,
-            opcode: DNS_Opcodes::Query,
-            aa: 0,
-            tc: 0,
-            rd: 0,
-            ra: 0,
-            z: 0,
-            ad: 0,
-            cd: 0,
-            rcode: DnsReplyType::NOERROR,
-            qdcount: 0,
-            ancount: 0,
-            nscount: 0,
-            arcount: 0,
-        }
+        dns_header::default()
     }
 
     pub fn parse(&mut self, packet: &[u8]) -> Result<usize, Box<dyn std::error::Error>> {
@@ -551,7 +534,7 @@ pub(crate) fn parse_dns(
 
     if dns_header.qdcount == 0 {
         debug!("Empty questions section... ");
-  //      return Err(Parse_error::new(ParseErrorType::Skipped_Message, "").into());
+        //      return Err(Parse_error::new(ParseErrorType::Skipped_Message, "").into());
     }
 
     stats.additional += u128::from(dns_header.ancount);

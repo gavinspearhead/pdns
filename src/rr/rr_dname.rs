@@ -19,7 +19,7 @@ impl RR_DNAME {
         self.dname = dname.into();
     }
     pub fn parse(packet: &[u8], offset: usize) -> Result<RR_DNAME, Parse_error> {
-        let (dname, _offset) = dns_parse_name(packet, offset)?;
+        let (dname, _) = dns_parse_name(packet, offset)?;
         Ok(Self { dname })
     }
 }

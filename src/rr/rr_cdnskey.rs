@@ -1,5 +1,5 @@
 use crate::dns::dnssec_algorithm;
-use crate::dns_helper::{dns_read_u16, dns_read_u8, names_list};
+use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, names_list};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::ParseErrorType::Invalid_packet_index;
@@ -7,7 +7,7 @@ use crate::errors::Parse_error;
 use base64::engine::general_purpose;
 use base64::Engine;
 use std::fmt::{Display, Formatter};
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
 pub struct RR_CDNSKEY {
     flag: u16,
     protocol: u8,
@@ -34,7 +34,7 @@ impl RR_CDNSKEY {
         a.flag = dns_read_u16(rdata, 0)?;
         a.protocol = dns_read_u8(rdata, 2)?;
         a.alg = dns_read_u8(rdata, 3)?;
-        a.pubkey = rdata[4..].to_vec();
+        a.pubkey = dns_parse_slice(rdata, 4..)?.to_vec();
         Ok(a)
     }
 }

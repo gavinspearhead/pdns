@@ -45,7 +45,7 @@ pub struct OperatorId {
     pub operator_id: Vec<u8>, // Opaque or UTF-8 encoded
 }
 impl RR_BRID {
-    #[must_use] 
+    #[must_use]
     pub fn new() -> RR_BRID {
         RR_BRID {
             uas_type: 0,

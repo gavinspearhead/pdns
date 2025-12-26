@@ -28,7 +28,6 @@ pub(crate) trait DNSRecord {
         )?;
         Ok(offset)
     }
-
     fn get_type(&self) -> DNS_RR_type;
     fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8>;
 }

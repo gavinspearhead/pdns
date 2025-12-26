@@ -23,10 +23,12 @@ impl RR_PX {
         self.mapx400 = mapx400.to_string();
     }
     pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_PX, Parse_error> {
-        let mut a = RR_PX::new();
-        let mut offset = offset_in;
-        a.pref = dns_read_u16(packet, offset)?;
-        offset += 2;
+        let mut a = RR_PX {
+            pref: dns_read_u16(packet, offset_in)?,
+            map822: String::new(),
+            mapx400: String::new(),
+        };
+        let mut offset = offset_in + 2;
         (a.map822, offset) = dns_parse_name(packet, offset)?;
         (a.mapx400, _) = dns_parse_name(packet, offset)?;
         Ok(a)

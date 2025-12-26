@@ -64,13 +64,14 @@ use std::str::{self, FromStr};
 use std::sync::mpsc::TryRecvError;
 use std::sync::{mpsc, Arc};
 use std::thread::sleep;
-use std::{thread, time};
+use std::{io, thread, time};
 use tcp_connection::{clean_tcp_list, TCP_Connections};
 use tracing::{debug, error};
 use tracing_rfc_5424::layer::Layer;
 use tracing_rfc_5424::transport::UnixSocket;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{filter, fmt, prelude::*, reload};
+use daemonize_me::{Daemon, Group, User};
 
 #[derive(Parser, Clone, Debug, PartialEq)]
 struct Args {
@@ -78,14 +79,7 @@ struct Args {
     path: std::path::PathBuf,
 }
 
-fn packet_loop<T: Activated>(
-    mut cap: Capture<T>,
-    packet_queue: &Packet_Queue,
-    tcp_list: &Arc<Mutex<TCP_Connections>>,
-    stats: &Arc<Mutex<Statistics>>,
-    config: &Config,
-    skip_list: &Skip_List,
-) {
+fn packet_loop<T: Activated + 'static>(cap: &mut Capture<T>, packet_queue: &Packet_Queue) {
     let link_type = cap.get_datalink();
     if link_type != Linktype::ETHERNET {
         error!("Not ethernet {link_type:?}");
@@ -96,25 +90,12 @@ fn packet_loop<T: Activated>(
     loop {
         match cap.next_packet() {
             Ok(packet) => {
-                let mut packet_info = Packet_info::new();
                 let ts = DateTime::<Utc>::from_timestamp(
                     packet.header.ts.tv_sec,
                     packet.header.ts.tv_usec as u32 * 1000,
                 )
                 .unwrap_or_else(Utc::now);
-                packet_info.set_timestamp(ts);
-                let result = parse_eth(
-                    packet.data,
-                    &mut packet_info,
-                    &mut stats.lock(),
-                    tcp_list,
-                    config,
-                    skip_list,
-                );
-                match result {
-                    Ok(()) => packet_queue.push_back(Some(packet_info)),
-                    Err(error) => debug!("{error:?}"),
-                }
+                packet_queue.push_back(Some((packet.data.to_vec(), ts)));
             }
             Err(pcap::Error::TimeoutExpired) => {
                 debug!("Packet capture error: {}", pcap::Error::TimeoutExpired);
@@ -142,7 +123,47 @@ fn write_output(of: &mut File, p1: &Packet_info, config: &Config) {
     }
 }
 
-fn poll(packet_queue: &Packet_Queue, config: &Config, rx: mpsc::Receiver<String>) {
+fn parse_dns_packet(
+    packet_queue: &Packet_Queue,
+    skip_list: &Skip_List,
+    stats: &Arc<Mutex<Statistics>>,
+    tcp_list: &Arc<Mutex<TCP_Connections>>,
+    config: &Config,
+) -> Option<Option<Packet_info>> {
+    let mut packet_info = Packet_info::new();
+    if let Some(a_packet) = packet_queue.pop_front() {
+        match a_packet {
+            Some((packet, ts)) => {
+                packet_info.set_timestamp(ts);
+                let result = parse_eth(
+                    &packet,
+                    &mut packet_info,
+                    &mut stats.lock(),
+                    tcp_list,
+                    config,
+                    skip_list,
+                );
+                match result {
+                    Err(error) => debug!("{error:?}"),
+                    Ok(()) => return Some(Some(packet_info)),
+                }
+            }
+            None => {
+                return Some(None);
+            }
+        }
+    }
+    None
+}
+
+fn poll(
+    packet_queue: &Packet_Queue,
+    config: &Config,
+    rx: mpsc::Receiver<String>,
+    skip_list: &Skip_List,
+    stats: &Arc<Mutex<Statistics>>,
+    tcp_list: &Arc<Mutex<TCP_Connections>>,
+) {
     let mut output_file: Option<File> = None;
 
     if !config.output.is_empty() && config.output != "-" {
@@ -177,7 +198,8 @@ fn poll(packet_queue: &Packet_Queue, config: &Config, rx: mpsc::Receiver<String>
     loop {
         live_dump.accept();
         live_dump.read_all();
-        let packet_info = packet_queue.pop_front();
+
+        let packet_info = parse_dns_packet(packet_queue, skip_list, stats, tcp_list, config);
         if let Some(p) = packet_info {
             if let Some(mut p1) = p {
                 if !p1.dns_records.is_empty() {
@@ -301,16 +323,18 @@ fn capture_from_file(
             }
             thread::scope(|s| {
                 let handle_tcp_list = s.spawn(|| clean_tcp_list(&tcp_list.clone(), tcp_rx));
-                let handle_poll = s.spawn(|| poll(&packet_queue.clone(), config, pq_rx));
-                let handle_packet_loop = s.spawn(|| {
-                    packet_loop(
-                        c,
+                let handle_poll = s.spawn(|| {
+                    poll(
                         &packet_queue.clone(),
-                        &tcp_list.clone(),
-                        &stats.clone(),
                         config,
+                        pq_rx,
                         skiplist,
-                    );
+                        stats,
+                        tcp_list,
+                    )
+                });
+                let handle_packet_loop = s.spawn(|| {
+                    packet_loop(&mut c, &packet_queue.clone());
                 });
                 handle_packet_loop.join().unwrap();
                 // we wait for the main threat to terminate; then cancel the tcp cleanup threat
@@ -342,37 +366,50 @@ fn capture_from_interface(
         error!("Cannot apply filter {}: {e}", config.filter);
         exit(-1);
     }
+    let config_arc = Arc::new(config.clone());
+
     thread::scope(|s| {
         let handle_tcp_list = s.spawn(|| clean_tcp_list(&tcp_list.clone(), tcp_rx));
-        let handle_poll = s.spawn(|| poll(&packet_queue.clone(), config, pq_rx));
-        let handle_http = s.spawn(|| {
-            let _ = listen(&stats.clone(), &tcp_list.clone(), &config.clone());
+        let handle_poll = s.spawn(|| {
+            poll(
+                &packet_queue.clone(),
+                config,
+                pq_rx,
+                skiplist,
+                stats,
+                tcp_list,
+            )
         });
-        let handle_stats_dump = s.spawn(|| stats_dump(config, &stats.clone()));
+        let handle_http = s.spawn(|| {
+            let _ = listen(&stats, &tcp_list, &config);
+        });
+        let handle_stats_dump = s.spawn(|| stats_dump(config, &stats));
         let handle_cleanup = s.spawn(|| cleanup_task(config));
         let handle_packet_loop = s.spawn(|| {
-            packet_loop(cap_in, packet_queue, tcp_list, stats, config, skiplist);
+            packet_loop(&mut cap_in, packet_queue);
         });
 
-        terminate_loop(stats, &Arc::new(config.clone()));
-        handle_packet_loop.join().unwrap();
+        terminate_loop(stats, &config_arc);
+        let _ = handle_packet_loop.join();
         // we wait for the main threat to terminate; then cancel the tcp cleanup threat
         let _ = tcp_tx.send(String::from_str("the end").unwrap());
-        handle_http.join().unwrap();
-        handle_cleanup.join().unwrap();
-        handle_tcp_list.join().unwrap();
-        handle_poll.join().unwrap();
-        handle_stats_dump.join().unwrap();
+        let _ = handle_http.join();
+        let _ = handle_cleanup.join();
+        let _ = handle_tcp_list.join();
+        let _ = handle_poll.join();
+        let _ = handle_stats_dump.join();
     });
 }
 
-fn stats_dump(config: &Config, statistics: &Arc<Mutex<Statistics>>)  {
+fn stats_dump(config: &Config, statistics: &Arc<Mutex<Statistics>>) {
     if config.stats_dump_interval > 0 {
-        debug!("stats interval {} to file {}", config.stats_dump_interval, &config.export_stats);
+        debug!(
+            "stats interval {} to file {}",
+            config.stats_dump_interval, &config.export_stats
+        );
         loop {
-            match statistics.lock().dump_stats(&config, false) {
-                Err(e) => {error!("Cannot dump stats: {e}")}
-                Ok(_) => {}
+            if let Err(e) = statistics.lock().dump_stats(config, false) {
+                error!("Cannot dump stats: {e}");
             }
             sleep(time::Duration::from_secs(config.stats_dump_interval as u64));
         }
@@ -407,6 +444,9 @@ fn run(
     }
 }
 
+fn devnull() -> io::Result<File> {
+    File::open("/dev/null")
+}
 fn main() {
     let mut pcap_path = String::new();
     let mut config = Config::new();
@@ -500,27 +540,22 @@ fn main() {
     };
 
     if config.daemon {
-        let stdout = File::open("/dev/null").expect("Cannot open /dev/null");
-        let stderr = File::open("/dev/null").expect("Cannot open /dev/null");
-        //let stdout = File::open("/tmp/pdns.out").unwrap();
-        //let stderr = File::open("/tmp/pdns.err").unwrap();
-        let daemonize = daemonize::Daemonize::new()
-            .pid_file("/var/run/pdns.pid") // Every method except `new` and `start`
-            .chown_pid_file(true) // is optional, see `Daemonize` documentation
-            .working_directory("/tmp") // for default behaviour.
-            .user(config.uid.as_str())
-            .group(config.gid.as_str()) // Group name
-            .umask(0o077) // Set umask, `0o027` by default.
-            .stdout(stdout) // Redirect stdout to `/tmp/daemon.out`.
-            .stderr(stderr); // Redirect stderr to `/tmp/daemon.err`.
-        debug!("Daemonising");
-        match daemonize.start() {
+        let daemon = Daemon::new()
+            .pid_file(&config.pid_file, Some(false))
+            .work_dir("/tmp")
+            .user(User::try_from(&config.uid).expect("Invalid user"))
+            .group(Group::try_from(&config.gid).expect("Invalid group"))
+            .umask(0o077)
+            .stdout(devnull().expect("Cannot open /dev/null"))
+            .stderr(devnull().expect("Cannot open /dev/null"));
+
+        match daemon.start() {
             Ok(()) => {
                 debug!("Daemonised");
                 run(&config, cap, &pcap_path, &stats);
             }
             Err(e) => {
-                error!("Error daemonising {e}");
+                error!("Error daemonising: {}", e);
                 exit(-1);
             }
         }

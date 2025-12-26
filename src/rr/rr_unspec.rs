@@ -1,8 +1,8 @@
-use crate::rr::rr_null::RR_NULL;
 use crate::dns_helper::names_list;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::Parse_error;
+use crate::rr::rr_null::RR_NULL;
 
 #[derive(Debug, Clone, Default)]
 pub struct RR_UNSPEC(RR_NULL);
@@ -10,7 +10,7 @@ pub struct RR_UNSPEC(RR_NULL);
 impl RR_UNSPEC {
     #[must_use]
     pub fn new() -> Self {
-        RR_UNSPEC(RR_NULL ::new())
+        RR_UNSPEC(RR_NULL::new())
     }
 
     pub fn parse(rdata: &[u8]) -> Result<Self, Parse_error> {

@@ -47,7 +47,7 @@ impl RR_SIG {
         self.name = name;
         self.signature = signature;
     }
-    pub(crate) fn parse(packet: &[u8], offset_in: usize ) -> Result<RR_SIG, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_SIG, Parse_error> {
         let mut a = RR_SIG::new();
         let mut pos = offset_in;
         a.type_covered = dns_read_u16(packet, pos)?;

@@ -49,7 +49,7 @@ impl RR_WKS {
         self.bitmap = create_wks_bitmap(ports);
     }
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_WKS, Parse_error> {
-        let mut a:RR_WKS = RR_WKS::new();
+        let mut a: RR_WKS = RR_WKS::new();
 
         a.address = match parse_ipv4(dns_parse_slice(rdata, 0..4)?)? {
             IpAddr::V4(ipv4) => ipv4,
