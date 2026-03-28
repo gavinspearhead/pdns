@@ -72,6 +72,8 @@ use tracing_rfc_5424::layer::Layer;
 use tracing_rfc_5424::transport::UnixSocket;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{filter, fmt, prelude::*, reload};
+use crate::errors::ParseError;
+use crate::errors::ParseErrorType::Unknown_Link_Type;
 
 #[derive(Parser, Clone, Debug, PartialEq)]
 struct Args {
@@ -137,27 +139,19 @@ fn parse_dns_packet(
                 packet_info.set_timestamp(ts);
                 let result =
                     if link_type == Linktype::ETHERNET {
-                        parse_eth(
-                            &packet,
-                            &mut packet_info,
-                            &mut stats.lock(),
-                            tcp_list,
-                            config,
-                            skip_list,
-                        )
-                    } else if link_type == Linktype(12) || link_type == Linktype::RAW&& link_type != Linktype(14) {
-                        parse_ip(& packet, &mut packet_info, stats, tcp_list, config, skip_list)
-                    }
-                    else {
-                        Ok(())
+                        parse_eth(&packet, &mut packet_info, &mut stats.lock(), tcp_list, config, skip_list, )
+                    } else if link_type == Linktype(12) || link_type == Linktype::RAW || link_type == Linktype(14) {
+                        parse_ip(&packet, &mut packet_info, stats, tcp_list, config, skip_list)
+                    } else {
+                        Err(ParseError::new(Unknown_Link_Type, "" ).into())
                     };
 
-                match result {
+                return match result {
                     Err(error) => {
                         debug!("{error:?}");
-                        return Some(None);
+                        None
                     }
-                    Ok(()) => return Some(Some(packet_info)),
+                    Ok(()) => Some(Some(packet_info))
                 }
             }
             None => {
@@ -325,7 +319,7 @@ fn capture_from_file(
 ) {
     let (_pq_tx, pq_rx) = mpsc::channel();
     let (tcp_tx, tcp_rx) = mpsc::channel();
-    debug!("Reading PCAP file e {pcap_path}");
+    debug!("Reading PCAP file {pcap_path}");
     let cap = Capture::from_file(pcap_path);
     match cap {
         Ok(mut c) => {
@@ -396,9 +390,11 @@ fn capture_from_interface(
         let mut handle_packet_loop = Vec::new();
         for i in cap_in.iter_mut() {
             let h = s.spawn(|| {
-                if let Err(e) = i.filter(&config.filter, false) {
-                    error!("Cannot apply filter {}: {e}", config.filter);
-                    exit(-1);
+                if !config.filter.is_empty() {
+                    if let Err(e) = i.filter(&config.filter, false) {
+                        error!("Cannot apply filter {}: {e}", config.filter);
+                        exit(1);
+                    }
                 }
                 packet_loop(i, packet_queue);
             });
@@ -522,11 +518,15 @@ fn main() {
         let mut cap_list = Vec::new();
         for interface in &config.interface {
             // do it here otherwise PCAP hangs on open if we do it after daemonizing
+            debug!("Listen on {interface}; promiscuous: {}", config.promisc);
             let a_cap = Capture::from_device(interface.as_str())
-                .unwrap()
+                .unwrap_or_else(|e| {
+                    error!("Cannot prepare capture for interface '{}': {e}", interface);
+                    exit(1);
+                })
                 .timeout(1000)
-                .promisc(config.promisc) // todo make a parameter
-                //                .immediate_mode(true) //seems to break on ubuntu?
+                .promisc(config.promisc)
+                .immediate_mode(false)
                 .open();
             match a_cap {
                 Ok(x) => cap_list.push(x),
