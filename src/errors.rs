@@ -29,14 +29,14 @@ pub(crate) enum ParseErrorType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Parse_error {
+pub struct ParseError {
     pub(crate) error_type: ParseErrorType,
     error_str: String,
     value: String,
 }
 
-impl Parse_error {
-    pub(crate) fn new(err_t: ParseErrorType, val: &str) -> Parse_error {
+impl ParseError {
+    pub(crate) fn new(err_t: ParseErrorType, val: &str) -> ParseError {
         let s = match err_t {
             ParseErrorType::Invalid_UDP_Header => "Invalid UDP Header",
             ParseErrorType::Invalid_TCP_Header => "Invalid TCP Header",
@@ -62,7 +62,7 @@ impl Parse_error {
             ParseErrorType::Invalid_IPAddress => "Invalid IP Address",
             ParseErrorType::Skipped_Message => "Skipped Message",
         };
-        Parse_error {
+        ParseError {
             error_type: err_t,
             error_str: s.to_owned(),
             value: val.to_owned(),
@@ -70,13 +70,13 @@ impl Parse_error {
     }
 }
 
-impl fmt::Display for Parse_error {
+impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}: {}", self.error_str, self.value)
     }
 }
 
-impl Error for Parse_error {
+impl Error for ParseError {
     fn description(&self) -> &str {
         &self.error_str
     }

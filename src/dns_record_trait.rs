@@ -1,6 +1,6 @@
-use crate::dns_answers::dns_answer;
-use crate::dns_class::DNS_Class;
-use crate::dns_packet::dns_question;
+use crate::dns_answers::DnsAnswer;
+use crate::dns_class::DnsClass;
+use crate::dns_packet::DnsQuestion;
 use crate::dns_rr_type::DNS_RR_type;
 use tracing::debug;
 
@@ -10,8 +10,8 @@ use crate::dns_helper::names_list;
 pub(crate) trait DNSRecord {
     fn add_to_answer(
         &self,
-        answer: &mut dns_answer,
-        question: &dns_question,
+        answer: &mut DnsAnswer,
+        question: &DnsQuestion,
         ttl: u32,
     ) -> Result<usize, Box<dyn std::error::Error>> {
         let bytes = self.to_bytes(&mut answer.names, answer.offset);
@@ -21,7 +21,7 @@ pub(crate) trait DNSRecord {
             answer.offset,
             &question.name,
             self.get_type(),
-            DNS_Class::IN,
+            DnsClass::IN,
             ttl,
             &bytes,
             &mut answer.names,

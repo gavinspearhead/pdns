@@ -5,7 +5,7 @@ use crate::dns_helper::{
 };
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone)]
@@ -55,7 +55,7 @@ impl RR_NSEC3 {
         sorted_bitmap.sort_by_key(|x| u16::from(*x));
         self.bitmap = sorted_bitmap.iter().map(u16::from).collect();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_NSEC3, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_NSEC3, ParseError> {
         let mut nsec3 = RR_NSEC3::new();
         nsec3.hash_alg = dns_read_u8(rdata, 0)?;
         nsec3.flags = dns_read_u8(rdata, 1)?;

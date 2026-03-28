@@ -2,7 +2,7 @@ use crate::dns_helper::{dns_format_name, dns_read_u8, names_list};
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 use std::net::Ipv6Addr;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -51,7 +51,7 @@ impl RR_A6 {
         self.addr_suffix = addr_suffix;
         self.prefix_name = prefix_name.to_string();
     }
-    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_A6, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_A6, ParseError> {
         let prefix_len = usize::from(dns_read_u8(packet, offset_in)?);
         let len = (128 - prefix_len) / 8;
         let mut addr_suffix = [0u8; 16];

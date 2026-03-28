@@ -2,7 +2,7 @@ use super::super::dns_record_trait::DNSRecord;
 use crate::dns_helper::names_list;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::ParseErrorType::Invalid_Resource_Record;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 use std::net::Ipv4Addr;
 
@@ -47,9 +47,9 @@ impl RR_A {
     }
 
     #[inline]
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_A, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_A, ParseError> {
         if rdata.len() != 4 {
-            return Err(Parse_error::new(
+            return Err(ParseError::new(
                 Invalid_Resource_Record,
                 &format!("Invalid A record length: {rdata:?}"),
             ));

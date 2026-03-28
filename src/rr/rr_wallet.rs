@@ -2,7 +2,7 @@ use crate::dns_helper::names_list;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr::RR_TXT;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
@@ -20,7 +20,7 @@ impl RR_WALLET {
         self.txt.set(txt);
     }
 
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_WALLET, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_WALLET, ParseError> {
         Ok(RR_WALLET {
             txt: RR_TXT::parse(rdata)?,
         })

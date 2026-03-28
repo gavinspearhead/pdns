@@ -2,7 +2,7 @@ use crate::dns_helper::{dns_format_name, dns_read_u16, names_list};
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, Default)]
 pub struct RR_SRV {
@@ -23,7 +23,7 @@ impl RR_SRV {
         self.port = port;
         self.target = target.to_string();
     }
-    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_SRV, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_SRV, ParseError> {
         let mut srv = RR_SRV::new();
         let offset = offset_in;
         srv.prio = dns_read_u16(packet, offset)?;

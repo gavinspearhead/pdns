@@ -1,7 +1,7 @@
 use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use std::fmt::{Display, Formatter};
@@ -23,7 +23,7 @@ impl RR_SINK {
         self.subcoding = subcoding;
         self.val = val.to_vec();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_SINK, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_SINK, ParseError> {
         let mut offset = 1;
         let mut coding = dns_read_u8(rdata, 0)?;
 

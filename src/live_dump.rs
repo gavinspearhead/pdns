@@ -1,8 +1,8 @@
-use crate::dns_class::DNS_Class;
-use crate::dns_protocol::DNS_Protocol;
+use crate::dns_class::DnsClass;
+use crate::dns_protocol::DNSProtocol;
 use crate::dns_reply_type::DnsReplyType;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::packet_info::Packet_info;
+use crate::packet_info::PacketInfo;
 use core::fmt;
 use serde::{Deserialize, Serialize};
 use std::io::Read;
@@ -30,7 +30,7 @@ use tracing::{debug, error};
     Default,
 )]
 
-pub(crate) enum Filter_fields {
+pub(crate) enum FilterFields {
     SRC_IP,
     DST_IP,
     SRC_PORT,
@@ -46,34 +46,31 @@ pub(crate) enum Filter_fields {
     ASN,
 }
 
-impl Filter_fields {
+impl FilterFields {
     pub(crate) fn to_str(&self) -> &'static str {
         self.into()
     }
     pub(crate) fn find(val: &str) -> Result<Self, Box<dyn std::error::Error>> {
         // Attempt to parse the string into the enum variant
         val.to_uppercase()
-            .parse::<Filter_fields>()
+            .parse::<FilterFields>()
             .map_err(|_| "Not found".into())
     }
 }
 
-impl fmt::Display for Filter_fields {
+impl fmt::Display for FilterFields {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_str())
     }
 }
 #[cfg(test)]
 mod dns_filter_fields_tests {
-    use crate::live_dump::Filter_fields;
+    use crate::live_dump::FilterFields;
 
     #[test]
     fn test_filter_fields() {
-        assert_eq!(
-            Filter_fields::find("SRC_IP").unwrap(),
-            Filter_fields::SRC_IP
-        );
-        assert_eq!(Filter_fields::find("NAME").unwrap(), Filter_fields::NAME);
+        assert_eq!(FilterFields::find("SRC_IP").unwrap(), FilterFields::SRC_IP);
+        assert_eq!(FilterFields::find("NAME").unwrap(), FilterFields::NAME);
     }
 }
 #[derive(
@@ -89,7 +86,7 @@ mod dns_filter_fields_tests {
     AsRefStr,
     Default,
 )]
-enum Filter_operator {
+enum FilterOperator {
     #[default]
     EQUAL,
     NOT_EQUAL,
@@ -98,19 +95,19 @@ enum Filter_operator {
     CONTAINS,
 }
 
-impl Filter_operator {
+impl FilterOperator {
     #[inline]
     pub(crate) fn to_str(&self) -> &'static str {
         self.into()
     }
 }
 
-impl fmt::Display for Filter_operator {
+impl fmt::Display for FilterOperator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_str())
     }
 }
-type SimpleExpr = (Filter_fields, Filter_operator, String);
+type SimpleExpr = (FilterFields, FilterOperator, String);
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
 pub(crate) struct Filter {
@@ -121,7 +118,7 @@ pub(crate) struct Filter {
 
 impl fmt::Display for Filter {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.to_str())
+        write!(f, "{} {} {}", self.expr.0, self.expr.1, self.expr.2)
     }
 }
 
@@ -129,7 +126,7 @@ impl Filter {
     pub(crate) fn new(s: &str) -> Result<Filter, Box<dyn std::error::Error>> {
         let mut spl = s.split_whitespace();
         let field = if let Some(x) = spl.next() {
-            match Filter_fields::find(x) {
+            match FilterFields::find(x) {
                 Ok(x) => x,
                 Err(e) => {
                     debug!("Not found");
@@ -144,11 +141,11 @@ impl Filter {
         debug!("Field: {:?}", field);
         let oper = match spl.next() {
             Some(x) => match x {
-                "=" | "==" => Filter_operator::EQUAL,
-                "!=" => Filter_operator::NOT_EQUAL,
-                "^=" => Filter_operator::START_WITH,
-                "$=" => Filter_operator::END_WITH,
-                "*=" => Filter_operator::CONTAINS,
+                "=" | "==" => FilterOperator::EQUAL,
+                "!=" => FilterOperator::NOT_EQUAL,
+                "^=" => FilterOperator::START_WITH,
+                "$=" => FilterOperator::END_WITH,
+                "*=" => FilterOperator::CONTAINS,
                 _ => return Err("unknown operator".into()),
             },
             None => return Err("not found".into()),
@@ -164,77 +161,77 @@ impl Filter {
         })
     }
 
-    fn matches(&self, packet_info: &Packet_info) -> bool {
+    fn matches(&self, packet_info: &PacketInfo) -> bool {
         match self.expr.0 {
-            Filter_fields::PROTOCOL => {
-                let Ok(prot) = DNS_Protocol::from_str(&self.expr.2.to_uppercase()) else {
+            FilterFields::PROTOCOL => {
+                let Ok(prot) = DNSProtocol::from_str(&self.expr.2.to_uppercase()) else {
                     return false;
                 };
-                if self.expr.1 == Filter_operator::EQUAL {
+                if self.expr.1 == FilterOperator::EQUAL {
                     return packet_info.protocol == prot;
-                } else if self.expr.1 == Filter_operator::NOT_EQUAL {
+                } else if self.expr.1 == FilterOperator::NOT_EQUAL {
                     return packet_info.protocol != prot;
                 }
                 false
             }
-            Filter_fields::SRC_IP => {
+            FilterFields::SRC_IP => {
                 let Ok(src_addr) = self.expr.2.parse::<IpAddr>() else {
                     return false;
                 };
-                if self.expr.1 == Filter_operator::EQUAL {
+                if self.expr.1 == FilterOperator::EQUAL {
                     return packet_info.s_addr == src_addr;
-                } else if self.expr.1 == Filter_operator::NOT_EQUAL {
+                } else if self.expr.1 == FilterOperator::NOT_EQUAL {
                     return packet_info.s_addr != src_addr;
                 }
                 false
             }
-            Filter_fields::DST_IP => {
+            FilterFields::DST_IP => {
                 let Ok(dst_addr) = self.expr.2.parse::<IpAddr>() else {
                     return false;
                 };
-                if self.expr.1 == Filter_operator::EQUAL {
+                if self.expr.1 == FilterOperator::EQUAL {
                     return packet_info.d_addr == dst_addr;
-                } else if self.expr.1 == Filter_operator::NOT_EQUAL {
+                } else if self.expr.1 == FilterOperator::NOT_EQUAL {
                     return packet_info.d_addr != dst_addr;
                 }
                 false
             }
-            Filter_fields::SRC_PORT => {
+            FilterFields::SRC_PORT => {
                 let Ok(port) = self.expr.2.parse::<u16>() else {
                     return false;
                 };
-                if self.expr.1 == Filter_operator::EQUAL {
+                if self.expr.1 == FilterOperator::EQUAL {
                     return packet_info.sp == port;
-                } else if self.expr.1 == Filter_operator::NOT_EQUAL {
+                } else if self.expr.1 == FilterOperator::NOT_EQUAL {
                     return packet_info.sp != port;
                 }
                 false
             }
-            Filter_fields::DST_PORT => {
+            FilterFields::DST_PORT => {
                 let Ok(port) = self.expr.2.parse::<u16>() else {
                     return false;
                 };
-                if self.expr.1 == Filter_operator::EQUAL {
+                if self.expr.1 == FilterOperator::EQUAL {
                     return packet_info.dp == port;
-                } else if self.expr.1 == Filter_operator::NOT_EQUAL {
+                } else if self.expr.1 == FilterOperator::NOT_EQUAL {
                     return packet_info.dp != port;
                 }
                 false
             }
-            Filter_fields::REPLY_CODE => {
+            FilterFields::REPLY_CODE => {
                 let Ok(rc) = self.expr.2.to_uppercase().parse::<DnsReplyType>() else {
                     debug!("false");
                     return false;
                 };
                 let c = rc;
-                if self.expr.1 == Filter_operator::EQUAL {
+                if self.expr.1 == FilterOperator::EQUAL {
                     for i in &packet_info.dns_records {
                         if i.error == c {
                             return true;
                         }
                     }
                     return false;
-                } else if self.expr.1 == Filter_operator::NOT_EQUAL {
+                } else if self.expr.1 == FilterOperator::NOT_EQUAL {
                     for i in &packet_info.dns_records {
                         if i.error != c {
                             return true;
@@ -244,36 +241,36 @@ impl Filter {
                 }
                 false
             }
-            Filter_fields::NAME => {
-                if self.expr.1 == Filter_operator::EQUAL {
+            FilterFields::NAME => {
+                if self.expr.1 == FilterOperator::EQUAL {
                     for i in &packet_info.dns_records {
                         if i.name != self.expr.2 {
                             return false;
                         }
                     }
                     return true;
-                } else if self.expr.1 == Filter_operator::NOT_EQUAL {
+                } else if self.expr.1 == FilterOperator::NOT_EQUAL {
                     for i in &packet_info.dns_records {
                         if i.name == self.expr.2 {
                             return false;
                         }
                     }
                     return true;
-                } else if self.expr.1 == Filter_operator::START_WITH {
+                } else if self.expr.1 == FilterOperator::START_WITH {
                     for i in &packet_info.dns_records {
                         if !i.name.starts_with(&self.expr.2) {
                             return false;
                         }
                     }
                     return true;
-                } else if self.expr.1 == Filter_operator::END_WITH {
+                } else if self.expr.1 == FilterOperator::END_WITH {
                     for i in &packet_info.dns_records {
                         if !i.name.ends_with(&self.expr.2) {
                             return false;
                         }
                     }
                     return true;
-                } else if self.expr.1 == Filter_operator::CONTAINS {
+                } else if self.expr.1 == FilterOperator::CONTAINS {
                     for i in &packet_info.dns_records {
                         if !i.name.contains(&self.expr.2) {
                             return false;
@@ -283,18 +280,18 @@ impl Filter {
                 }
                 false
             }
-            Filter_fields::CLASS => {
-                let Ok(match_class) = DNS_Class::from_str(self.expr.2.as_str()) else {
+            FilterFields::CLASS => {
+                let Ok(match_class) = DnsClass::from_str(self.expr.2.as_str()) else {
                     return false;
                 };
-                if self.expr.1 == Filter_operator::EQUAL {
+                if self.expr.1 == FilterOperator::EQUAL {
                     for i in &packet_info.dns_records {
                         if i.class == match_class {
                             return true;
                         }
                     }
                     return false;
-                } else if self.expr.1 == Filter_operator::NOT_EQUAL {
+                } else if self.expr.1 == FilterOperator::NOT_EQUAL {
                     for i in &packet_info.dns_records {
                         if i.class != match_class {
                             return true;
@@ -305,18 +302,18 @@ impl Filter {
                 false
             }
 
-            Filter_fields::RR_TYPE => {
+            FilterFields::RR_TYPE => {
                 let Ok(match_class) = DNS_RR_type::from_str(self.expr.2.as_str()) else {
                     return false;
                 };
-                if self.expr.1 == Filter_operator::EQUAL {
+                if self.expr.1 == FilterOperator::EQUAL {
                     for i in &packet_info.dns_records {
                         if i.rr_type != match_class {
                             return false;
                         }
                     }
                     return true;
-                } else if self.expr.1 == Filter_operator::NOT_EQUAL {
+                } else if self.expr.1 == FilterOperator::NOT_EQUAL {
                     for i in &packet_info.dns_records {
                         if i.rr_type == match_class {
                             return false;
@@ -327,15 +324,15 @@ impl Filter {
                 false
             }
 
-            Filter_fields::ANSWER => {
-                if self.expr.1 == Filter_operator::EQUAL {
+            FilterFields::ANSWER => {
+                if self.expr.1 == FilterOperator::EQUAL {
                     for i in &packet_info.dns_records {
                         if i.rdata != self.expr.2 {
                             return false;
                         }
                     }
                     return true;
-                } else if self.expr.1 == Filter_operator::NOT_EQUAL {
+                } else if self.expr.1 == FilterOperator::NOT_EQUAL {
                     for i in &packet_info.dns_records {
                         if i.rdata == self.expr.2 {
                             return false;
@@ -346,36 +343,36 @@ impl Filter {
                 false
             }
 
-            Filter_fields::DOMAIN => {
-                if self.expr.1 == Filter_operator::EQUAL {
+            FilterFields::DOMAIN => {
+                if self.expr.1 == FilterOperator::EQUAL {
                     for i in &packet_info.dns_records {
                         if i.domain != self.expr.2 {
                             return false;
                         }
                     }
                     return true;
-                } else if self.expr.1 == Filter_operator::NOT_EQUAL {
+                } else if self.expr.1 == FilterOperator::NOT_EQUAL {
                     for i in &packet_info.dns_records {
                         if i.domain == self.expr.2 {
                             return false;
                         }
                     }
                     return true;
-                } else if self.expr.1 == Filter_operator::START_WITH {
+                } else if self.expr.1 == FilterOperator::START_WITH {
                     for i in &packet_info.dns_records {
                         if !i.domain.starts_with(&self.expr.2) {
                             return false;
                         }
                     }
                     return true;
-                } else if self.expr.1 == Filter_operator::END_WITH {
+                } else if self.expr.1 == FilterOperator::END_WITH {
                     for i in &packet_info.dns_records {
                         if !i.domain.ends_with(&self.expr.2) {
                             return false;
                         }
                     }
                     return true;
-                } else if self.expr.1 == Filter_operator::CONTAINS {
+                } else if self.expr.1 == FilterOperator::CONTAINS {
                     for i in &packet_info.dns_records {
                         if !i.domain.contains(&self.expr.2) {
                             return false;
@@ -386,15 +383,15 @@ impl Filter {
                 false
             }
 
-            Filter_fields::ASN => {
-                if self.expr.1 == Filter_operator::EQUAL {
+            FilterFields::ASN => {
+                if self.expr.1 == FilterOperator::EQUAL {
                     for i in &packet_info.dns_records {
                         if i.asn != self.expr.2.parse().unwrap_or(0) {
                             return false;
                         }
                     }
                     return true;
-                } else if self.expr.1 == Filter_operator::NOT_EQUAL {
+                } else if self.expr.1 == FilterOperator::NOT_EQUAL {
                     for i in &packet_info.dns_records {
                         if i.asn == self.expr.2.parse().unwrap_or(0) {
                             return false;
@@ -427,7 +424,7 @@ impl Live_dump_session {
         }
     }
 
-    pub(crate) fn matches(&self, packet_info: &Packet_info) -> bool {
+    pub(crate) fn matches(&self, packet_info: &PacketInfo) -> bool {
         for filter in &self.filters {
             if !filter.matches(packet_info) {
                 return false;
@@ -474,22 +471,22 @@ pub fn listen(address: &str, port: u16) -> Option<TcpListener> {
 }
 
 #[derive(Debug)]
-pub(crate) struct Live_dump {
+pub(crate) struct LiveDump {
     listener: Option<TcpListener>,
     streams: Vec<Live_dump_session>,
 }
 
-impl Live_dump {
-    pub fn new(addr: &str, port: u16) -> Live_dump {
+impl LiveDump {
+    pub fn new(addr: &str, port: u16) -> LiveDump {
         if addr.is_empty() || port == 0 {
             debug!("Live dump disabled");
-            return Live_dump {
+            return LiveDump {
                 listener: None,
                 streams: Vec::new(),
             };
         }
 
-        Live_dump {
+        LiveDump {
             listener: if let Some(x) = listen(addr, port) {
                 debug!("Listening on {addr}:{port}");
                 let Ok(()) = x.set_nonblocking(true) else {
@@ -526,7 +523,7 @@ impl Live_dump {
         }
     }
 
-    pub fn write_all(&mut self, p1: &Packet_info) {
+    pub fn write_all(&mut self, p1: &PacketInfo) {
         let mut x = Vec::new();
 
         let tmp_str = &format!("{p1:#}");
@@ -538,7 +535,7 @@ impl Live_dump {
                 }
             }
         }
-        for i in x {
+        for i in x.into_iter().rev() {
             debug!("Removing connection {i}");
             self.streams.remove(i);
         }

@@ -1,7 +1,7 @@
 use crate::dns_helper::names_list;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use crate::rr::rr_null::RR_NULL;
 
 #[derive(Debug, Clone, Default)]
@@ -13,7 +13,7 @@ impl RR_UNSPEC {
         RR_UNSPEC(RR_NULL::new())
     }
 
-    pub fn parse(rdata: &[u8]) -> Result<Self, Parse_error> {
+    pub fn parse(rdata: &[u8]) -> Result<Self, ParseError> {
         Ok(RR_UNSPEC(RR_NULL::parse(rdata)?))
     }
 

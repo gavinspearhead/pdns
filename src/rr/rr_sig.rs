@@ -4,7 +4,7 @@ use crate::dns_helper::{
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default)]
@@ -47,7 +47,7 @@ impl RR_SIG {
         self.name = name;
         self.signature = signature;
     }
-    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_SIG, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_SIG, ParseError> {
         let mut a = RR_SIG::new();
         let mut pos = offset_in;
         a.type_covered = dns_read_u16(packet, pos)?;

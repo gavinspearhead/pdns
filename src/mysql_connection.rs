@@ -8,22 +8,31 @@ use std::str::FromStr;
 use tracing::debug;
 
 use crate::config::Config;
-use crate::dns_record::DNS_record;
+use crate::dns_record::DNSRecord;
 use crate::dns_reply_type::DnsReplyType;
 
 #[derive(Debug, Clone)]
-pub(crate) struct Mysql_connection {
+pub(crate) struct MysqlConnection {
     pool: Pool<MySql>,
 }
 
-impl Mysql_connection {
-    pub async fn connect(
+impl MysqlConnection {
+    pub fn connect(
         host: &str,
         user: &str,
         pass: &str,
         port: &u16,
         dbname: &str,
-    ) -> Mysql_connection {
+    ) -> MysqlConnection {
+         block_on(Self::_connect(host, user, pass, port, dbname))
+    }
+    pub async fn _connect(
+        host: &str,
+        user: &str,
+        pass: &str,
+        port: &u16,
+        dbname: &str,
+    ) -> MysqlConnection {
         let database_url = format!("mysql://{user}:{pass}@{host}:{port}/{dbname}");
         let connection_options = match MySqlConnectOptions::from_str(&database_url) {
             Ok(c) => c
@@ -41,7 +50,7 @@ impl Mysql_connection {
         {
             Ok(mysql_pool) => {
                 debug!("Connection to the database is successful!");
-                Mysql_connection { pool: mysql_pool }
+                MysqlConnection { pool: mysql_pool }
             }
             Err(err) => {
                 error!("Failed to connect to the database: {err:?}");
@@ -49,7 +58,7 @@ impl Mysql_connection {
             }
         }
     }
-    pub fn insert_or_update_record(&mut self, dns_record: &DNS_record) {
+    pub fn insert_or_update_record(&mut self, dns_record: &DNSRecord) {
         let ts = dns_record.timestamp.timestamp();
         let q_res = if dns_record.error == DnsReplyType::NOERROR {
             static INSERT_QUERY_PDNS: &str = "INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN,DOMAIN,asn,asn_owner,prefix) 
@@ -215,13 +224,13 @@ impl Mysql_connection {
 
 pub(crate) fn create_database(config: &Config) {
     if !config.database.is_empty() {
-        let x = block_on(Mysql_connection::connect(
+        let x = MysqlConnection::connect(
             &config.dbhostname,
             &config.dbusername,
             &config.dbpassword,
             &config.dbport,
             &config.dbname,
-        ));
+        );
 
         if let Some(ref mut db) = Some(x) {
             debug!("Database created");

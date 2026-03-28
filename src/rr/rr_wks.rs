@@ -1,9 +1,9 @@
-use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list, parse_bitmap_vec, parse_ipv4};
-use crate::dns_protocol::DNS_Protocol;
+use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list, parse_bitmap_vec, parse_ipv4_addr};
+use crate::dns_protocol::DNSProtocol;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::ParseErrorType::Invalid_Parameter;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 use std::net::{IpAddr, Ipv4Addr};
 
@@ -48,12 +48,12 @@ impl RR_WKS {
         self.protocol = protocol;
         self.bitmap = create_wks_bitmap(ports);
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_WKS, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_WKS, ParseError> {
         let mut a: RR_WKS = RR_WKS::new();
 
-        a.address = match parse_ipv4(dns_parse_slice(rdata, 0..4)?)? {
+        a.address = match parse_ipv4_addr(dns_parse_slice(rdata, 0..4)?)? {
             IpAddr::V4(ipv4) => ipv4,
-            IpAddr::V6(_) => return Err(Parse_error::new(Invalid_Parameter, "")),
+            IpAddr::V6(_) => return Err(ParseError::new(Invalid_Parameter, "")),
         };
         a.protocol = dns_read_u8(rdata, 4)?;
         a.bitmap = dns_parse_slice(rdata, 5..)?.to_vec();
@@ -63,7 +63,7 @@ impl RR_WKS {
 
 impl Display for RR_WKS {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let protocol = DNS_Protocol::find(self.protocol.into()).unwrap_or_default();
+        let protocol = DNSProtocol::find(self.protocol.into()).unwrap_or_default();
         write!(
             f,
             "{} {} {}",

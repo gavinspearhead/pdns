@@ -1,9 +1,8 @@
-use crate::dns_class::DNS_Class;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::ParseErrorType::{
     Invalid_DNS_Packet, Invalid_Parameter, Invalid_packet_index, Invalid_timestamp,
 };
-use crate::errors::{DNS_error, Parse_error};
+use crate::errors::{ParseError};
 use byteorder::{BigEndian, ByteOrder as _};
 use chrono::DateTime;
 use data_encoding::BASE32HEX_NOPAD;
@@ -11,57 +10,58 @@ use log::debug;
 use std::fmt::Write;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::ops::RangeBounds;
-// Add this at the top of the file
 /*
 #[inline]
 pub(crate) fn is_between<T: PartialOrd>(value: &T, min: &T, max: &T) -> bool {
     value >= min && value <= max
 }*/
 
-pub(crate) fn timestamp_to_str(timestamp: u32) -> Result<String, Parse_error> {
+pub(crate) fn timestamp_to_str(timestamp: u32) -> Result<String, ParseError> {
     let Some(dt) = DateTime::from_timestamp(i64::from(timestamp), 0) else {
-        return Err(Parse_error::new(Invalid_timestamp, &timestamp.to_string()));
+        return Err(ParseError::new(Invalid_timestamp, &timestamp.to_string()));
     };
     Ok(dt.to_string())
 }
-
-pub(crate) fn dns_read_u128(packet: &[u8], offset: usize) -> Result<u128, Parse_error> {
+#[inline]
+pub(crate) fn dns_read_u128(packet: &[u8], offset: usize) -> Result<u128, ParseError> {
     let Some(r) = packet.get(offset..offset + 16) else {
-        return Err(Parse_error::new(Invalid_packet_index, &offset.to_string()));
+        return Err(ParseError::new(Invalid_packet_index, &offset.to_string()));
     };
     Ok(BigEndian::read_u128(r))
 }
-pub(crate) fn dns_read_u48(packet: &[u8], offset: usize) -> Result<u64, Parse_error> {
+
+#[inline]
+pub(crate) fn dns_read_u48(packet: &[u8], offset: usize) -> Result<u64, ParseError> {
     let Some(r) = packet.get(offset..offset + 6) else {
-        return Err(Parse_error::new(Invalid_packet_index, &offset.to_string()));
+        return Err(ParseError::new(Invalid_packet_index, &offset.to_string()));
     };
     Ok(BigEndian::read_u48(r))
 }
-
-pub(crate) fn dns_read_u64(packet: &[u8], offset: usize) -> Result<u64, Parse_error> {
+#[inline]
+pub(crate) fn dns_read_u64(packet: &[u8], offset: usize) -> Result<u64, ParseError> {
     let Some(r) = packet.get(offset..offset + 8) else {
-        return Err(Parse_error::new(Invalid_packet_index, &offset.to_string()));
+        return Err(ParseError::new(Invalid_packet_index, &offset.to_string()));
     };
     Ok(BigEndian::read_u64(r))
 }
-
-pub(crate) fn dns_read_u32(packet: &[u8], offset: usize) -> Result<u32, Parse_error> {
+#[inline]
+pub(crate) fn dns_read_u32(packet: &[u8], offset: usize) -> Result<u32, ParseError> {
     let Some(r) = packet.get(offset..offset + 4) else {
-        return Err(Parse_error::new(Invalid_packet_index, &offset.to_string()));
+        return Err(ParseError::new(Invalid_packet_index, &offset.to_string()));
     };
     Ok(BigEndian::read_u32(r))
 }
-
-pub(crate) fn dns_read_u16(packet: &[u8], offset: usize) -> Result<u16, Parse_error> {
+#[inline]
+pub(crate) fn dns_read_u16(packet: &[u8], offset: usize) -> Result<u16, ParseError> {
     let Some(r) = packet.get(offset..offset + 2) else {
-        return Err(Parse_error::new(Invalid_packet_index, &offset.to_string()));
+        return Err(ParseError::new(Invalid_packet_index, &offset.to_string()));
     };
     Ok(BigEndian::read_u16(r))
 }
-
-pub(crate) fn dns_read_u8(packet: &[u8], offset: usize) -> Result<u8, Parse_error> {
+#[inline]
+pub(crate) fn dns_read_u8(packet: &[u8], offset: usize) -> Result<u8, ParseError> {
     let Some(&r) = packet.get(offset) else {
-        return Err(Parse_error::new(Invalid_packet_index, &offset.to_string()));
+        return Err(ParseError::new(Invalid_packet_index, &offset.to_string()));
     };
     Ok(r)
 }
@@ -86,7 +86,7 @@ pub(crate) fn base32hex_encode(input: &[u8]) -> String {
     BASE32HEX_NOPAD.encode(input)
 }
 
-pub fn parse_nsec_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, Parse_error> {
+pub fn parse_nsec_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, ParseError> {
     let len = bitmap.len();
     let mut res: Vec<u16> = Vec::new();
     let mut offset = 0;
@@ -98,7 +98,7 @@ pub fn parse_nsec_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, Parse_error> {
             for j in 0..8 {
                 if dns_read_u8(bitmap, offset + 2 + i)? & pos != 0 {
                     let Ok(x) = (usize::from(high_byte) | ((8 * i) + j)).try_into() else {
-                        return Err(Parse_error::new(Invalid_Parameter, ""));
+                        return Err(ParseError::new(Invalid_Parameter, ""));
                     };
                     res.push(x);
                 }
@@ -110,25 +110,25 @@ pub fn parse_nsec_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, Parse_error> {
     Ok(res)
 }
 
-pub fn map_bitmap_to_rr(bitmap: &[u16]) -> Result<String, Parse_error> {
+pub fn map_bitmap_to_rr(bitmap: &[u16]) -> Result<String, ParseError> {
     let mut res = String::new();
     for i in bitmap {
         let Ok(x) = DNS_RR_type::find(*i) else {
-            return Err(Parse_error::new(Invalid_Parameter, ""));
+            return Err(ParseError::new(Invalid_Parameter, ""));
         };
-        write!(res, "{x} ").map_err(|_| Parse_error::new(Invalid_Parameter, ""))?;
+        write!(res, "{x} ").map_err(|_| ParseError::new(Invalid_Parameter, ""))?;
     }
     Ok(res)
 }
 
-pub fn parse_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, Parse_error> {
+pub fn parse_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, ParseError> {
     let mut res: Vec<u16> = Vec::new();
     for (i, item) in bitmap.iter().enumerate() {
         let mut pos: u8 = 0x80;
         for j in 0..8 {
             if item & pos != 0 {
                 let Ok(x) = ((8 * i) + j).try_into() else {
-                    return Err(Parse_error::new(Invalid_Parameter, ""));
+                    return Err(ParseError::new(Invalid_Parameter, ""));
                 };
                 res.push(x);
             }
@@ -138,7 +138,7 @@ pub fn parse_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, Parse_error> {
     Ok(res)
 }
 
-pub fn build_bitmap_from_vec(indices: &[u16]) -> Result<Vec<u8>, Parse_error> {
+pub fn build_bitmap_from_vec(indices: &[u16]) -> Result<Vec<u8>, ParseError> {
     if indices.is_empty() {
         return Ok(Vec::new());
     }
@@ -160,7 +160,8 @@ pub fn build_bitmap_from_vec(indices: &[u16]) -> Result<Vec<u8>, Parse_error> {
     Ok(bitmap)
 }
 #[must_use]
-pub fn process_bitmap(bitmap: &Vec<u16>) -> Vec<u8> {
+pub fn process_bitmap(bitmap: &[u16]) -> Vec<u8> {
+    if bitmap.is_empty() { return Vec::new();}
     let mut bitmap_bytes = Vec::new();
     let mut window_bytes = Vec::new();
     let mut current_window = bitmap[0] >> 8;
@@ -192,18 +193,18 @@ pub fn process_bitmap(bitmap: &Vec<u16>) -> Vec<u8> {
     bitmap_bytes
 }
 
-pub(crate) fn dns_parse_slice<T>(packet: &[u8], range: T) -> Result<&[u8], Parse_error>
+pub(crate) fn dns_parse_slice<T>(packet: &[u8], range: T) -> Result<&[u8], ParseError>
 where
     T: RangeBounds<usize>,
 {
     let start = match range.start_bound() {
         std::ops::Bound::Included(&s) => s,
-        std::ops::Bound::Excluded(&s) => s + 1,
+        std::ops::Bound::Excluded(&s) => s.checked_add(1).ok_or_else(|| ParseError::new(Invalid_packet_index, ""))?,
         std::ops::Bound::Unbounded => 0,
     };
 
     let end = match range.end_bound() {
-        std::ops::Bound::Included(&e) => e + 1,
+        std::ops::Bound::Included(&e) => e.checked_add(1).ok_or_else(|| ParseError::new(Invalid_packet_index, ""))?,
         std::ops::Bound::Excluded(&e) => e,
         std::ops::Bound::Unbounded => packet.len(),
     };
@@ -211,37 +212,32 @@ where
     if start <= end && end <= packet.len() {
         Ok(&packet[start..end])
     } else {
-        Err(Parse_error::new(Invalid_packet_index, ""))
+        Err(ParseError::new(Invalid_packet_index, ""))
     }
 }
 
-pub(crate) fn parse_dns_str(rdata: &[u8]) -> Result<String, Parse_error> {
+pub(crate) fn parse_dns_str(rdata: &[u8]) -> Result<String, ParseError> {
     if let Ok(x) = std::str::from_utf8(rdata) {
         Ok(x.to_owned())
     } else {
-        Err(Parse_error::new(Invalid_DNS_Packet, ""))
+        Err(ParseError::new(Invalid_DNS_Packet, ""))
     }
 }
 
-pub(crate) fn parse_ipv4(data: &[u8]) -> Result<IpAddr, Parse_error> {
-    let r: [u8; 4] = match data.try_into() {
-        Ok(x) => x,
-        Err(_) => {
-            return Err(Parse_error::new(Invalid_DNS_Packet, ""));
-        }
-    };
+pub(crate) fn parse_ipv4_addr(data: &[u8]) -> Result<IpAddr, ParseError> {
+    let r: [u8; 4] =  data.try_into().map_err(|_| ParseError::new(Invalid_DNS_Packet, ""))?;
     Ok(IpAddr::V4(Ipv4Addr::from(r)))
 }
 
-pub(crate) fn parse_ipv6(data: &[u8]) -> Result<IpAddr, Parse_error> {
-    let r: [u8; 16] = match data.try_into() {
-        Ok(x) => x,
-        Err(_) => {
-            return Err(Parse_error::new(Invalid_DNS_Packet, ""));
-        }
-    };
-    Ok(IpAddr::V6(Ipv6Addr::from(r)))
+pub(crate) fn parse_ipv6_addr(data: &[u8]) -> Result<IpAddr, ParseError> {
+    let octets: [u8; 16] = data
+        .try_into()
+        .map_err(|_| ParseError::new(Invalid_DNS_Packet, ""))?;
+
+    Ok(IpAddr::V6(Ipv6Addr::from(octets)))
 }
+
+
 #[derive(Debug, Clone)]
 struct elem {
     name: String,
@@ -299,6 +295,8 @@ impl names_list {
     }
 }
 
+
+#[cfg(test)]
 mod tests_names_list {
     use crate::dns_helper::names_list;
 
@@ -335,7 +333,8 @@ pub(crate) fn dns_format_name(name_in: &str, names: &mut names_list, pos_in: usi
         if !x.is_empty() {
             res.push(x.len() as u8);
             // res.push(0xc0);
-            res.append(x.as_bytes().to_vec().as_mut());
+            res.extend_from_slice(x.as_bytes());
+//            res.append(x.as_bytes().to_vec().as_mut());
         }
     }
     if len != 0 {
@@ -358,37 +357,37 @@ mod tests {
 
     use crate::dns_helper::{dns_read_u16, dns_read_u32, dns_read_u64, dns_read_u8};
 
-    use super::{parse_ipv4, parse_ipv6};
+    use super::{parse_ipv4_addr, parse_ipv6_addr};
 
     #[test]
     fn test_parse_ipv4() {
         assert_eq!(
-            parse_ipv4(&[192, 168, 178, 254]).unwrap(),
+            parse_ipv4_addr(&[192, 168, 178, 254]).unwrap(),
             Ipv4Addr::from_str("192.168.178.254").unwrap()
         );
         assert_eq!(
-            parse_ipv4(&[130, 89, 1, 1]).unwrap(),
+            parse_ipv4_addr(&[130, 89, 1, 1]).unwrap(),
             Ipv4Addr::from_str("130.89.1.1").unwrap()
         );
-        assert!(parse_ipv4(&[130, 89, 1]).is_err());
-        assert!(parse_ipv4(&[89, 1]).is_err());
+        assert!(parse_ipv4_addr(&[130, 89, 1]).is_err());
+        assert!(parse_ipv4_addr(&[89, 1]).is_err());
     }
     #[test]
     fn test_parse_ipv6() {
         assert_eq!(
-            parse_ipv6(&[
+            parse_ipv6_addr(&[
                 0xfe, 0x80, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1a, 0xc0, 0x4d, 0xff, 0xfe, 0xaf, 0x86,
                 0x31
             ])
             .unwrap(),
             Ipv6Addr::from_str("fe80:0:0:0:1ac0:4dff:feaf:8631").unwrap()
         );
-        assert!(parse_ipv6(&[
+        assert!(parse_ipv6_addr(&[
             0xfe, 0x80, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1a, 0xc0, 0x4d, 0xff, 0xfe, 0xaf, 0x86, 0x31
         ])
         .is_err());
         assert!(
-            parse_ipv6(&[0x0, 0x0, 0x0, 0x1a, 0xc0, 0x4d, 0xff, 0xfe, 0xaf, 0x86, 0x31]).is_err()
+            parse_ipv6_addr(&[0x0, 0x0, 0x0, 0x1a, 0xc0, 0x4d, 0xff, 0xfe, 0xaf, 0x86, 0x31]).is_err()
         );
     }
 

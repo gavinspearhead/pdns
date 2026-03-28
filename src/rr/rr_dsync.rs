@@ -2,7 +2,7 @@ use crate::dns_helper::{dns_read_u16, dns_read_u8, names_list};
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, Default)]
 pub struct RR_DSYNC {
@@ -24,7 +24,7 @@ impl RR_DSYNC {
         self.target = target.to_string();
     }
 
-    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<Self, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<Self, ParseError> {
         let (target, _) = dns_parse_name(packet, offset_in + 5)?;
         Ok(Self {
             rrtype: dns_read_u16(packet, offset_in)?,

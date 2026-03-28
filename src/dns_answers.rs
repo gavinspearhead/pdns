@@ -1,6 +1,6 @@
-use crate::dns_class::DNS_Class;
+use crate::dns_class::DnsClass;
 use crate::dns_helper::{dns_format_name, names_list};
-use crate::dns_packet::{dns_header, dns_question};
+use crate::dns_packet::{DnsHeader, DnsQuestion};
 use crate::dns_reply_type::DnsReplyType;
 use crate::dns_rr_type::DNS_RR_type;
 use std::fmt::Display;
@@ -8,22 +8,22 @@ use tracing::debug;
 use zerocopy::IntoBytes;
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct dns_answer {
-    pub header: dns_header,
-    pub question: dns_question,
+pub(crate) struct DnsAnswer {
+    pub header: DnsHeader,
+    pub question: DnsQuestion,
     pub buf: Vec<u8>,
     pub names: names_list,
     pub offset: usize,
 }
 
-impl dns_answer {
+impl DnsAnswer {
     const HEADER_LEN: usize = 12;
 
     #[must_use]
-    pub fn new() -> dns_answer {
-        dns_answer {
-            header: dns_header::new(),
-            question: dns_question::new(),
+    pub fn new() -> DnsAnswer {
+        DnsAnswer {
+            header: DnsHeader::new(),
+            question: DnsQuestion::new(),
             buf: vec![0; Self::HEADER_LEN],
             names: names_list::new(),
             offset: 0,
@@ -35,7 +35,7 @@ impl dns_answer {
 
     pub fn add_header(
         &mut self,
-        dns_header: &dns_header,
+        dns_header: &DnsHeader,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.header = *dns_header;
         self.header.qr = 1;
@@ -50,7 +50,7 @@ impl dns_answer {
 
     pub fn add_question(
         &mut self,
-        dns_question: &dns_question,
+        dns_question: &DnsQuestion,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.question = dns_question.clone();
         self.offset = write_question(
@@ -68,7 +68,7 @@ impl dns_answer {
     }
 }
 
-impl Display for dns_answer {
+impl Display for DnsAnswer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -81,7 +81,7 @@ impl Display for dns_answer {
 fn write_question(
     buf: &mut Vec<u8>,
     offset: usize,
-    question: &dns_question,
+    question: &DnsQuestion,
     names: &mut names_list,
 ) -> Result<usize, Box<dyn std::error::Error>> {
     let name = dns_format_name(&question.name, names, offset);
@@ -92,7 +92,7 @@ fn write_question(
     Ok(offset + 4 + name.len())
 }
 
-fn write_header(buf: &mut [u8], offset: usize, header: &mut dns_header) -> usize {
+fn write_header(buf: &mut [u8], offset: usize, header: &mut DnsHeader) -> usize {
     buf[offset..offset + 2].copy_from_slice(header.id.to_be().as_bytes());
     header.flags |= u16::from(header.qr) << 15;
     header.flags |= (header.opcode as u16 & 0b1111) << 11;
@@ -118,7 +118,7 @@ pub fn write_data_record(
     offset: usize,
     name_in: &str,
     rr_type: DNS_RR_type,
-    class_type: DNS_Class,
+    class_type: DnsClass,
     ttl: u32,
     answer_slice: &[u8],
     names: &mut names_list,

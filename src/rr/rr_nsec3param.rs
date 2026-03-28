@@ -1,8 +1,7 @@
 use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, names_list};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::ParseErrorType::Invalid_NSEC3PARAM;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default)]
@@ -25,7 +24,7 @@ impl RR_NSEC3PARAM {
         self.iterations = iterations;
         self.salt = salt.to_vec();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_NSEC3PARAM, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_NSEC3PARAM, ParseError> {
         let a = RR_NSEC3PARAM {
             hash: dns_read_u8(rdata, 0)?,
             flags: dns_read_u8(rdata, 1)?,

@@ -1,7 +1,7 @@
 use crate::dns_helper::{dns_parse_slice, names_list, parse_dns_str};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::Display;
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
@@ -17,7 +17,7 @@ impl RR_TXT {
     pub fn set(&mut self, txt: &str) {
         self.txt.push(txt.to_string());
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_TXT, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_TXT, ParseError> {
         let mut txt = RR_TXT::new();
         let mut pos = 0;
         while pos < rdata.len() {

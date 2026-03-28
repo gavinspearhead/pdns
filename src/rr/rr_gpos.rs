@@ -1,7 +1,7 @@
 use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list, parse_dns_str};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
 pub struct RR_GPOS {
@@ -24,7 +24,7 @@ impl RR_GPOS {
         self.lat = lat.as_bytes().to_vec();
         self.alt = alt.as_bytes().to_vec();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_GPOS, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_GPOS, ParseError> {
         let mut a = RR_GPOS::new();
         let mut offset = 0;
         let lon_len = usize::from(dns_read_u8(rdata, offset)?);

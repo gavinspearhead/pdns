@@ -1,7 +1,7 @@
 use crate::dns_helper::names_list;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use crate::rr::rr_mb::RR_MB;
 use std::fmt::{Display, Formatter};
 
@@ -20,7 +20,7 @@ impl RR_MF {
         self.inner.set(madname);
     }
 
-    pub(crate) fn parse(packet: &[u8], offset: usize) -> Result<RR_MF, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset: usize) -> Result<RR_MF, ParseError> {
         Ok(RR_MF {
             inner: RR_MB::parse(packet, offset)?,
         })

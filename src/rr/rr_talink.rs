@@ -2,7 +2,7 @@ use crate::dns_helper::{dns_format_name, names_list};
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default, Hash)]
@@ -20,7 +20,7 @@ impl RR_TALINK {
         self.previous_signer = name1.to_string();
         self.next_signer = name2.to_string();
     }
-    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_TALINK, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_TALINK, ParseError> {
         let mut a = RR_TALINK::new();
         let mut offset_out = offset_in;
         (a.previous_signer, offset_out) = dns_parse_name(packet, offset_out)?;

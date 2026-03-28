@@ -2,16 +2,14 @@ use crate::rank::Rank;
 use crate::time_stats::Time_stats;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use serde_with::rust::deserialize_ignore_any;
 
 use crate::config::Config;
-use crate::dns_class::DNS_Class;
-use crate::dns_opcodes::DNS_Opcodes;
+use crate::dns_class::DnsClass;
+use crate::dns_opcodes::DNSOpcodes;
 use crate::dns_reply_type::DnsReplyType;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::edns::DNSExtendedError;
-use crate::tcp_connection::TCP_Connections_Error_Type::NotFound;
-use crate::util::ordered_map;
+use crate::util::ordered_map_value;
 use chrono::Utc;
 use flate2::write::GzEncoder;
 use std::fs::remove_file;
@@ -22,6 +20,7 @@ use std::{collections::HashMap, fs::File, io::BufReader};
 use tracing::debug;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[serde(default)]
 pub(crate) struct Statistics {
     pub queries: u128,
     pub answers: u128,
@@ -34,27 +33,27 @@ pub(crate) struct Statistics {
     pub ipv6: u128,
     pub ipv4: u128,
     pub truncated: u128,
-    #[serde(serialize_with = "ordered_map")]
+    #[serde(serialize_with = "ordered_map_value")]
     pub errors: HashMap<DnsReplyType, u128>,
-    #[serde(serialize_with = "ordered_map")]
+    #[serde(serialize_with = "ordered_map_value")]
     pub qtypes: HashMap<DNS_RR_type, u128>,
-    #[serde(serialize_with = "ordered_map")]
+    #[serde(serialize_with = "ordered_map_value")]
     pub atypes: HashMap<DNS_RR_type, u128>,
-    #[serde(serialize_with = "ordered_map")]
-    pub qclass: HashMap<DNS_Class, u128>,
-    #[serde(serialize_with = "ordered_map")]
-    pub aclass: HashMap<DNS_Class, u128>,
-    #[serde(serialize_with = "ordered_map")]
-    pub opcodes: HashMap<DNS_Opcodes, u128>,
-    #[serde(serialize_with = "ordered_map")]
+    #[serde(serialize_with = "ordered_map_value")]
+    pub qclass: HashMap<DnsClass, u128>,
+    #[serde(serialize_with = "ordered_map_value")]
+    pub aclass: HashMap<DnsClass, u128>,
+    #[serde(serialize_with = "ordered_map_value")]
+    pub opcodes: HashMap<DNSOpcodes, u128>,
+    #[serde(serialize_with = "ordered_map_value")]
     pub extended_error: HashMap<DNSExtendedError, u128>,
-    #[serde(deserialize_with = "deserialize_ignore_any")]
+    //#[serde(deserialize_with = "deserialize_ignore_any")]
     pub sources: Rank<IpAddr>,
-    #[serde(deserialize_with = "deserialize_ignore_any")]
+    // #[serde(deserialize_with = "deserialize_ignore_any")]
     pub destinations: Rank<IpAddr>,
-    #[serde(deserialize_with = "deserialize_ignore_any")]
+    // #[serde(deserialize_with = "deserialize_ignore_any")]
     pub topdomain: Rank<String>,
-    #[serde(deserialize_with = "deserialize_ignore_any")]
+    //  #[serde(deserialize_with = "deserialize_ignore_any")]
     pub topnx: Rank<String>,
     pub total_time_stats: Time_stats,
     pub blocked_time_stats: Time_stats,
@@ -111,11 +110,14 @@ impl Statistics {
             return Ok(());
         }
         let filename_base = &config.export_stats;
-        let mut count: u16 = 0;
+        let mut count: usize = 0;
         loop {
             let filename = if unique {
                 let date_as_string = Utc::now().to_rfc3339();
-                Path::new(filename_base).join(format!("stats-{date_as_string}.json"))
+                Path::new(filename_base).join(format!(
+                    "stats-{date_as_string}.json{}",
+                    if config.compress_stats { ".gz" } else { "" }
+                ))
             } else {
                 let filename = Path::new(filename_base).join(if config.compress_stats {
                     "stats.json.gz"
@@ -138,17 +140,17 @@ impl Statistics {
             };
 
             match File::create_new(&filename) {
-                Ok(f) => {
+                Ok(file) => {
                     if config.compress_stats {
                         debug!("Dumping and compressing stats to {filename:?}");
-                        let file = File::create(format!("{}", filename.to_string_lossy()))?;
+               //         let file = File::create(format!("{}", filename.to_string_lossy()))?;
                         let encoder = GzEncoder::new(file, flate2::Compression::default());
                         let mut writer = BufWriter::new(encoder);
                         serde_json::to_writer_pretty(&mut writer, self)?;
                         writer.flush()?;
                     } else {
                         debug!("Dumping stats to {filename:?}");
-                        let mut writer = BufWriter::new(f);
+                        let mut writer = BufWriter::new(file);
                         serde_json::to_writer_pretty(&mut writer, self)?;
                         writer.flush()?;
                     }

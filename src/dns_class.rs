@@ -22,7 +22,8 @@ use tracing::debug;
     FromRepr,
     Default,
 )]
-pub enum DNS_Class {
+#[repr(u16)]
+pub enum DnsClass {
     #[default]
     IN = 1,
     CS = 2,
@@ -32,13 +33,13 @@ pub enum DNS_Class {
     ANY = 255,
 }
 
-impl DNS_Class {
+impl DnsClass {
     #[inline]
     pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
-        if let Some(x) = DNS_Class::from_repr(usize::from(val)) {
+        if let Some(x) = DnsClass::from_repr(val) {
             Ok(x)
         } else {
             debug!("Error wrong class value {val}");
@@ -47,7 +48,7 @@ impl DNS_Class {
     }
 }
 
-impl fmt::Display for DNS_Class {
+impl fmt::Display for DnsClass {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_str())
@@ -56,25 +57,25 @@ impl fmt::Display for DNS_Class {
 
 #[cfg(test)]
 mod dns_class_tests {
-    use crate::dns_class::DNS_Class;
+    use crate::dns_class::DnsClass;
 
     #[test]
     fn test_dns_class2() {
-        assert_eq!(DNS_Class::IN.to_str(), "IN");
-        assert_eq!(DNS_Class::HS.to_str(), "HS");
-        assert_eq!(DNS_Class::CS.to_str(), "CS");
-        assert_eq!(DNS_Class::CH.to_str(), "CH");
+        assert_eq!(DnsClass::IN.to_str(), "IN");
+        assert_eq!(DnsClass::HS.to_str(), "HS");
+        assert_eq!(DnsClass::CS.to_str(), "CS");
+        assert_eq!(DnsClass::CH.to_str(), "CH");
     }
     #[test]
     fn test_dns_class1() {
-        assert_eq!(DNS_Class::find(4).unwrap(), DNS_Class::HS);
+        assert_eq!(DnsClass::find(4).unwrap(), DnsClass::HS);
     }
     #[test]
     fn test_dns_class3() {
-        assert_eq!(DNS_Class::find(255).unwrap(), DNS_Class::ANY);
+        assert_eq!(DnsClass::find(255).unwrap(), DnsClass::ANY);
     }
     #[test]
     fn test_dns_class4() {
-        assert!(DNS_Class::find(122).is_err());
+        assert!(DnsClass::find(122).is_err());
     }
 }

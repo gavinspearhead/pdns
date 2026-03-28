@@ -3,7 +3,7 @@ use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, names_list};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::ParseErrorType::Invalid_Resource_Record;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
 pub struct RR_CDS {
@@ -24,9 +24,9 @@ impl RR_CDS {
         self.dig_t = dig_t;
         self.dig = hex::decode(dig).unwrap_or_default();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_CDS, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_CDS, ParseError> {
         if rdata.len() < 5 {
-            return Err(Parse_error::new(Invalid_Resource_Record, ""));
+            return Err(ParseError::new(Invalid_Resource_Record, ""));
         }
         let mut cds = RR_CDS::new();
         cds.key_id = dns_read_u16(rdata, 0)?;

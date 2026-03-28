@@ -1,7 +1,7 @@
 use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list, parse_dns_str};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RR_ISDN {
@@ -21,7 +21,7 @@ impl RR_ISDN {
         self.addr = addr.to_string();
         self.sub_addr_str = sub_addr_str.to_string();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_ISDN, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_ISDN, ParseError> {
         let mut a = RR_ISDN::new();
         let addr_len = usize::from(dns_read_u8(rdata, 0)?);
         a.addr = parse_dns_str(dns_parse_slice(rdata, 1..=addr_len)?)?;

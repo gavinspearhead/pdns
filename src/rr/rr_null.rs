@@ -1,7 +1,7 @@
 use crate::dns_helper::{base32hex_encode, names_list};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::{ParseErrorType, Parse_error};
+use crate::errors::{ParseErrorType, ParseError};
 use std::fmt::{Display, Formatter};
 #[derive(Default, Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
 pub struct RR_NULL {
@@ -16,9 +16,9 @@ impl RR_NULL {
     pub fn set(&mut self, rdata: &[u8]) {
         self.rdata = rdata.to_vec();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_NULL, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_NULL, ParseError> {
         if rdata.len() > 65535 {
-            return Err(Parse_error::new(
+            return Err(ParseError::new(
                 ParseErrorType::Invalid_Data,
                 &format!("Data too large: {} B", rdata.len()),
             ));

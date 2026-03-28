@@ -21,6 +21,8 @@ use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
     PartialOrd,
     Ord,
 )]
+
+#[repr(u16)]
 pub enum DnsReplyType {
     #[default]
     NOERROR = 0,
@@ -51,7 +53,7 @@ impl DnsReplyType {
         self.into()
     }
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
-        match DnsReplyType::from_repr(usize::from(val)) {
+        match DnsReplyType::from_repr(val) {
             Some(x) => Ok(x),
             None => Err(DNS_error::new(Invalid_reply_type, &format!("{val}"))),
         }
@@ -65,7 +67,7 @@ impl fmt::Display for DnsReplyType {
 }
 #[cfg(test)]
 mod tests2 {
-    use crate::dns_opcodes::DNS_Opcodes;
+    use crate::dns_opcodes::DNSOpcodes;
     use crate::dns_reply_type::DnsReplyType;
     use std::str::FromStr;
 
@@ -89,6 +91,6 @@ mod tests2 {
     fn test_dns_rt2() {
         assert_eq!(DnsReplyType::find(19).unwrap(), DnsReplyType::BADMODE);
         assert_eq!(DnsReplyType::find(23).unwrap(), DnsReplyType::BADCOOKIE);
-        assert!(DNS_Opcodes::find(111).is_err());
+        assert!(DNSOpcodes::find(111).is_err());
     }
 }

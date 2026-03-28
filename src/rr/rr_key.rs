@@ -2,7 +2,7 @@ use crate::dns::{dnssec_algorithm, key_protocol};
 use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, names_list};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use std::fmt::{Display, Formatter};
@@ -25,7 +25,7 @@ impl RR_KEY {
         self.alg = alg;
         self.key = key.to_vec();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_KEY, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_KEY, ParseError> {
         let mut a = RR_KEY::new();
         a.flags = dns_read_u16(rdata, 0)?;
         a.protocol = dns_read_u8(rdata, 2)?;

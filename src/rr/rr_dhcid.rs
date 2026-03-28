@@ -2,7 +2,7 @@ use crate::dns::dhcid_alg;
 use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, names_list};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use base64::display::Base64Display;
 use base64::engine::general_purpose::STANDARD;
 use std::fmt::{Display, Formatter};
@@ -23,7 +23,7 @@ impl RR_DHCID {
         self.digest_type_code = digest_type_code;
         self.digest = digest.to_vec();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_DHCID, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_DHCID, ParseError> {
         let mut dhcid = RR_DHCID::new();
         dhcid.id_type_code = dns_read_u16(rdata, 0)?;
         dhcid.digest_type_code = dns_read_u8(rdata, 2)?;

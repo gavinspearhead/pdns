@@ -1,7 +1,7 @@
 use crate::dns_helper::{dns_parse_slice, dns_read_u16, names_list};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 use std::net::Ipv6Addr;
 
@@ -29,7 +29,7 @@ impl RR_L64 {
         self.prio = prio;
         self.addr = addr;
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_L64, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_L64, ParseError> {
         let mut l64 = RR_L64::new();
         l64.prio = dns_read_u16(rdata, 0)?;
         let mut r = [0u8; 16];

@@ -1,7 +1,7 @@
 use crate::dns_helper::names_list;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default, Hash, PartialEq, Eq, PartialOrd, Ord, Copy)]
@@ -13,7 +13,7 @@ impl RR_Private {
         RR_Private::default()
     }
     pub fn set(&mut self) {}
-    pub(crate) fn parse(_rdata: &[u8]) -> Result<RR_Private, Parse_error> {
+    pub(crate) fn parse(_rdata: &[u8]) -> Result<RR_Private, ParseError> {
         let a = RR_Private::new();
         Ok(a)
     }

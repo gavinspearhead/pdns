@@ -1,12 +1,12 @@
 #![allow(non_camel_case_types)]
 use base64::engine::general_purpose::STANDARD;
 
-use crate::dns_class::DNS_Class;
-use crate::dns_packet::{dns_header, dns_question};
+use crate::dns_class::DnsClass;
+use crate::dns_packet::{DnsHeader, DnsQuestion};
 use crate::dns_reply_type::DnsReplyType;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::rr::rr_a::RR_A;
-use crate::skiplist::Skip_List;
+use crate::skiplist::SkipList;
 use base64::Engine;
 use log::debug;
 use std::net::{Ipv4Addr, Ipv6Addr, UdpSocket};
@@ -49,7 +49,7 @@ pub mod time_stats;
 pub mod util;
 pub mod version;
 
-use crate::dns_answers::dns_answer;
+use crate::dns_answers::DnsAnswer;
 //use crate::dns_helper::names_list;
 use crate::dns_rr::{RR_HTTPS, RR_TXT};
 use crate::rr::rr_a6::RR_A6;
@@ -122,13 +122,13 @@ use crate::rr::rr_wks::RR_WKS;
 use crate::rr::rr_x25::RR_X25;
 
 pub(crate) fn make_reply(
-    dns_answer: &mut dns_answer,
-    dns_query: &dns_question,
-    header: &mut dns_header,
+    dns_answer: &mut DnsAnswer,
+    dns_query: &DnsQuestion,
+    header: &mut DnsHeader,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    *dns_answer = dns_answer::new();
+    *dns_answer = DnsAnswer::new();
 
-    if dns_query.dns_class_type != DNS_Class::IN {
+    if dns_query.dns_class_type != DnsClass::IN {
         return Err("Wrong class".into());
     }
 
@@ -350,7 +350,7 @@ pub(crate) fn make_reply(
         }
         DNS_RR_type::TLSA => {
             let mut tlsa_record = RR_TLSA::new();
-            tlsa_record.set(3, 1, 1, &*vec![0x12, 0x34, 0x56, 0x78]);
+            tlsa_record.set(3, 1, 1, &vec![0x12, 0x34, 0x56, 0x78]);
             add_records_with_log(dns_answer, dns_query, &[&tlsa_record], 0, ttl)?;
         }
         DNS_RR_type::CERT => {
@@ -670,8 +670,8 @@ pub(crate) fn make_reply(
 }
 
 fn add_records_with_log(
-    dns_answer: &mut dns_answer,
-    question: &dns_question,
+    dns_answer: &mut DnsAnswer,
+    question: &DnsQuestion,
     records: &[&impl DNSRecord],
     offset_in: usize,
     ttl: u32,
@@ -705,8 +705,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut buf = [0u8; 2048];
     debug!("started socket");
 
-    let mut dns_answer = dns_answer::new();
-    let skip_list = Skip_List::new();
+    let mut dns_answer = DnsAnswer::new();
+    let skip_list = SkipList::new();
     loop {
         // Receive a datagram
         let (amt, src) = socket.recv_from(&mut buf)?;
@@ -714,12 +714,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         debug!("Received {amt} bytes from {src}");
         debug!("{}", hex::encode(&buf[..amt]));
 
-        let mut dns_header = dns_header::new();
+        let mut dns_header = DnsHeader::new();
         let mut offset = dns_header
             .parse(buf.as_ref())
             .expect("Error parsing DNS header");
         debug!("{dns_header:?}");
-        let mut dns_question = dns_question::new();
+        let mut dns_question = DnsQuestion::new();
         offset += dns_question
             .parse(buf.as_ref(), offset, &skip_list)
             .expect("Error parsing DNS question");

@@ -1,7 +1,7 @@
 use crate::dns_helper::names_list;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 use tracing::debug;
 
@@ -16,7 +16,7 @@ impl RR_NXNAME {
         RR_NXNAME::default()
     }
     pub fn set(&mut self) {}
-    pub(crate) fn parse(_rdata: &[u8]) -> Result<RR_NXNAME, Parse_error> {
+    pub(crate) fn parse(_rdata: &[u8]) -> Result<RR_NXNAME, ParseError> {
         debug!("Can't happen : NXNAME");
         let a = RR_NXNAME::new();
         Ok(a)

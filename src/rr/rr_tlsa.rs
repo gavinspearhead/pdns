@@ -3,7 +3,7 @@ use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::ParseErrorType::Invalid_Resource_Record;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
@@ -25,10 +25,10 @@ impl RR_TLSA {
         self.alg_type = alg_type;
         self.cad = cad.to_vec();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_TLSA, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_TLSA, ParseError> {
         let mut a = RR_TLSA::new();
         if rdata.len() < 4 {
-            return Err(Parse_error::new(Invalid_Resource_Record, ""));
+            return Err(ParseError::new(Invalid_Resource_Record, ""));
         }
         a.cert_usage = dns_read_u8(rdata, 0)?;
         a.selector = dns_read_u8(rdata, 1)?;

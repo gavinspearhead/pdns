@@ -1,7 +1,8 @@
-use crate::dns_helper::names_list;
+use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, names_list, parse_dns_str};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseErrorType::{Invalid_Parameter, Invalid_Resource_Record};
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, Default)]
 pub struct RR_BRID {
@@ -58,8 +59,96 @@ impl RR_BRID {
         }
     }
     pub fn set(&mut self) {}
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_BRID, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_BRID, ParseError> {
+        if rdata.is_empty() {
+            return Err(ParseError::new(Invalid_Resource_Record, "empty BRID RDATA"));
+        }
+
         let mut a = RR_BRID::new();
+        a.uas_type = dns_read_u8(rdata, 0)? & 0x0f;
+
+        let mut offset = 1usize;
+        while offset < rdata.len() {
+            let group_type = dns_read_u8(rdata, offset)?;
+            let group_len = usize::from(dns_read_u8(rdata, offset + 1)?);
+            let value = dns_parse_slice(rdata, offset + 2..offset + 2 + group_len)?;
+
+            match group_type {
+                1 => {
+                    if value.is_empty() {
+                        return Err(ParseError::new(
+                            Invalid_Parameter,
+                            "BRID uas-id group too short",
+                        ));
+                    }
+                    a.uas_ids.push(UasIdEntry {
+                        id_type: value[0],
+                        uas_id: value[1..].to_vec(),
+                    });
+                }
+                2 => {
+                    if value.is_empty() {
+                        return Err(ParseError::new(
+                            Invalid_Parameter,
+                            "BRID auth group too short",
+                        ));
+                    }
+                    a.auth.get_or_insert_with(Vec::new).push(AuthEntry {
+                        auth_type: value[0],
+                        auth_data: value[1..].to_vec(),
+                    });
+                }
+                3 => {
+                    a.self_id = Some(parse_dns_str(value)?);
+                }
+                4 => {
+                    if value.len() != 6 {
+                        return Err(ParseError::new(
+                            Invalid_Parameter,
+                            "BRID area group must be 6 bytes",
+                        ));
+                    }
+                    a.area = Some(Area {
+                        radius: dns_read_u16(value, 0)?,
+                        ceiling: dns_read_u16(value, 2)?,
+                        floor: dns_read_u16(value, 4)?,
+                    });
+                }
+                5 => {
+                    if value.len() != 2 {
+                        return Err(ParseError::new(
+                            Invalid_Parameter,
+                            "BRID classification group must be 2 bytes",
+                        ));
+                    }
+                    a.classification = Some(Classification {
+                        category: value[0],
+                        class_value: value[1],
+                    });
+                }
+                6 => {
+                    if value.is_empty() {
+                        return Err(ParseError::new(
+                            Invalid_Parameter,
+                            "BRID operator-id group too short",
+                        ));
+                    }
+                    a.operator_id.get_or_insert_with(Vec::new).push(OperatorId {
+                        operator_type: value[0],
+                        operator_id: value[1..].to_vec(),
+                    });
+                }
+                _ => {
+                    return Err(ParseError::new(
+                        Invalid_Parameter,
+                        &format!("unknown BRID group type {group_type}"),
+                    ));
+                }
+            }
+
+            offset += 2 + group_len;
+        }
+
         Ok(a)
     }
 }

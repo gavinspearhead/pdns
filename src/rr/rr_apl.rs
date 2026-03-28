@@ -3,7 +3,7 @@ use crate::dns_helper::{
 };
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::{ParseErrorType, Parse_error};
+use crate::errors::{ParseErrorType, ParseError};
 use std::fmt::{Display, Formatter};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -55,7 +55,7 @@ impl RR_APL {
     pub fn set(&mut self, ap: &ApItem) {
         self.ap_items.push(*ap);
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_APL, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_APL, ParseError> {
         let mut a = RR_APL::new();
         let mut pos = 0;
         while pos < rdata.len() {
@@ -79,7 +79,7 @@ impl RR_APL {
                     .copy_from_slice(&addr[..usize::from(af.afd_length)]);
                 af.afd_part = IpAddr::V6(Ipv6Addr::from(ip));
             } else {
-                return Err(Parse_error::new(
+                return Err(ParseError::new(
                     ParseErrorType::Unknown_Address_Family,
                     &af.to_string(),
                 ));

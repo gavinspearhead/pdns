@@ -6,7 +6,7 @@ use tracing::debug;
 pub(crate) struct Bucket {
     last_post: usize,
     last_group: usize,
-    items: Vec<u64>,
+    items: Vec<u128>,
 }
 
 impl Bucket {
@@ -19,10 +19,10 @@ impl Bucket {
     }
 
     #[inline]
-    fn get_item(&self) -> &Vec<u64> {
+    fn get_item(&self) -> &Vec<u128> {
         self.items.as_ref()
     }
-    fn add(&mut self, position: u32, count: u64, group_val: u32) {
+    fn add(&mut self, position: u32, count: u128, group_val: u32) {
         let pos = position as usize;
         let len = self.items.len();
         if pos >= len {
@@ -31,21 +31,32 @@ impl Bucket {
         }
         let group = group_val as usize;
 
-        if pos == self.last_post && group == self.last_group {
-            self.items[pos] += count;
-        } else if group == self.last_group {
-            if pos > self.last_post {
-                self.items[self.last_post + 1..pos].fill(0);
+        if group == self.last_group {
+            if pos == self.last_post {
+                self.items[pos] += count;
             } else {
-                self.items[0..pos].fill(0);
+                // Moving forward in the same group: clear the gap
+                if pos > self.last_post {
+                    self.items[self.last_post ..pos].fill(0);
+                } else {
+                    // This shouldn't happen with chronological time in the same group,
+                    // but if it does (re-ordered packets), we just reset up to pos
+                    self.items[0..pos].fill(0);
+                }
+                self.items[pos] = count;
             }
-            self.items[pos] = count;
         } else if group == self.last_group + 1 {
+            // Period transition: clear from last_post to end, AND from start to new pos
             self.items[self.last_post + 1..len].fill(0);
             self.items[0..pos].fill(0);
+            // ALSO: if pos < last_post, we need to make sure the old last_post is cleared
+            if pos <= self.last_post {
+                self.items[self.last_post] = 0;
+            }
             self.items[pos] = count;
         } else {
-            self.items = vec![0; len];
+            // Large jump or reset: clear everything
+            self.items.fill(0);
             self.items[pos] = count;
         }
         self.last_post = pos;
@@ -55,7 +66,9 @@ impl Bucket {
 
 #[cfg(test)]
 mod tests {
-    use super::Bucket;
+    use super::*;
+    use chrono::TimeZone;
+
     #[test]
     fn test_bucket() {
         let mut hour = Bucket::new(12);
@@ -89,6 +102,46 @@ mod tests {
         v[2] = 1;
         v[6] = 1;
     }
+
+    #[test]
+    fn test_time_stats_transitions() {
+        let mut stats = Time_stats::new();
+
+        // 1. Test Year Transition: Dec 31, 2024 23:59:59 -> Jan 1, 2025 00:00:00
+        let t1 = Utc.with_ymd_and_hms(2024, 12, 31, 23, 59, 59).unwrap();
+        let t2 = Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap();
+
+        stats.add(t1, 10);
+        assert_eq!(stats.per_month.items[11], 10); // Dec
+        assert_eq!(stats.per_day.items[30], 10); // 31st (day0 is 30)
+        assert_eq!(stats.per_second.items[59], 10);
+
+        stats.add(t2, 5);
+
+        // After year change, per_month should have reset via 'group == last_group + 1'
+        // Dec (index 11) should be 0, Jan (index 0) should be 5
+        assert_eq!(stats.per_month.items[11], 0);
+        assert_eq!(stats.per_month.items[0], 5);
+
+        // per_day should have reset because month changed (even though year changed too)
+        assert_eq!(stats.per_day.items[30], 0);
+        assert_eq!(stats.per_day.items[0], 5);
+
+        // 2. Test Day Transition: Jan 1st -> Jan 2nd
+        let t3 = Utc.with_ymd_and_hms(2025, 1, 2, 0, 0, 0).unwrap();
+        stats.add(t3, 7);
+        assert_eq!(stats.per_day.items[0], 0); // Jan 1st cleared
+        assert_eq!(stats.per_day.items[1], 7); // Jan 2nd set
+        assert_eq!(stats.per_hour.items[0], 7); // Hour 0 of new day
+
+        // 3. Test skipping time (The 'else' block)
+        // Move from Jan 2nd to Jan 5th (skipping 2 days)
+        let t4 = Utc.with_ymd_and_hms(2025, 1, 5, 12, 0, 0).unwrap();
+        stats.add(t4, 100);
+        // Everything in per_day should be 0 except the new position
+        assert_eq!(stats.per_day.items[1], 0);
+        assert_eq!(stats.per_day.items[4], 100);
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -120,21 +173,28 @@ impl Time_stats {
         }
     }
 
-    pub(crate) fn add(&mut self, time_stamp: DateTime<Utc>, count: u64) {
+    pub(crate) fn add(&mut self, time_stamp: DateTime<Utc>, count: u128) {
         let m = time_stamp.minute();
         let s = time_stamp.second();
         let h = time_stamp.hour();
         let d = time_stamp.day0();
         let mon = time_stamp.month0();
         let year = time_stamp.year() as u32;
+
+        // Use absolute values for groups to handle wrap-arounds (like year changes)
+        let total_months = (year * 12) + mon;
+        let total_days = time_stamp.num_days_from_ce();
+        let total_hours = (total_days as i64 * 24) + h as i64;
+        let total_minutes = (total_hours * 60) + m as i64;
+
         self.per_month.add(mon, count, year);
-        self.per_day.add(d, count, mon);
-        self.per_minute.add(m, count, h);
-        self.per_hour.add(h, count, d);
-        self.per_second.add(s, count, m);
+        self.per_day.add(d, count, total_months);
+        self.per_hour.add(h, count, total_days as u32);
+        self.per_minute.add(m, count, total_hours as u32);
+        self.per_second.add(s, count, total_minutes as u32);
     }
 
-    pub(crate) fn get_item(&self, stat_item: &STAT_ITEM) -> &Vec<u64> {
+    pub(crate) fn get_item(&self, stat_item: &STAT_ITEM) -> &Vec<u128> {
         match stat_item {
             STAT_ITEM::MONTH => self.per_month.get_item(),
             STAT_ITEM::MINUTE => self.per_minute.get_item(),

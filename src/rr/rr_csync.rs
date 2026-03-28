@@ -4,7 +4,7 @@ use crate::dns_helper::{
 };
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
@@ -24,7 +24,7 @@ impl RR_CSYNC {
         self.flags = flags;
         self.bitmap = bitmap.iter().map(|x| *x as u16).collect();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_CSYNC, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_CSYNC, ParseError> {
         let mut a = RR_CSYNC::new();
         a.soa = dns_read_u32(rdata, 0)?;
         a.flags = dns_read_u16(rdata, 4)?;

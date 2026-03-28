@@ -9,13 +9,14 @@ fn prefix_str(mut s1: String, s2: &str) -> String {
 }
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct Skip_List {
+pub(crate) struct SkipList {
     entries: Vec<Regex>,
 }
 
-impl Skip_List {
-    pub fn new() -> Skip_List {
-        Skip_List::default()
+impl SkipList {
+    #[inline]
+    pub fn new() -> SkipList {
+        SkipList::default()
     }
     #[inline]
     pub fn is_empty(&self) -> bool {
@@ -24,7 +25,7 @@ impl Skip_List {
 
     pub fn parse_skiplist(&mut self, file_contents: &str) {
         let lines: Vec<Regex> = file_contents
-            .split('\n')
+            .lines()
             .map(|s: &str| s.trim().to_owned()) // .insert_str(0,"(?i)"))
             .filter(|s| !s.is_empty())
             .map(|t| prefix_str(t, "(?i)"))
@@ -68,12 +69,12 @@ impl Skip_List {
 }
 #[cfg(test)]
 mod tests {
-    use crate::skiplist::Skip_List;
+    use crate::skiplist::SkipList;
     use regex::Regex;
 
     #[test]
     fn test_skiplist() {
-        let mut sk = Skip_List::new();
+        let mut sk = SkipList::new();
         sk.parse_skiplist(
             r".*\.nu\.nl$
             .*\.fritz\.box$
@@ -92,7 +93,7 @@ mod tests {
     }
     #[test]
     fn test_skiplist1() {
-        let mut skip_list = Skip_List::new();
+        let mut skip_list = SkipList::new();
         skip_list.parse_skiplist(
             r".*\.nu\.nl$
         .*\.fritz.box$

@@ -2,7 +2,7 @@ use crate::dns_helper::names_list;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::ParseErrorType::Invalid_Resource_Record;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, Default, Hash, PartialEq, Eq, PartialOrd, Ord, Copy)]
 pub struct RR_EUI64 {
@@ -17,9 +17,9 @@ impl RR_EUI64 {
     pub fn set(&mut self, addr: &[u8; 8]) {
         self.addr.copy_from_slice(addr);
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_EUI64, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_EUI64, ParseError> {
         if rdata.len() != 8 {
-            return Err(Parse_error::new(
+            return Err(ParseError::new(
                 Invalid_Resource_Record,
                 "Invalid EUI64 record length",
             ));

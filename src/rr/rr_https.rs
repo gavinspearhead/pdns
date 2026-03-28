@@ -1,12 +1,12 @@
 use crate::dns::SVC_Param_Keys;
 use crate::dns_helper::{
-    dns_parse_slice, dns_read_u16, dns_read_u8, names_list, parse_dns_str, parse_ipv4, parse_ipv6,
+    dns_parse_slice, dns_read_u16, dns_read_u8, names_list, parse_dns_str, parse_ipv4_addr, parse_ipv6_addr,
 };
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::ParseErrorType::Invalid_Parameter;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use std::fmt::Write;
@@ -45,7 +45,7 @@ impl RR_HTTPS {
         self.param = param.to_vec();
         self.target = target.to_string();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_HTTPS, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_HTTPS, ParseError> {
         let mut params: Vec<HttpsSvcParam> = vec![];
         let prio = dns_read_u16(rdata, 0)?;
         let (target, mut offset) = dns_parse_name(rdata, 2)?;
@@ -75,7 +75,7 @@ impl RR_HTTPS {
                     let mut keys: Vec<SVC_Param_Keys> = vec![];
                     while pos < svc_param_len {
                         let man_val = SVC_Param_Keys::find(dns_read_u16(rdata, offset + pos + 4)?)
-                            .map_err(|_| Parse_error::new(Invalid_Parameter, ""))?;
+                            .map_err(|_| ParseError::new(Invalid_Parameter, ""))?;
                         keys.push(man_val);
                         pos += 2;
                     }
@@ -105,10 +105,10 @@ impl RR_HTTPS {
                     while pos + 4 <= svc_param_len {
                         let loc = offset + 4 + pos;
                         let addr: Ipv4Addr =
-                            match parse_ipv4(dns_parse_slice(rdata, loc..loc + 4)?)? {
+                            match parse_ipv4_addr(dns_parse_slice(rdata, loc..loc + 4)?)? {
                                 IpAddr::V4(v4) => v4,
                                 IpAddr::V6(_) => {
-                                    return Err(Parse_error::new(
+                                    return Err(ParseError::new(
                                         Invalid_Parameter,
                                         "Expected IPv4 address",
                                     ))
@@ -125,10 +125,10 @@ impl RR_HTTPS {
                     while pos + 16 <= svc_param_len {
                         let loc = offset + 4 + pos;
                         let addr: Ipv6Addr =
-                            match parse_ipv6(dns_parse_slice(rdata, loc..loc + 16)?)? {
+                            match parse_ipv6_addr(dns_parse_slice(rdata, loc..loc + 16)?)? {
                                 IpAddr::V6(v6) => v6,
                                 IpAddr::V4(_) => {
-                                    return Err(Parse_error::new(
+                                    return Err(ParseError::new(
                                         Invalid_Parameter,
                                         "Expected IPv6 address",
                                     ))

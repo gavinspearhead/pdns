@@ -20,6 +20,7 @@ use strum_macros::{EnumString, IntoStaticStr};
     FromRepr,
 )]
 
+#[repr(u16)]
 pub(crate) enum EDNSOptionCodes {
     LLQ = 1,
     UpdateLease = 2,
@@ -52,7 +53,7 @@ impl EDNSOptionCodes {
     }
 
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
-        match EDNSOptionCodes::from_repr(usize::from(val)) {
+        match EDNSOptionCodes::from_repr(val) {
             Some(x) => Ok(x),
             None => Err(DNS_error::new(
                 Invalid_Extended_Option_Code,
@@ -86,6 +87,8 @@ impl fmt::Display for EDNSOptionCodes {
     Hash,
 )]
 
+
+#[repr(u16)]
 pub(crate) enum DNSExtendedError {
     #[default]
     None = 0xffff,
@@ -130,7 +133,7 @@ impl DNSExtendedError {
     }
 
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
-        match DNSExtendedError::from_repr(usize::from(val)) {
+        match DNSExtendedError::from_repr(val) {
             Some(x) => Ok(x),
             None => {
                 if (49152..65535).contains(&val) {

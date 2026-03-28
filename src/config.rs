@@ -1,4 +1,4 @@
-use clap::{arg, ArgAction, Command};
+use clap::{arg, value_parser, ArgAction, Command};
 use serde::{Deserialize, Serialize};
 use serde_json::Error;
 
@@ -11,7 +11,7 @@ use tracing::{debug, error};
 #[serde(default)]
 pub(crate) struct Config {
     pub rr_type: Vec<DNS_RR_type>,
-    pub interface: String,
+    pub interface: Vec<String>,
     pub filter: String,
     pub output: String,
     pub output_type: String,
@@ -48,13 +48,14 @@ pub(crate) struct Config {
     pub tcp_memory: u32,
     pub stats_dump_interval: u32,
     pub compress_stats: bool,
+    pub ports: Vec<u16>,
 }
 
 impl Config {
     pub fn new() -> Config {
         let mut c = Config {
             rr_type: Vec::<DNS_RR_type>::new(),
-            interface: String::new(),
+            interface: Vec::new(),
             filter: String::new(),
             output: String::new(),
             output_type: String::new(),
@@ -91,6 +92,7 @@ impl Config {
             capture_tcp: true,
             stats_dump_interval: 3600,
             compress_stats: false,
+            ports: vec![53],
         };
         c.rr_type.extend(vec![
             DNS_RR_type::A,
@@ -222,6 +224,9 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
             .arg(
                 arg!(-i --interface <VALUE>)
                     .required(false)
+                    .value_delimiter(',')
+                    .num_args(1..)
+                    .value_parser(value_parser!(String))
                     .long_help("Interface to listen on for packet capture"),
             )
             .arg(
@@ -378,7 +383,15 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
                     .required(false)
                     .action(ArgAction::SetFalse)
                     .long_help("Do not log to syslog"),
-            )
+            ) 
+            .arg(arg!(--ports <VALUE>).required(false)
+            .value_delimiter(',')
+            .num_args(1..)
+            .value_parser(value_parser!(u16))
+            .long_help(
+                "DNS Port numbers to listen on for packet capture, comma separated (default 53)",
+            ))
+            
             .get_matches();
 
     let empty_str = String::new();
@@ -420,10 +433,16 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
         .get_one::<String>("path")
         .unwrap_or(&empty_str)
         .clone_into(pcap_path);
-    config.interface = matches
-        .get_one::<String>("interface")
-        .unwrap_or(&config.interface)
-        .clone();
+    
+    let interfaces: Vec<String> = matches
+        .get_many::<String>("interface")
+        .unwrap_or_default() // Returns an empty iterator if arg is missing
+        .cloned() // Clone each &String to String
+        .collect();
+
+    if !interfaces.is_empty() {
+        config.interface = interfaces;
+    }
     config.log_file = matches
         .get_one::<String>("log_file")
         .unwrap_or(&config.log_file)
@@ -521,7 +540,14 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
         .get_one::<bool>("no_capture_tcp")
         .unwrap_or(&config.capture_tcp);
     config.create_db = *matches.get_one::<bool>("create_database").unwrap_or(&false);
-
+    let ports: Vec<u16> = matches
+        .get_many::<u16>("ports")
+        .unwrap_or_default() // Returns an empty iterator if arg is missing
+        .copied() // &u16 -> u16
+        .collect();
+    if !ports.is_empty() {
+        config.ports = ports;
+    }
     let rr_types = parse_rrtypes(&matches.get_one("rrtypes").unwrap_or(&empty_str).clone());
     // let rr_types = parse_rrtypes(config.rr_type);
     if !rr_types.is_empty() {

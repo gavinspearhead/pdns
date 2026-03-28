@@ -1,7 +1,7 @@
-use crate::dns_helper::{dns_parse_slice, dns_read_u16, names_list, parse_ipv4};
+use crate::dns_helper::{dns_parse_slice, dns_read_u16, names_list, parse_ipv4_addr};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::{ParseErrorType, Parse_error};
+use crate::errors::{ParseErrorType, ParseError};
 use std::fmt::{Display, Formatter};
 use std::net::{IpAddr, Ipv4Addr};
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -27,13 +27,13 @@ impl RR_L32 {
         self.prio = prio;
         self.addr = addr;
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_L32, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_L32, ParseError> {
         let mut l32 = RR_L32::new();
         l32.prio = dns_read_u16(rdata, 0)?;
-        l32.addr = match parse_ipv4(dns_parse_slice(rdata, 2..)?)? {
+        l32.addr = match parse_ipv4_addr(dns_parse_slice(rdata, 2..)?)? {
             IpAddr::V4(addr) => addr,
             IpAddr::V6(_) => {
-                return Err(Parse_error::new(
+                return Err(ParseError::new(
                     ParseErrorType::Invalid_Data,
                     &format!("{:?}", &rdata[2..]),
                 ))

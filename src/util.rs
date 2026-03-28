@@ -10,7 +10,8 @@ use std::process::exit;
 use tracing::{debug, error};
 
 // For use with serde's [serialize_with] attribute
-pub(crate) fn ordered_map<S, K: Ord + Serialize + ToString, V: Serialize + PartialOrd>(
+
+pub(crate) fn ordered_map_key<S, K: Ord + Serialize + ToString, V: Serialize + PartialOrd>(
     value: &HashMap<K, V>,
     serializer: S,
 ) -> Result<S::Ok, S::Error>
@@ -27,6 +28,23 @@ where
     let mut map = serializer.serialize_map(Some(l.len()))?;
     for i in l {
         map.serialize_entry(&i.0, i.1)?;
+    }
+    map.end()
+}
+
+pub(crate) fn ordered_map_value<S, K: Serialize, V: Serialize + PartialOrd>(
+    value: &HashMap<K, V>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let mut l: Vec<_> = value.iter().collect();
+    l.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(Equal));
+
+    let mut map = serializer.serialize_map(Some(l.len()))?;
+    for i in l {
+        map.serialize_entry(i.0, i.1)?;
     }
     map.end()
 }

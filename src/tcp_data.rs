@@ -1,20 +1,22 @@
 use serde::Serialize;
 use tracing::debug;
 
-#[derive(Debug, Clone, Default, Serialize, PartialEq, PartialOrd, Eq, Ord)]
-pub(crate) struct Tcp_data {
+#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+pub(crate) struct TcpData {
     init_seqnr: u32,
     max_tcp_len: usize,
     data: Vec<u8>,
 }
 
-impl Tcp_data {
+impl TcpData {
     const INIT_LEN: usize = 2048;
-    pub(crate) fn new(seq_nr: u32, max_size: u32) -> Tcp_data {
-        Tcp_data {
+    pub(crate) fn new(seq_nr: u32, max_size: u32) -> Self {
+        TcpData {
             init_seqnr: seq_nr,
             data: Vec::with_capacity(Self::INIT_LEN),
-            max_tcp_len: max_size as usize * 1024 * 1024, // convert to megabytes
+            max_tcp_len: (max_size as usize)
+                .checked_mul(1024 * 1024)
+                .unwrap_or(10usize * 1024usize * 1024usize ), // convert to megabytes
         }
     }
 
@@ -38,6 +40,6 @@ impl Tcp_data {
 
     #[inline]
     pub(crate) fn data(&self) -> &[u8] {
-        self.data.as_ref()
+        &self.data
     }
 }

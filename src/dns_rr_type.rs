@@ -24,6 +24,8 @@ use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
     Ord,
     Default,
 )]
+
+#[repr(u16)]
 pub enum DNS_RR_type {
     #[default]
     A = 1,
@@ -135,7 +137,7 @@ impl DNS_RR_type {
     }
 
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
-        match DNS_RR_type::from_repr(usize::from(val)) {
+        match DNS_RR_type::from_repr(val) {
             Some(x) => Ok(x),
             None => {
                 if val > 65280 {

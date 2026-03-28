@@ -3,7 +3,7 @@ use crate::rr::rr_key::RR_KEY;
 use crate::dns_helper::names_list;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
@@ -21,7 +21,7 @@ impl RR_RKEY {
         self.rr_key.set(flags, protocol, algorithm, key);
     }
 
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_RKEY, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_RKEY, ParseError> {
         Ok(RR_RKEY {
             rr_key: RR_KEY::parse(rdata)?,
         })

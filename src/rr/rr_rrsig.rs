@@ -7,7 +7,7 @@ use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::ParseErrorType::Invalid_Parameter;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use base64::Engine;
 use std::fmt::{Display, Formatter};
 
@@ -51,11 +51,11 @@ impl RR_RRSIG {
         self.signer = signer.to_string();
         self.signature = signature.to_vec();
     }
-    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_RRSIG, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_RRSIG, ParseError> {
         let mut rr_sig = RR_RRSIG::new();
         let sig_rrtype_val = dns_read_u16(packet, offset_in)?;
         rr_sig.sig_rrtype = DNS_RR_type::find(sig_rrtype_val)
-            .map_err(|_| Parse_error::new(Invalid_Parameter, &sig_rrtype_val.to_string()))?;
+            .map_err(|_| ParseError::new(Invalid_Parameter, &sig_rrtype_val.to_string()))?;
         rr_sig.alg = dns_read_u8(packet, offset_in + 2)?;
         rr_sig.labels = dns_read_u8(packet, offset_in + 3)?;
         rr_sig.ttl = dns_read_u32(packet, offset_in + 4)?;

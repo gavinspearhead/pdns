@@ -2,7 +2,7 @@ use crate::dns_helper::{dns_format_name, dns_parse_slice, dns_read_u16, dns_read
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use base64::Engine;
 use std::fmt::{Display, Formatter};
@@ -42,7 +42,7 @@ impl RR_HIP {
         rdata: &[u8],
         packet: &[u8],
         offset_in: usize,
-    ) -> Result<RR_HIP, Parse_error> {
+    ) -> Result<RR_HIP, ParseError> {
         let mut a = RR_HIP::new();
         a.hit_len = dns_read_u8(rdata, 0)?;
         a.hit_alg = dns_read_u8(rdata, 1)?;

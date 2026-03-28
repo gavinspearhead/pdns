@@ -1,7 +1,7 @@
 use crate::dns_helper::{dns_parse_slice, dns_read_u32, dns_read_u8, names_list, parse_dns_str};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use std::fmt::{Display, Formatter};
@@ -33,7 +33,7 @@ impl RR_DOA {
         self.doa_media_type = doa_media_type.as_bytes().to_vec();
         self.doa_data = doa_data.to_vec();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_DOA, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_DOA, ParseError> {
         let mut a = RR_DOA::new();
         a.doa_ent = dns_read_u32(rdata, 0)?;
         a.doa_type = dns_read_u32(rdata, 4)?;

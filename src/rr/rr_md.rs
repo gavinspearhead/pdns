@@ -1,7 +1,7 @@
 use crate::dns_helper::names_list;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use crate::rr::rr_mb::RR_MB;
 
 #[derive(Debug, Clone, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -13,7 +13,7 @@ impl RR_MD {
         RR_MD(RR_MB::new())
     }
 
-    pub fn parse(packet: &[u8], offset: usize) -> Result<Self, Parse_error> {
+    pub fn parse(packet: &[u8], offset: usize) -> Result<Self, ParseError> {
         Ok(RR_MD(RR_MB::parse(packet, offset)?))
     }
 

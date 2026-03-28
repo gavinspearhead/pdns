@@ -2,7 +2,7 @@ use crate::dns::{cert_type_str, dnssec_algorithm};
 use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, names_list};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use std::fmt::{Display, Formatter};
@@ -25,7 +25,7 @@ impl RR_CERT {
         self.alg = alg;
         self.cert = STANDARD.decode(cert).unwrap_or_default();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_CERT, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_CERT, ParseError> {
         let mut a = RR_CERT::new();
         a.cert_type = dns_read_u16(rdata, 0)?;
         a.key_tag = dns_read_u16(rdata, 2)?;

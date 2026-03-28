@@ -1,7 +1,7 @@
 use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list, parse_dns_str};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default)]
@@ -21,7 +21,7 @@ impl RR_CAA {
         self.tag = tag.to_string();
         self.value = value.to_string();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_CAA, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_CAA, ParseError> {
         let mut caa = RR_CAA::new();
         caa.flag = dns_read_u8(rdata, 0)?;
         let tag_len = usize::from(dns_read_u8(rdata, 1)?);

@@ -1,7 +1,7 @@
 use crate::dns_helper::names_list;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use crate::rr::rr_maila::RR_MAILA;
 use std::fmt::{Display, Formatter};
 use std::net::Ipv4Addr;
@@ -15,7 +15,7 @@ impl RR_MAILB {
         RR_MAILB(RR_MAILA::new())
     }
 
-    pub fn parse(rdata: &[u8]) -> Result<Self, Parse_error> {
+    pub fn parse(rdata: &[u8]) -> Result<Self, ParseError> {
         Ok(RR_MAILB(RR_MAILA::parse(rdata)?))
     }
 

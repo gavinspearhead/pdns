@@ -2,7 +2,7 @@ use crate::dns_helper::{dns_read_u32, dns_read_u8, names_list};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::ParseErrorType::Invalid_Parameter;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
 fn decode_gpos_size(val: u8) -> String {
@@ -51,7 +51,7 @@ impl Default for RR_LOC {
 }
 // A custom error type for parsing failures.
 #[derive(Debug, PartialEq, Clone)]
-enum ParseError {
+enum LocParseError {
     InvalidFormat,
     InvalidNumber(String),
     InvalidDirection,
@@ -62,9 +62,9 @@ enum ParseError {
 // Helper function to encode size/precision values as per RFC 1876.
 // The value is stored as a pair of four-bit unsigned integers,
 // representing a base and a power of ten.
-fn encode_precision_value(value_meters: f64) -> Result<u8, ParseError> {
+fn encode_precision_value(value_meters: f64) -> Result<u8, LocParseError> {
     if value_meters < 0.0 {
-        return Err(ParseError::InvalidValue(
+        return Err(LocParseError::InvalidValue(
             "Precision value cannot be negative.".into(),
         ));
     }
@@ -80,7 +80,7 @@ fn encode_precision_value(value_meters: f64) -> Result<u8, ParseError> {
             return Ok((base << 4) | exp as u8);
         }
     }
-    Err(ParseError::InvalidValue(
+    Err(LocParseError::InvalidValue(
         "Precision value too large to encode.".into(),
     ))
 }
@@ -93,22 +93,22 @@ fn encode_precision_value(value_meters: f64) -> Result<u8, ParseError> {
 ///
 /// Example Input: "34 03 00.000 N 118 14 00.000 W -10.00m 20.00m 5.00m 10.00m"
 ///
-fn parse_loc_record(loc_str: &str) -> Result<RR_LOC, ParseError> {
+fn parse_loc_record(loc_str: &str) -> Result<RR_LOC, LocParseError> {
     let parts: Vec<&str> = loc_str.split_whitespace().collect();
     if parts.len() < 10 {
-        return Err(ParseError::InvalidFormat);
+        return Err(LocParseError::InvalidFormat);
     }
 
     // --- Parsing Latitude ---
     let lat_deg = parts[0]
         .parse::<f64>()
-        .map_err(|_| ParseError::InvalidNumber(parts[0].to_string()))?;
+        .map_err(|_| LocParseError::InvalidNumber(parts[0].to_string()))?;
     let lat_min = parts[1]
         .parse::<f64>()
-        .map_err(|_| ParseError::InvalidNumber(parts[1].to_string()))?;
+        .map_err(|_| LocParseError::InvalidNumber(parts[1].to_string()))?;
     let lat_sec = parts[2]
         .parse::<f64>()
-        .map_err(|_| ParseError::InvalidNumber(parts[2].to_string()))?;
+        .map_err(|_| LocParseError::InvalidNumber(parts[2].to_string()))?;
     let lat_dir = parts[3];
 
     let lat_seconds = (lat_deg * 3600.0) + (lat_min * 60.0) + lat_sec;
@@ -121,19 +121,19 @@ fn parse_loc_record(loc_str: &str) -> Result<RR_LOC, ParseError> {
     } else if lat_dir == "S" {
         lat_val = equator - lat_val;
     } else {
-        return Err(ParseError::InvalidDirection);
+        return Err(LocParseError::InvalidDirection);
     }
 
     // --- Parsing Longitude ---
     let lon_deg = parts[4]
         .parse::<f64>()
-        .map_err(|_| ParseError::InvalidNumber(parts[4].to_string()))?;
+        .map_err(|_| LocParseError::InvalidNumber(parts[4].to_string()))?;
     let lon_min = parts[5]
         .parse::<f64>()
-        .map_err(|_| ParseError::InvalidNumber(parts[5].to_string()))?;
+        .map_err(|_| LocParseError::InvalidNumber(parts[5].to_string()))?;
     let lon_sec = parts[6]
         .parse::<f64>()
-        .map_err(|_| ParseError::InvalidNumber(parts[6].to_string()))?;
+        .map_err(|_| LocParseError::InvalidNumber(parts[6].to_string()))?;
     let lon_dir = parts[7];
 
     let lon_seconds = (lon_deg * 3600.0) + (lon_min * 60.0) + lon_sec;
@@ -146,16 +146,16 @@ fn parse_loc_record(loc_str: &str) -> Result<RR_LOC, ParseError> {
     } else if lon_dir == "W" {
         lon_val = prime_meridian - lon_val;
     } else {
-        return Err(ParseError::InvalidDirection);
+        return Err(LocParseError::InvalidDirection);
     }
 
     // --- Parsing Altitude ---
     let alt_string = parts[8];
     if !alt_string.ends_with('m') {
-        return Err(ParseError::InvalidUnit);
+        return Err(LocParseError::InvalidUnit);
     }
     let alt_mtr = f64::from_str(&alt_string[..alt_string.len() - 1])
-        .map_err(|_| ParseError::InvalidNumber(alt_string.to_string()))?;
+        .map_err(|_| LocParseError::InvalidNumber(alt_string.to_string()))?;
 
     // RFC 1876: Altitude is in centimeters, offset by 100,000m.
     let alt_cm = (alt_mtr + 100_000.0) * 100.0;
@@ -164,26 +164,26 @@ fn parse_loc_record(loc_str: &str) -> Result<RR_LOC, ParseError> {
     // --- Parsing Size and Precision ---
     let size_str = parts[9];
     if !size_str.ends_with('m') {
-        return Err(ParseError::InvalidUnit);
+        return Err(LocParseError::InvalidUnit);
     }
     let size_m = f64::from_str(&size_str[..size_str.len() - 1])
-        .map_err(|_| ParseError::InvalidNumber(size_str.to_string()))?;
+        .map_err(|_| LocParseError::InvalidNumber(size_str.to_string()))?;
     let size_val = encode_precision_value(size_m)?;
 
     let hor_prec_str = parts.get(10).copied().unwrap_or("10000m");
     if !hor_prec_str.ends_with('m') {
-        return Err(ParseError::InvalidUnit);
+        return Err(LocParseError::InvalidUnit);
     }
     let hor_prec_m = f64::from_str(&hor_prec_str[..hor_prec_str.len() - 1])
-        .map_err(|_| ParseError::InvalidNumber(hor_prec_str.to_string()))?;
+        .map_err(|_| LocParseError::InvalidNumber(hor_prec_str.to_string()))?;
     let hor_prec_val = encode_precision_value(hor_prec_m)?;
 
     let ver_prec_str = parts.get(11).copied().unwrap_or("10m");
     if !ver_prec_str.ends_with('m') {
-        return Err(ParseError::InvalidUnit);
+        return Err(LocParseError::InvalidUnit);
     }
     let ver_prec_m = f64::from_str(&ver_prec_str[..ver_prec_str.len() - 1])
-        .map_err(|_| ParseError::InvalidNumber(ver_prec_str.to_string()))?;
+        .map_err(|_| LocParseError::InvalidNumber(ver_prec_str.to_string()))?;
     let ver_prec_val = encode_precision_value(ver_prec_m)?;
 
     // According to RFC 1876, the version is 0.
@@ -211,11 +211,11 @@ impl RR_LOC {
             }
         }
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_LOC, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_LOC, ParseError> {
         let mut a = RR_LOC::new();
         a.version = dns_read_u8(rdata, 0)?;
         if a.version != 0 {
-            return Err(Parse_error::new(Invalid_Parameter, "Unknown LOC version"));
+            return Err(ParseError::new(Invalid_Parameter, "Unknown LOC version"));
         }
         a.size = dns_read_u8(rdata, 1)?;
         a.hor_prec = dns_read_u8(rdata, 2)?;

@@ -2,7 +2,7 @@ use crate::dns_helper::{dns_format_name, names_list};
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
 #[derive(Default, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -23,7 +23,7 @@ impl RR_NS {
     }
 
     #[inline]
-    pub(crate) fn parse(packet: &[u8], offset: usize) -> Result<RR_NS, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset: usize) -> Result<RR_NS, ParseError> {
         let (ns, _offset) = dns_parse_name(packet, offset)?;
         Ok(Self { ns })
     }

@@ -2,7 +2,7 @@ use crate::dns_helper::names_list;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::ParseErrorType::Invalid_packet_index;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, Default, Hash, PartialEq, Eq, PartialOrd, Ord, Copy)]
 pub struct RR_EUI48 {
@@ -17,9 +17,9 @@ impl RR_EUI48 {
     pub fn set(&mut self, eui48: &[u8; 6]) {
         self.eui48.copy_from_slice(eui48);
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_EUI48, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_EUI48, ParseError> {
         if rdata.len() != 6 {
-            return Err(Parse_error::new(Invalid_packet_index, ""));
+            return Err(ParseError::new(Invalid_packet_index, ""));
         }
         let mut a = RR_EUI48::new();
         a.eui48.copy_from_slice(&rdata[0..6]);

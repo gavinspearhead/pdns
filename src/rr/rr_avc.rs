@@ -2,7 +2,7 @@ use crate::dns_helper::names_list;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr::RR_TXT;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
 pub struct RR_AVC(RR_TXT);
@@ -13,7 +13,7 @@ impl RR_AVC {
         Self(RR_TXT::new())
     }
 
-    pub fn parse(rdata: &[u8]) -> Result<Self, Parse_error> {
+    pub fn parse(rdata: &[u8]) -> Result<Self, ParseError> {
         Ok(Self(RR_TXT::parse(rdata)?))
     }
 

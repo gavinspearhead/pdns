@@ -1,7 +1,7 @@
 use crate::dns_helper::{dns_read_u64, names_list};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, Default, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RR_IPN {
@@ -16,7 +16,7 @@ impl RR_IPN {
     pub fn set(&mut self, ipn: u64) {
         self.ipn = ipn;
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_IPN, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_IPN, ParseError> {
         let ipn = dns_read_u64(rdata, 0)?;
         Ok(RR_IPN { ipn })
     }

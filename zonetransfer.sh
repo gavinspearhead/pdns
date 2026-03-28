@@ -16,6 +16,7 @@ dig axfr nearlyfreespeech.net @ns.bos1.nearlyfreespeech.net
 drill  axfr 24livehost.com @108.163.255.98
 drill axfr access.net @198.7.0.1
 dig axfr miek.nl @omval.tednet.nl.
+dig axfr miek.nl @linode.atoom.net.
 dig halderen.org axfr @transip.halderen.net.
 dig atoom.net axfr @omval.tednet.nl
 dig mons.net axfr @65.21.7.80

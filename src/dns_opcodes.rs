@@ -21,7 +21,9 @@ use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
     Ord,
     Default,
 )]
-pub(crate) enum DNS_Opcodes {
+
+#[repr(u16)]
+pub(crate) enum DNSOpcodes {
     #[default]
     Query = 0,
     IQuery = 1,
@@ -31,20 +33,20 @@ pub(crate) enum DNS_Opcodes {
     DSO = 6,
 }
 
-impl DNS_Opcodes {
+impl DNSOpcodes {
     #[inline]
     pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
     pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
-        match DNS_Opcodes::from_repr(usize::from(val)) {
+        match DNSOpcodes::from_repr(val) {
             Some(x) => Ok(x),
             None => Err(DNS_error::new(Invalid_Opcode, &format!("{val}"))),
         }
     }
 }
 
-impl fmt::Display for DNS_Opcodes {
+impl fmt::Display for DNSOpcodes {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_str())
     }
@@ -52,19 +54,19 @@ impl fmt::Display for DNS_Opcodes {
 
 #[cfg(test)]
 mod dns_opcodes_tests {
-    use crate::dns_opcodes::DNS_Opcodes;
+    use crate::dns_opcodes::DNSOpcodes;
 
     #[test]
     fn test_dns_opcodes() {
-        assert_eq!(DNS_Opcodes::Query.to_str(), "Query");
-        assert_eq!(DNS_Opcodes::Update.to_str(), "Update");
+        assert_eq!(DNSOpcodes::Query.to_str(), "Query");
+        assert_eq!(DNSOpcodes::Update.to_str(), "Update");
     }
     #[test]
     fn test_dns_opcodes1() {
-        assert_eq!(DNS_Opcodes::find(4).unwrap(), DNS_Opcodes::Notify);
+        assert_eq!(DNSOpcodes::find(4).unwrap(), DNSOpcodes::Notify);
     }
     #[test]
     fn test_dns_opcodes2() {
-        assert!(DNS_Opcodes::find(114).is_err());
+        assert!(DNSOpcodes::find(114).is_err());
     }
 }

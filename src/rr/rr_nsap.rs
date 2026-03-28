@@ -1,10 +1,10 @@
 use crate::dns_helper::names_list;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Clone,  PartialEq, Eq, Ord, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
 pub struct RR_NSAP {
     nsap: Vec<u8>,
 }
@@ -23,7 +23,7 @@ impl RR_NSAP {
     pub fn set(&mut self, nsap: &[u8]) {
         self.nsap = nsap.to_vec();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_NSAP, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_NSAP, ParseError> {
         Ok(RR_NSAP {
             nsap: rdata.to_vec(),
         })

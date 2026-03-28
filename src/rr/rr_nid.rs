@@ -1,7 +1,7 @@
 use crate::dns_helper::{dns_read_u16, dns_read_u64, names_list};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -19,7 +19,7 @@ impl RR_NID {
         self.prio = prio;
         self.node_id = node_id;
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_NID, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_NID, ParseError> {
         let nid = RR_NID {
             prio: dns_read_u16(rdata, 0)?,
             node_id: dns_read_u64(rdata, 2)?,

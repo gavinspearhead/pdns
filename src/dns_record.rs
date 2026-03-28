@@ -1,4 +1,4 @@
-use crate::dns_class::DNS_Class;
+use crate::dns_class::DnsClass;
 use crate::dns_reply_type::DnsReplyType;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::edns::DNSExtendedError;
@@ -7,9 +7,9 @@ use idna::domain_to_unicode;
 use std::fmt;
 
 #[derive(Debug, Clone, Default, PartialOrd, Ord, Eq, PartialEq, Hash)]
-pub(crate) struct DNS_record {
+pub(crate) struct DNSRecord {
     pub(crate) rr_type: DNS_RR_type,
-    pub(crate) class: DNS_Class,
+    pub(crate) class: DnsClass,
     pub(crate) error: DnsReplyType,
     pub(crate) extended_error: DNSExtendedError,
     pub(crate) ttl: u32,
@@ -23,9 +23,9 @@ pub(crate) struct DNS_record {
     pub(crate) prefix: String,
 }
 
-impl DNS_record {}
+impl DNSRecord {}
 
-impl fmt::Display for DNS_record {
+impl fmt::Display for DNSRecord {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if f.alternate() {
             let (name, res) = domain_to_unicode(&self.name);

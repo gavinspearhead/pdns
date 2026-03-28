@@ -3,7 +3,7 @@ use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, names_list};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::ParseErrorType::Invalid_packet_index;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use base64::engine::general_purpose;
 use base64::Engine;
 use std::fmt::{Display, Formatter};
@@ -26,9 +26,9 @@ impl RR_CDNSKEY {
         self.alg = alg_nr;
         self.pubkey = pubkey;
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_CDNSKEY, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_CDNSKEY, ParseError> {
         if rdata.len() < 5 {
-            return Err(Parse_error::new(Invalid_packet_index, ""));
+            return Err(ParseError::new(Invalid_packet_index, ""));
         }
         let mut a = RR_CDNSKEY::new();
         a.flag = dns_read_u16(rdata, 0)?;

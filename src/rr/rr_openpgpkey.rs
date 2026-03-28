@@ -1,7 +1,7 @@
 use crate::dns_helper::names_list;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use base64::Engine;
 use std::fmt::{Display, Formatter};
@@ -19,7 +19,7 @@ impl RR_OPENPGPKEY {
     pub fn set(&mut self, openpgpkey: &[u8]) {
         self.key = openpgpkey.to_vec();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_OPENPGPKEY, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_OPENPGPKEY, ParseError> {
         Ok(RR_OPENPGPKEY {
             key: rdata.to_vec(),
         })

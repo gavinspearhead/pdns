@@ -1,5 +1,5 @@
 use serde::ser::SerializeMap;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering::Equal;
 use std::fmt::Debug;
 use std::{collections::HashMap, fmt};
@@ -108,5 +108,30 @@ where
             map.serialize_entry(i.0, i.1)?;
         }
         map.end()
+    }
+}
+
+impl<'de, T> Deserialize<'de> for Rank<T>
+where
+    T: Eq
+        + std::hash::Hash
+        + fmt::Display
+        + serde::Serialize
+        + serde::Deserialize<'de>
+        + Clone
+        + Debug,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // Matches `Serialize` which emits a JSON object/map: { key: value, ... }
+        let rank = HashMap::<T, u128>::deserialize(deserializer)?;
+
+        // We can't recover the original `size` from the serialized form (it isn't written),
+        // so we pick a sensible default consistent with the data we got.
+        let size = rank.len();
+
+        Ok(Self { size, rank })
     }
 }

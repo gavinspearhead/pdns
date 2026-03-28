@@ -1,10 +1,10 @@
 use crate::dns::ipsec_alg;
-use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list, parse_ipv4, parse_ipv6};
+use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list, parse_ipv4_addr, parse_ipv6_addr};
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::ParseErrorType::Invalid_Resource_Record;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use std::fmt::{Display, Formatter};
@@ -42,7 +42,7 @@ impl RR_IPSECKEY {
         rdata: &[u8],
         packet: &[u8],
         offset_in: usize,
-    ) -> Result<RR_IPSECKEY, Parse_error> {
+    ) -> Result<RR_IPSECKEY, ParseError> {
         let mut ipseckey = RR_IPSECKEY::new();
         ipseckey.precedence = dns_read_u8(rdata, 0)?;
         ipseckey.gw_type = dns_read_u8(rdata, 1)?;
@@ -54,18 +54,18 @@ impl RR_IPSECKEY {
             } // No Gateway
             1 => {
                 pk_offset += 4;
-                ipseckey.name = parse_ipv4(dns_parse_slice(rdata, 3..7)?)?.to_string();
+                ipseckey.name = parse_ipv4_addr(dns_parse_slice(rdata, 3..7)?)?.to_string();
             } // IPv4 address
             2 => {
                 pk_offset += 16;
-                ipseckey.name = parse_ipv6(dns_parse_slice(rdata, 3..19)?)?.to_string();
+                ipseckey.name = parse_ipv6_addr(dns_parse_slice(rdata, 3..19)?)?.to_string();
             } // IPv6 Address
             3 => {
                 (ipseckey.name, pk_offset) = dns_parse_name(packet, offset_in + 3)?;
                 pk_offset -= offset_in;
             } // a FQDN
             e => {
-                return Err(Parse_error::new(Invalid_Resource_Record, &e.to_string()));
+                return Err(ParseError::new(Invalid_Resource_Record, &e.to_string()));
             }
         }
         ipseckey.pubkey = dns_parse_slice(rdata, pk_offset..)?.to_vec();

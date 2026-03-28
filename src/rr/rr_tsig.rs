@@ -4,7 +4,7 @@ use crate::dns_helper::{
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default)]
@@ -41,7 +41,7 @@ impl RR_TSIG {
         self.error = error;
         self.other = other;
     }
-    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_TSIG, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_TSIG, ParseError> {
         let mut tsig = RR_TSIG::new();
         let mut pos = offset_in;
         (tsig.name, pos) = dns_parse_name(packet, pos)?;

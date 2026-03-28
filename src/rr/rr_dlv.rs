@@ -1,7 +1,7 @@
 use crate::dns_helper::names_list;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use crate::rr::rr_cds::RR_CDS;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
@@ -13,7 +13,7 @@ impl RR_DLV {
         Self(RR_CDS::new())
     }
 
-    pub fn parse(rdata: &[u8]) -> Result<Self, Parse_error> {
+    pub fn parse(rdata: &[u8]) -> Result<Self, ParseError> {
         Ok(Self(RR_CDS::parse(rdata)?))
     }
 

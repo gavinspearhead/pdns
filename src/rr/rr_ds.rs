@@ -1,7 +1,7 @@
 use crate::dns_helper::names_list;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use crate::rr::rr_cds::RR_CDS;
 use std::fmt::{Display, Formatter};
 
@@ -20,7 +20,7 @@ impl RR_DS {
         self.inner.set(key_tag, algorithm, digest_type, digest);
     }
 
-    pub fn parse(rdata: &[u8]) -> Result<RR_DS, Parse_error> {
+    pub fn parse(rdata: &[u8]) -> Result<RR_DS, ParseError> {
         Ok(RR_DS {
             inner: RR_CDS::parse(rdata)?,
         })

@@ -1,7 +1,7 @@
 use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list, parse_dns_str};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, Default)]
 pub struct RR_HINFO {
@@ -19,7 +19,7 @@ impl RR_HINFO {
         self.cpu = cpu.to_string();
         self.os = os.to_string();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_HINFO, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_HINFO, ParseError> {
         let mut a = RR_HINFO::new();
         let cpu_len = usize::from(dns_read_u8(rdata, 0)?);
         let mut offset = 1;

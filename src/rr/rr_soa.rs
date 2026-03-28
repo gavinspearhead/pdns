@@ -2,7 +2,7 @@ use crate::dns_helper::{dns_format_name, dns_read_u32, names_list};
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -34,7 +34,7 @@ impl RR_SOA {
     }
 
     #[inline]
-    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_SOA, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_SOA, ParseError> {
         let mut soa = RR_SOA::new();
         let mut offset = offset_in;
         (soa.ns, offset) = dns_parse_name(packet, offset)?;

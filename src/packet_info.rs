@@ -1,5 +1,5 @@
-use crate::dns_protocol::DNS_Protocol;
-use crate::dns_record::DNS_record;
+use crate::dns_protocol::DNSProtocol;
+use crate::dns_record::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use asn_db2::{Database, IpEntry};
 use chrono::{DateTime, Utc};
@@ -10,7 +10,7 @@ use std::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub(crate) struct Packet_info {
+pub(crate) struct PacketInfo {
     pub timestamp: DateTime<Utc>,
     pub s_addr: IpAddr,
     pub d_addr: IpAddr,
@@ -19,13 +19,13 @@ pub(crate) struct Packet_info {
     pub ip_len: u16,
     pub frame_len: u32,
     pub data_len: u32,
-    pub protocol: DNS_Protocol,
-    pub dns_records: Vec<DNS_record>,
+    pub protocol: DNSProtocol,
+    pub dns_records: Vec<DNSRecord>,
 }
 
-impl Packet_info {
+impl PacketInfo {
     pub fn new() -> Self {
-        Packet_info {
+        PacketInfo {
             timestamp: Utc::now(),
             sp: 0,
             dp: 0,
@@ -34,7 +34,7 @@ impl Packet_info {
             ip_len: 0,
             frame_len: 0,
             data_len: 0,
-            protocol: DNS_Protocol::UDP,
+            protocol: DNSProtocol::UDP,
             dns_records: Vec::new(),
         }
     }
@@ -48,7 +48,7 @@ impl Packet_info {
         self.sp = port;
     }
     #[inline]
-    pub fn set_protocol(&mut self, protocol: DNS_Protocol) {
+    pub fn set_protocol(&mut self, protocol: DNSProtocol) {
         self.protocol = protocol;
     }
     #[inline]
@@ -72,7 +72,7 @@ impl Packet_info {
         self.data_len = len;
     }
     #[inline]
-    pub fn add_dns_record(&mut self, rec: DNS_record) {
+    pub fn add_dns_record(&mut self, rec: DNSRecord) {
         self.dns_records.push(rec);
     }
 
@@ -137,7 +137,7 @@ impl Packet_info {
     pub fn update_asn(&mut self, asn_db: &Database) {
         for record in &mut self.dns_records {
             if matches!(record.rr_type, DNS_RR_type::A | DNS_RR_type::AAAA) {
-                if let Some(ip_asn_data) = Packet_info::find_asn(asn_db, &record.rdata) {
+                if let Some(ip_asn_data) = PacketInfo::find_asn(asn_db, &record.rdata) {
                     match ip_asn_data {
                         IpEntry::V4(v4) => {
                             record.asn = v4.as_number;
@@ -163,7 +163,7 @@ impl Packet_info {
     }
 }
 
-impl fmt::Display for Packet_info {
+impl fmt::Display for PacketInfo {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(
             f,

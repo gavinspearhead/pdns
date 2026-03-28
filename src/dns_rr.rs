@@ -1,6 +1,6 @@
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::ParseErrorType::Invalid_Resource_Record;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use crate::rr::rr_a::RR_A;
 use crate::rr::rr_a6::RR_A6;
 use crate::rr::rr_aaaa::RR_AAAA;
@@ -16,7 +16,7 @@ use crate::rr::rr_cert::RR_CERT;
 use crate::rr::rr_cla::RR_CLA;
 use crate::rr::rr_uri::RR_URI;
 use tracing::debug;
-
+use crate::rr::rr_brid::RR_BRID;
 use crate::rr::rr_cname::RR_CNAME;
 use crate::rr::rr_csync::RR_CSYNC;
 use crate::rr::rr_dhcid::RR_DHCID;
@@ -101,7 +101,7 @@ pub(crate) fn dns_parse_rdata(
     rrtype: DNS_RR_type,
     packet: &[u8],
     offset_in: usize,
-) -> Result<String, Parse_error> {
+) -> Result<String, ParseError> {
     match rrtype {
         DNS_RR_type::A => Ok(RR_A::parse(rdata)?.to_string()),
         DNS_RR_type::A6 => Ok(RR_A6::parse(packet, offset_in)?.to_string()),
@@ -111,6 +111,7 @@ pub(crate) fn dns_parse_rdata(
         DNS_RR_type::APL => Ok(RR_APL::parse(rdata)?.to_string()),
         DNS_RR_type::ATMA => Ok(RR_ATMA::parse(rdata)?.to_string()),
         DNS_RR_type::AVC => Ok(RR_AVC::parse(rdata)?.to_string()),
+        DNS_RR_type::BRID => Ok(RR_BRID::parse(rdata)?.to_string()),
         DNS_RR_type::CAA => Ok(RR_CAA::parse(rdata)?.to_string()),
         DNS_RR_type::CDNSKEY => Ok(RR_CDNSKEY::parse(rdata)?.to_string()),
         DNS_RR_type::CDS => Ok(RR_CDS::parse(rdata)?.to_string()),
@@ -197,7 +198,7 @@ pub(crate) fn dns_parse_rdata(
         DNS_RR_type::ZONEMD => Ok(RR_ZONEMD::parse(rdata)?.to_string()),
         _ => {
             debug!("Unknown RR type");
-            Err(Parse_error::new(Invalid_Resource_Record, rrtype.to_str()))
+            Err(ParseError::new(Invalid_Resource_Record, rrtype.to_str()))
         }
     }
 }

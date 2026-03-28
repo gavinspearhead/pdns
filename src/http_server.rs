@@ -1,6 +1,6 @@
 use crate::config::Config;
 use crate::statistics::Statistics;
-use crate::tcp_connection::TCP_Connections;
+use crate::tcp_connection::TCPConnections;
 use crate::time_stats::STAT_ITEM::{DAY, HOUR, MINUTE, MONTH, SECOND};
 use crate::version::VERSION;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
@@ -144,7 +144,7 @@ async fn get_config(config: web::Data<Config>) -> impl Responder {
     }
     HttpResponse::Ok().json(&config_copy)
 }
-async fn get_debug(tcp_list: web::Data<Arc<Mutex<TCP_Connections>>>) -> impl Responder {
+async fn get_debug(tcp_list: web::Data<Arc<Mutex<TCPConnections>>>) -> impl Responder {
     let tcp_data = tcp_list.lock().clone();
     HttpResponse::Ok().json(&tcp_data)
 }
@@ -191,7 +191,7 @@ async fn get_endpoints() -> impl Responder {
 #[actix_web::main]
 pub(crate) async fn listen(
     stats: &Arc<Mutex<Statistics>>,
-    tcp_list: &Arc<Mutex<TCP_Connections>>,
+    tcp_list: &Arc<Mutex<TCPConnections>>,
     config: &Config,
 ) -> std::io::Result<()> {
     if config.http_server.is_empty() || config.http_port == 0 {

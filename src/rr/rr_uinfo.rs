@@ -3,7 +3,7 @@ use crate::dns_rr::RR_TXT;
 use crate::dns_helper::names_list;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 
 #[derive(Debug, Clone, Default)]
 pub struct RR_UINFO(RR_TXT);
@@ -14,7 +14,7 @@ impl RR_UINFO {
         RR_UINFO(RR_TXT::new())
     }
 
-    pub fn parse(rdata: &[u8]) -> Result<Self, Parse_error> {
+    pub fn parse(rdata: &[u8]) -> Result<Self, ParseError> {
         Ok(RR_UINFO(RR_TXT::parse(rdata)?))
     }
 

@@ -2,7 +2,7 @@ use crate::dns_helper::{dns_parse_slice, dns_read_u32, names_list};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::ParseErrorType::Invalid_Resource_Record;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default)]
@@ -23,14 +23,14 @@ impl RR_HHIT {
         self.hid = hid;
         self.orchid_hash = orchid_hash;
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_HHIT, Parse_error> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_HHIT, ParseError> {
         let mut a = RR_HHIT::new();
         a.prefix = dns_read_u32(rdata, 0)?;
         a.hid = dns_read_u32(rdata, 4)?;
         let slice = dns_parse_slice(rdata, 8..16)?;
         a.orchid_hash = slice
             .try_into()
-            .map_err(|_| Parse_error::new(Invalid_Resource_Record, "Invalid orchid_hash length"))?;
+            .map_err(|_| ParseError::new(Invalid_Resource_Record, "Invalid orchid_hash length"))?;
         Ok(a)
     }
 }

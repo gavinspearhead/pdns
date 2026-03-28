@@ -2,7 +2,7 @@ use crate::dns_helper::{dns_format_name, names_list};
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -23,7 +23,7 @@ impl RR_MINFO {
         self.res_mb = res_mb.to_string();
         self.err_mb = err_mb.to_string();
     }
-    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_MINFO, Parse_error> {
+    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_MINFO, ParseError> {
         let mut a = RR_MINFO::new();
         let mut offset = offset_in;
         (a.res_mb, offset) = dns_parse_name(packet, offset)?;

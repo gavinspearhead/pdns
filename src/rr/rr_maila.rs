@@ -1,8 +1,8 @@
-use crate::dns_helper::{names_list, parse_ipv4};
+use crate::dns_helper::{names_list, parse_ipv4_addr};
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
 use crate::errors::ParseErrorType::Invalid_Parameter;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 use std::net::{IpAddr, Ipv4Addr};
 
@@ -27,10 +27,10 @@ impl RR_MAILA {
     pub fn set(&mut self, addr: Ipv4Addr) {
         self.addr = addr;
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_MAILA, Parse_error> {
-        let addr = match parse_ipv4(rdata)? {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_MAILA, ParseError> {
+        let addr = match parse_ipv4_addr(rdata)? {
             IpAddr::V4(addr) => addr,
-            IpAddr::V6(_) => return Err(Parse_error::new(Invalid_Parameter, "")),
+            IpAddr::V6(_) => return Err(ParseError::new(Invalid_Parameter, "")),
         };
         Ok(RR_MAILA { addr })
     }

@@ -4,7 +4,7 @@ use crate::dns_helper::{
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DNSRecord;
 use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::Parse_error;
+use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default)]
@@ -28,7 +28,7 @@ impl RR_NXT {
         rdata: &[u8],
         packet: &[u8],
         offset_in: usize,
-    ) -> Result<RR_NXT, Parse_error> {
+    ) -> Result<RR_NXT, ParseError> {
         let mut a = RR_NXT::new();
         let mut offset = offset_in;
         (a.next, offset) = dns_parse_name(packet, offset)?;
