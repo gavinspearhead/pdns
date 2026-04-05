@@ -244,11 +244,11 @@ impl Filter {
             FilterFields::NAME => {
                 if self.expr.1 == FilterOperator::EQUAL {
                     for i in &packet_info.dns_records {
-                        if i.name != self.expr.2 {
-                            return false;
+                        if i.name == self.expr.2 {
+                            return true;
                         }
                     }
-                    return true;
+                    return false;
                 } else if self.expr.1 == FilterOperator::NOT_EQUAL {
                     for i in &packet_info.dns_records {
                         if i.name == self.expr.2 {
@@ -411,14 +411,14 @@ impl Filter {
 }
 
 #[derive(Debug)]
-pub(crate) struct Live_dump_session {
+pub(crate) struct LiveDumpSession {
     stream: TcpStream,
     filters: Vec<Filter>,
 }
 
-impl Live_dump_session {
-    pub(crate) fn new(s: TcpStream) -> Live_dump_session {
-        Live_dump_session {
+impl LiveDumpSession {
+    pub(crate) fn new(s: TcpStream) -> LiveDumpSession {
+        LiveDumpSession {
             stream: s,
             filters: Vec::new(),
         }
@@ -473,7 +473,7 @@ pub fn listen(address: &str, port: u16) -> Option<TcpListener> {
 #[derive(Debug)]
 pub(crate) struct LiveDump {
     listener: Option<TcpListener>,
-    streams: Vec<Live_dump_session>,
+    streams: Vec<LiveDumpSession>,
 }
 
 impl LiveDump {
@@ -509,7 +509,7 @@ impl LiveDump {
                         socket
                             .set_nonblocking(true)
                             .expect("set_nonblocking call failed");
-                        self.streams.push(Live_dump_session::new(socket));
+                        self.streams.push(LiveDumpSession::new(socket));
                     }
                     Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                         return;

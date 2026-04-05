@@ -8,9 +8,9 @@ const MAX_DOMAIN_NAME_LENGTH: usize = 253;
 const MAX_DOMAIN_NAME_LENGTH_WITH_DOT: usize = MAX_DOMAIN_NAME_LENGTH + 1;
 const MAX_RECURSION_DEPTH: usize = 63;
 const MAX_LABEL_LENGTH: usize = 63;
-static DNS_NAME_REGEX: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+/*static DNS_NAME_REGEX: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
     regex::Regex::new(r"^\.?$|^(?:(?:[a-zA-Z0-9]|_)(?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)*(?:[a-zA-Z0-9]|_)[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.(?:[a-zA-Z0-9]|_)[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.?$").unwrap()
-});
+});*/
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,6 +191,8 @@ fn is_valid_dns_label(label: &str) -> bool {
 
     true
 }
+
+/*
 fn is_valid_dns_name_(name: &str) -> bool {
     if name.is_empty()
         || name.len() > MAX_DOMAIN_NAME_LENGTH_WITH_DOT
@@ -214,7 +216,7 @@ fn is_valid_dns_name_(name: &str) -> bool {
     }
 
     true
-}
+}*/
 
 pub(crate) fn dns_parse_name(packet: &[u8], offset: usize) -> Result<(String, usize), ParseError> {
     let (name, offset_out) = dns_parse_name_internal(packet, offset, 0)?;

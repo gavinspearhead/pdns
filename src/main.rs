@@ -122,6 +122,9 @@ fn write_output(of: &mut File, p1: &PacketInfo, config: &Config) {
             error!("Write json output failed, {e}");
             exit(1);
         }
+    } else {
+        error!("Unknown output type {0}", config.output_type);
+        exit(1);
     }
 }
 
@@ -509,7 +512,7 @@ fn main() {
         });
     }
     debug!("Starting {PROGNAME} {VERSION}");
-    if config.create_db {
+    if config.create_database {
         create_database(&config);
         exit(0);
     }

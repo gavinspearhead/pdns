@@ -31,32 +31,21 @@ impl Bucket {
         }
         let group = group_val as usize;
 
-        if group == self.last_group {
-            if pos == self.last_post {
-                self.items[pos] += count;
+        if pos == self.last_post && group == self.last_group {
+            self.items[pos] += count;
+        } else if group == self.last_group {
+            if pos > self.last_post {
+                self.items[self.last_post + 1..pos].fill(0);
             } else {
-                // Moving forward in the same group: clear the gap
-                if pos > self.last_post {
-                    self.items[self.last_post ..pos].fill(0);
-                } else {
-                    // This shouldn't happen with chronological time in the same group,
-                    // but if it does (re-ordered packets), we just reset up to pos
-                    self.items[0..pos].fill(0);
-                }
-                self.items[pos] = count;
-            }
-        } else if group == self.last_group + 1 {
-            // Period transition: clear from last_post to end, AND from start to new pos
-            self.items[self.last_post + 1..len].fill(0);
-            self.items[0..pos].fill(0);
-            // ALSO: if pos < last_post, we need to make sure the old last_post is cleared
-            if pos <= self.last_post {
-                self.items[self.last_post] = 0;
+                self.items[0..pos].fill(0);
             }
             self.items[pos] = count;
+        } else if group == self.last_group + 1 {
+            self.items[self.last_post + 1..len].fill(0);
+            self.items[0..pos].fill(0);
+            self.items[pos] = count;
         } else {
-            // Large jump or reset: clear everything
-            self.items.fill(0);
+            self.items = vec![0; len];
             self.items[pos] = count;
         }
         self.last_post = pos;
