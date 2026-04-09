@@ -175,4 +175,14 @@ impl Time_stats {
         self.per_hour.add(h, count, d);
         self.per_second.add(s, count, m);
     }
+
+    pub(crate) fn get_item(&self, stat_item: &STAT_ITEM) -> &Vec<u128> {
+        match stat_item {
+            STAT_ITEM::MONTH => self.per_month.get_item(),
+            STAT_ITEM::MINUTE => self.per_minute.get_item(),
+            STAT_ITEM::HOUR => self.per_hour.get_item(),
+            STAT_ITEM::DAY => self.per_day.get_item(),
+            STAT_ITEM::SECOND => self.per_second.get_item(),
+        }
+    }
 }
