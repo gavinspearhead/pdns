@@ -166,30 +166,13 @@ impl Time_stats {
         let m = time_stamp.minute();
         let s = time_stamp.second();
         let h = time_stamp.hour();
-        let d = time_stamp.day0();
+        let d = time_stamp.day0(); //correct because start at 1
         let mon = time_stamp.month0();
         let year = time_stamp.year() as u32;
-
-        // Use absolute values for groups to handle wrap-arounds (like year changes)
-        let total_months = (year * 12) + mon;
-        let total_days = time_stamp.num_days_from_ce();
-        let total_hours = (total_days as i64 * 24) + h as i64;
-        let total_minutes = (total_hours * 60) + m as i64;
-
         self.per_month.add(mon, count, year);
-        self.per_day.add(d, count, total_months);
-        self.per_hour.add(h, count, total_days as u32);
-        self.per_minute.add(m, count, total_hours as u32);
-        self.per_second.add(s, count, total_minutes as u32);
-    }
-
-    pub(crate) fn get_item(&self, stat_item: &STAT_ITEM) -> &Vec<u128> {
-        match stat_item {
-            STAT_ITEM::MONTH => self.per_month.get_item(),
-            STAT_ITEM::MINUTE => self.per_minute.get_item(),
-            STAT_ITEM::HOUR => self.per_hour.get_item(),
-            STAT_ITEM::DAY => self.per_day.get_item(),
-            STAT_ITEM::SECOND => self.per_second.get_item(),
-        }
+        self.per_day.add(d, count, mon);
+        self.per_minute.add(m, count, h);
+        self.per_hour.add(h, count, d);
+        self.per_second.add(s, count, m);
     }
 }
