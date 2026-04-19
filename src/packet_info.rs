@@ -76,7 +76,7 @@ impl PacketInfo {
         self.dns_records.push(rec);
     }
 
-    pub fn to_csv(&self) -> String {
+    pub fn to_csv(&self) -> Result<String, Box<dyn std::error::Error>> {
         let mut s = String::new();
         for i in &self.dns_records {
             writeln!(
@@ -91,12 +91,11 @@ impl PacketInfo {
                 i.name,
                 i.rdata,
                 1
-            )
-            .unwrap();
+            )?;
         }
-        s
+        Ok(s)
     }
-    pub fn to_json(&self) -> String {
+    pub fn to_json(&self) -> Result<String, Box<dyn std::error::Error>> {
         let mut s = String::new();
         for i in &self.dns_records {
             write!(
@@ -121,10 +120,10 @@ impl PacketInfo {
                 i.name,
                 i.rdata,
                 1
-            )
-            .unwrap();
+            )?
+
         }
-        s
+        Ok(s)
     }
     #[inline]
     fn find_asn<'a>(asn_db: &'a Database, ip: &'a str) -> Option<IpEntry<'a>> {
@@ -169,13 +168,12 @@ impl fmt::Display for PacketInfo {
             f,
             "{}:{} => {}:{} ({})",
             self.s_addr, self.sp, self.d_addr, self.dp, self.protocol
-        )
-        .expect("Cannot write output format ");
+        )?;
         for i in &self.dns_records {
             if f.alternate() {
-                write!(f, "{i:#}").expect("Cannot write output format ");
+                write!(f, "{i:#}")?;
             } else {
-                write!(f, "{i}").expect("Cannot write output format ");
+                write!(f, "{i}")?;
             }
         }
         write!(f, "")

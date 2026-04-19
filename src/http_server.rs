@@ -7,6 +7,7 @@ use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use log::debug;
 use parking_lot::Mutex;
 use std::sync::Arc;
+use chrono::{DateTime, Utc};
 
 async fn get_version() -> impl Responder {
     HttpResponse::Ok().json(VERSION)
@@ -149,42 +150,54 @@ async fn get_debug(tcp_list: web::Data<Arc<Mutex<TCPConnections>>>) -> impl Resp
     HttpResponse::Ok().json(&tcp_data)
 }
 
+async fn get_uptime(start_time: web::Data<DateTime<Utc>>) -> impl Responder {
+    let uptime = Utc::now().signed_duration_since(**start_time.clone());
+    let days = uptime.num_days();
+    let hours = uptime.num_hours() % 24;
+    let minutes = uptime.num_minutes() % 60;
+    let seconds = uptime.num_seconds() % 60;
+    let uptime_str = format!("{} days, {} hours, {} minutes, {} seconds", days, hours, minutes, seconds);
+    HttpResponse::Ok().json(uptime_str)
+}
+
+
 async fn get_endpoints() -> impl Responder {
     let endpoints = vec![
         "/",
-        "/success",
-        "/success/day",
-        "/success/minute",
-        "/success/hour",
-        "/success/second",
-        "/success/month",
-        "/blocked",
-        "/blocked/day",
-        "/blocked/minute",
-        "/blocked/hour",
-        "/blocked/second",
-        "/blocked/month",
-        "/total",
-        "/total/day",
-        "/total/minute",
-        "/total/hour",
-        "/total/second",
-        "/total/month",
-        "/stats",
-        "/opcodes",
-        "/ext_errors",
-        "/errors",
-        "/version",
-        "/qtypes",
-        "/qclass",
         "/aclass",
         "/atypes",
-        "/sources",
-        "/destinations",
-        "/top_domains",
-        "/topnx",
+        "/blocked",
+        "/blocked/day",
+        "/blocked/hour",
+        "/blocked/minute",
+        "/blocked/month",
+        "/blocked/second",
         "/config",
         "/debug",
+        "/destinations",
+        "/errors",
+        "/ext_errors",
+        "/opcodes",
+        "/qclass",
+        "/qtypes",
+        "/sources",
+        "/stats",
+        "/success/",
+        "/success/day",
+        "/success/hour",
+        "/success/minute",
+        "/success/month",
+        "/success/second",
+        "/top_domains",
+        "/topnx",
+        "/total",
+        "/total/day",
+        "/total/hour",
+        "/total/minute",
+        "/total/month",
+        "/total/second",
+        "/uptime",
+        "/version",
     ];
     HttpResponse::Ok().json(endpoints)
 }
@@ -193,6 +206,7 @@ pub(crate) async fn listen(
     stats: &Arc<Mutex<Statistics>>,
     tcp_list: &Arc<Mutex<TCPConnections>>,
     config: &Config,
+    start_time: DateTime<Utc>,
 ) -> std::io::Result<()> {
     if config.http_server.is_empty() || config.http_port == 0 {
         return Ok(());
@@ -206,6 +220,7 @@ pub(crate) async fn listen(
             .app_data(web::Data::new(stats_clone.clone())) // Share statistics across handlers
             .app_data(web::Data::new(config_clone.clone())) // Share config across handlers
             .app_data(web::Data::new(tcp_list_clone.clone())) // Share config across handlers
+            .app_data(web::Data::new(start_time)) // Share config across handlers
             .service(
                 web::scope("/success")
                     .route("", web::get().to(get_success))
@@ -236,6 +251,7 @@ pub(crate) async fn listen(
             .route("/topnx", web::get().to(get_topnx))
             .route("/config", web::get().to(get_config))
             .route("/debug", web::get().to(get_debug))
+            .route("/uptime", web::get().to(get_uptime))
             .route("/", web::get().to(get_endpoints))
     })
     .bind(format!("{}:{}", config.http_server, config.http_port))?

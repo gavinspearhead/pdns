@@ -111,14 +111,14 @@ fn packet_loop<T: Activated + 'static>(cap: &mut Capture<T>, packet_queue: &Pack
     }
 }
 
-fn write_output(of: &mut File, p1: &PacketInfo, config: &Config) {
+fn write_output(of: &mut File, p1: &PacketInfo, config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     if config.output_type == "csv" {
-        if let Err(e) = of.write_all(p1.to_csv().as_bytes()) {
+        if let Err(e) = of.write_all(p1.to_csv()?.as_bytes()) {
             error!("Write csv output failed, {e}");
             exit(1);
         }
     } else if config.output_type == "json" {
-        if let Err(e) = of.write_all(p1.to_json().as_bytes()) {
+        if let Err(e) = of.write_all(p1.to_json()?.as_bytes()) {
             error!("Write json output failed, {e}");
             exit(1);
         }
@@ -126,6 +126,7 @@ fn write_output(of: &mut File, p1: &PacketInfo, config: &Config) {
         error!("Unknown output type {0}", config.output_type);
         exit(1);
     }
+    Ok(())
 }
 
 fn parse_dns_packet(
@@ -220,7 +221,7 @@ fn poll(
                     }
 
                     if let Some(ref mut of) = output_file {
-                        write_output(of, &p1, config);
+                        let _ = write_output(of, &p1, config);
                     }
                     if let Some(ref _db) = database_conn {
                         for dns_record in p1.dns_records {
@@ -366,6 +367,7 @@ fn capture_from_interface(
     tcp_list: &Arc<Mutex<TCPConnections>>,
     packet_queue: &PacketQueue,
     mut cap_in: Vec<Capture<Active>>,
+    start_time: DateTime<Utc>,
 ) {
     debug!("Listening on interfaces {:?}", config.interface);
     let (_pq_tx, pq_rx) = mpsc::channel();
@@ -386,7 +388,7 @@ fn capture_from_interface(
             );
         });
         let handle_http = s.spawn(|| {
-            let _ = listen(stats, tcp_list, config);
+            let _ = listen(stats, tcp_list, config, start_time);
         });
         let handle_stats_dump = s.spawn(|| stats_dump(config, stats));
         let handle_cleanup = s.spawn(|| cleanup_task(config));
@@ -439,6 +441,7 @@ fn run(
     cap_in: Option<Vec<Capture<Active>>>,
     pcap_path: &str,
     stats: &Arc<Mutex<Statistics>>,
+    start_time: DateTime<Utc>,
 ) {
     let packet_queue = PacketQueue::new();
     let tcp_list = Arc::new(Mutex::new(TCPConnections::new(config.tcp_memory)));
@@ -458,7 +461,7 @@ fn run(
             error!("Something wrong with the capture");
             exit(1);
         };
-        capture_from_interface(config, &skiplist, stats, &tcp_list, &packet_queue, cap);
+        capture_from_interface(config, &skiplist, stats, &tcp_list, &packet_queue, cap, start_time);
     }
 }
 
@@ -466,6 +469,7 @@ fn devnull() -> io::Result<File> {
     File::open("/dev/null")
 }
 fn main() {
+    let start_time = Utc::now();
     let mut pcap_path = String::new();
     let mut config = Config::new();
     let layers = vec![fmt::Layer::default().boxed()];
@@ -521,14 +525,14 @@ fn main() {
         let mut cap_list = Vec::new();
         for interface in &config.interface {
             // do it here otherwise PCAP hangs on open if we do it after daemonizing
-            debug!("Listen on {interface}; promiscuous: {}", config.promisc);
+            debug!("Listen on {interface}; promiscuous: {}", config.promiscuous);
             let a_cap = Capture::from_device(interface.as_str())
                 .unwrap_or_else(|e| {
                     error!("Cannot prepare capture for interface '{}': {e}", interface);
                     exit(1);
                 })
                 .timeout(1000)
-                .promisc(config.promisc)
+                .promisc(config.promiscuous)
                 .immediate_mode(false)
                 .open();
             match a_cap {
@@ -598,7 +602,7 @@ fn main() {
         match daemon.start() {
             Ok(()) => {
                 debug!("Daemonised");
-                run(&config, cap, &pcap_path, &stats);
+                run(&config, cap, &pcap_path, &stats, start_time);
             }
             Err(e) => {
                 error!("Error daemonising: {}", e);
@@ -607,6 +611,6 @@ fn main() {
         }
     } else {
         debug!("NOT Daemonising");
-        run(&config, cap, &pcap_path, &stats);
+        run(&config, cap, &pcap_path, &stats, start_time);
     }
 }

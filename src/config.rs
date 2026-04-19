@@ -19,7 +19,7 @@ pub(crate) struct Config {
     pub http_server: String,
     pub http_port: u16,
     pub daemon: bool,
-    pub promisc: bool,
+    pub promiscuous: bool,
     pub config_file: String,
     pub dbhostname: String,
     pub dbusername: String,
@@ -63,7 +63,7 @@ impl Config {
             http_server: String::new(),
             http_port: 0,
             daemon: false,
-            promisc: false,
+            promiscuous: false,
             config_file: String::new(),
             dbhostname: String::new(),
             dbpassword: String::new(),
@@ -446,7 +446,7 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
             }
         };
         *config = new_config.clone();
-        debug!("Promisc: {}", config.promisc)
+        debug!("Promisc: {}", config.promiscuous)
     }
     config.http_server = matches
         .get_one::<String>("http_server")
@@ -508,8 +508,8 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
     if matches.get_flag("nodaemon") { config.daemon = false; }
     if matches.get_flag("debug") { config.debug = true ;}
     if matches.get_flag("nodebug") { config.debug = false; }
-    if matches.get_flag("promisc") { config.promisc = true; }
-    if matches.get_flag("nopromisc") { config.promisc = false ;}
+    if matches.get_flag("promisc") { config.promiscuous = true; }
+    if matches.get_flag("nopromisc") { config.promiscuous = false ;}
     config.toplistsize = *matches
         .get_one::<usize>("toplistsize")
         .unwrap_or(&config.toplistsize);

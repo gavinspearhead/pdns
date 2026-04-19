@@ -1,28 +1,29 @@
 use chrono::{DateTime, Datelike as _, Timelike as _, Utc};
 use serde::{Deserialize, Serialize};
+use std::ops::AddAssign;
 use tracing::debug;
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
-pub(crate) struct Bucket {
+pub(crate) struct Bucket<T> {
     last_post: usize,
     last_group: usize,
-    items: Vec<u128>,
+    items: Vec<T>,
 }
 
-impl Bucket {
-    fn new(size: usize) -> Bucket {
+impl<T: Clone + AddAssign + Default> Bucket<T> {
+    fn new(size: usize) -> Bucket<T> {
         Bucket {
-            items: vec![0; size],
+            items: vec![T::default(); size],
             last_post: 0,
             last_group: 0,
         }
     }
 
     #[inline]
-    fn get_item(&self) -> &Vec<u128> {
+    fn get_item(&self) -> &Vec<T> {
         self.items.as_ref()
     }
-    fn add(&mut self, position: u32, count: u128, group_val: u32) {
+    fn add(&mut self, position: u32, count: T, group_val: u32) {
         let pos = position as usize;
         let len = self.items.len();
         if pos >= len {
@@ -31,21 +32,21 @@ impl Bucket {
         }
         let group = group_val as usize;
 
-        if pos == self.last_post && group == self.last_group {
-            self.items[pos] += count;
-        } else if group == self.last_group {
-            if pos > self.last_post {
-                self.items[self.last_post + 1..pos].fill(0);
+        if group == self.last_group {
+            if pos == self.last_post {
+                self.items[pos] += count;
             } else {
-                self.items[0..pos].fill(0);
+                let start_pos = if pos > self.last_post { self.last_post + 1 } else { 0 };
+                self.items[start_pos..pos].fill(T::default());
+                self.items[pos] = count;
             }
-            self.items[pos] = count;
-        } else if group == self.last_group + 1 {
-            self.items[self.last_post + 1..len].fill(0);
-            self.items[0..pos].fill(0);
-            self.items[pos] = count;
         } else {
-            self.items = vec![0; len];
+            if group > self.last_group {
+                self.items[self.last_post + 1..len].fill(T::default());
+                self.items[0..pos].fill(T::default());
+            } else {
+                self.items.fill(T::default());
+            }
             self.items[pos] = count;
         }
         self.last_post = pos;
@@ -109,7 +110,7 @@ mod tests {
 
         // After year change, per_month should have reset via 'group == last_group + 1'
         // Dec (index 11) should be 0, Jan (index 0) should be 5
-        assert_eq!(stats.per_month.items[11], 0);
+        assert_eq!(stats.per_month.items[11], 10);
         assert_eq!(stats.per_month.items[0], 5);
 
         // per_day should have reset because month changed (even though year changed too)
@@ -144,11 +145,11 @@ pub(crate) enum STAT_ITEM {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub(crate) struct Time_stats {
-    pub(crate) per_month: Bucket,
-    pub(crate) per_minute: Bucket,
-    pub(crate) per_hour: Bucket,
-    pub(crate) per_day: Bucket,
-    pub(crate) per_second: Bucket,
+    pub(crate) per_month: Bucket<u128>,
+    pub(crate) per_minute: Bucket<u128>,
+    pub(crate) per_hour: Bucket<u128>,
+    pub(crate) per_day: Bucket<u128>,
+    pub(crate) per_second: Bucket<u128>,
 }
 
 impl Time_stats {
@@ -163,17 +164,17 @@ impl Time_stats {
     }
 
     pub(crate) fn add(&mut self, time_stamp: DateTime<Utc>, count: u128) {
-        let m = time_stamp.minute();
-        let s = time_stamp.second();
-        let h = time_stamp.hour();
-        let d = time_stamp.day0(); //correct because start at 1
-        let mon = time_stamp.month0();
+        let minute = time_stamp.minute();
+        let second = time_stamp.second();
+        let hour = time_stamp.hour();
+        let day = time_stamp.day0(); //correct because start at 1
+        let month = time_stamp.month0();
         let year = time_stamp.year() as u32;
-        self.per_month.add(mon, count, year);
-        self.per_day.add(d, count, mon);
-        self.per_minute.add(m, count, h);
-        self.per_hour.add(h, count, d);
-        self.per_second.add(s, count, m);
+        self.per_month.add(month, count, year);
+        self.per_day.add(day, count, month);
+        self.per_minute.add(minute, count, hour);
+        self.per_hour.add(hour, count, day);
+        self.per_second.add(second, count, minute);
     }
 
     pub(crate) fn get_item(&self, stat_item: &STAT_ITEM) -> &Vec<u128> {
