@@ -58,6 +58,7 @@ fn parse_question(
     let mut dns_question = DnsQuestion::new();
     let offset = dns_question.parse(packet, offset_in, skip_list)?;
     let rrtype = dns_question.dns_rr_type;
+    debug!("Question: {} {rrtype}", dns_question.name);
     let class = dns_question.dns_class_type;
     *stats.qtypes.entry(rrtype).or_insert(0) += 1;
     *stats.qclass.entry(class).or_insert(0) += 1;

@@ -81,14 +81,14 @@ struct Args {
     path: std::path::PathBuf,
 }
 
-fn packet_loop<T: Activated + 'static>(cap: &mut Capture<T>, packet_queue: &PacketQueue) {
+fn packet_loop<T: Activated + 'static>(cap: &mut Capture<T>, packet_queue: &PacketQueue, interface: &str) {
     let link_type = cap.get_datalink();
     if link_type != Linktype::ETHERNET && link_type != Linktype(12) && link_type != Linktype::RAW && link_type != Linktype(14) {
-        error!("Not ethernet {link_type:?}");
+        error!("Not ethernet {link_type:?} {interface:?}");
         exit(1);
     }
 
-    debug!("Starting loop");
+    debug!("Starting loop on {interface} with link type {link_type:?}");
     loop {
         match cap.next_packet() {
             Ok(packet) => {
@@ -100,10 +100,10 @@ fn packet_loop<T: Activated + 'static>(cap: &mut Capture<T>, packet_queue: &Pack
                 packet_queue.push_back(Some((packet.data.to_vec(), ts, link_type)));
             }
             Err(pcap::Error::TimeoutExpired) => {
-                debug!("Packet capture error: {}", pcap::Error::TimeoutExpired);
+                debug!("Packet capture error: {} {interface}" , pcap::Error::TimeoutExpired);
             }
             Err(e) => {
-                error!("Packet capture error: {e}");
+                error!("Packet capture error:  {e} {}", interface) ;
                 packet_queue.push_back(None);
                 break;
             }
@@ -344,7 +344,7 @@ fn capture_from_file(
                     );
                 });
                 let handle_packet_loop = s.spawn(|| {
-                    packet_loop(&mut c, &packet_queue.clone());
+                    packet_loop(&mut c, &packet_queue.clone(), pcap_path);
                 });
                 handle_packet_loop.join().unwrap();
                 // we wait for the main threat to terminate; then cancel the tcp cleanup threat
@@ -366,7 +366,7 @@ fn capture_from_interface(
     stats: &Arc<Mutex<Statistics>>,
     tcp_list: &Arc<Mutex<TCPConnections>>,
     packet_queue: &PacketQueue,
-    mut cap_in: Vec<Capture<Active>>,
+    mut cap_in: Vec<(Capture<Active>, &String)>,
     start_time: DateTime<Utc>,
 ) {
     debug!("Listening on interfaces {:?}", config.interface);
@@ -393,7 +393,7 @@ fn capture_from_interface(
         let handle_stats_dump = s.spawn(|| stats_dump(config, stats));
         let handle_cleanup = s.spawn(|| cleanup_task(config));
         let mut handle_packet_loop = Vec::new();
-        for i in cap_in.iter_mut() {
+        for (i, name) in cap_in.iter_mut() {
             let h = s.spawn(|| {
                 if !config.filter.is_empty() {
                     if let Err(e) = i.filter(&config.filter, false) {
@@ -401,7 +401,7 @@ fn capture_from_interface(
                         exit(1);
                     }
                 }
-                packet_loop(i, packet_queue);
+                packet_loop(i, packet_queue, name);
             });
             handle_packet_loop.push(h);
         }
@@ -438,7 +438,7 @@ fn stats_dump(config: &Config, statistics: &Arc<Mutex<Statistics>>) {
 
 fn run(
     config: &Config,
-    cap_in: Option<Vec<Capture<Active>>>,
+    cap_in: Option<Vec<(Capture<Active>, &String)>>,
     pcap_path: &str,
     stats: &Arc<Mutex<Statistics>>,
     start_time: DateTime<Utc>,
@@ -536,7 +536,7 @@ fn main() {
                 .immediate_mode(false)
                 .open();
             match a_cap {
-                Ok(x) => cap_list.push(x),
+                Ok(x) => cap_list.push((x, interface)),
                 Err(e) => {
                     error!("Cannot open capture on interface '{}' {e}", &interface);
                 }

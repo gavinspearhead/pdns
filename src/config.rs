@@ -63,7 +63,7 @@ impl Config {
             http_server: String::new(),
             http_port: 0,
             daemon: false,
-            promiscuous: false,
+            promiscuous: true,
             config_file: String::new(),
             dbhostname: String::new(),
             dbpassword: String::new(),
@@ -89,7 +89,7 @@ impl Config {
             syslog: true,
             create_database: false,
             tcp_memory: 10,
-            capture_tcp: false,
+            capture_tcp: true,
             stats_dump_interval: 3600,
             compress_stats: false,
             ports: vec![53],
@@ -322,7 +322,7 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
             .arg(
                 arg!(--nocapture_tcp)
                     .required(false)
-                    .action(ArgAction::SetFalse)
+                    .action(ArgAction::SetTrue)
                     .conflicts_with("capture_tcp")
                     .long_help("Do not capture DNS traffic on TCP"),
             )
@@ -446,8 +446,8 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
             }
         };
         *config = new_config.clone();
-        debug!("Promisc: {}", config.promiscuous)
     }
+    println!("Promisc: {}", config.promiscuous);
     config.http_server = matches
         .get_one::<String>("http_server")
         .unwrap_or(&config.http_server)

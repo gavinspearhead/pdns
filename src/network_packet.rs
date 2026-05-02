@@ -31,6 +31,7 @@ fn parse_tcp(
     }
     let sp = dns_read_u16(packet, 0)?;
     let dp = dns_read_u16(packet, 2)?;
+    debug!("Got TCP packet from {:?} to {:?}", sp, dp);
     if !(config.ports.contains(&sp) || config.ports.contains(&dp)) {
         return Err(ParseError::new(Invalid_DNS_Packet, "").into());
     }
@@ -123,6 +124,7 @@ fn parse_udp(
     }
     let sp = dns_read_u16(packet, 0)?;
     let dp = dns_read_u16(packet, 2)?;
+    debug!("Got UDP packet from {:?} to {:?}", sp, dp);
     let len = dns_read_u16(packet, 4)?;
     packet_info.set_dest_port(dp);
     packet_info.set_source_port(sp);
@@ -170,6 +172,7 @@ fn parse_ip_data(
 ) -> Result<(), Box<dyn std::error::Error>> {
     if protocol == DNSProtocol::TCP.as_u8() {
         // TCP
+        debug!("Got TCP packet");
         if config.capture_tcp {
             packet_info.set_protocol(DNSProtocol::TCP);
             parse_tcp(packet, packet_info, stats, tcp_list, config, skip_list)
@@ -178,6 +181,7 @@ fn parse_ip_data(
         }
     } else if protocol == DNSProtocol::UDP.as_u8()  {
         //  UDP
+        debug!("Got UDP packet");
         packet_info.set_protocol(DNSProtocol::UDP);
         parse_udp(packet, packet_info, stats, config, skip_list)
     } else if protocol == DNSProtocol::SCTP.as_u8()  {
@@ -209,6 +213,7 @@ fn parse_ipv4(
     }
     let src = dns_helper::parse_ipv4_addr(&packet[12..16])?;
     let dst = dns_helper::parse_ipv4_addr(&packet[16..20])?;
+    debug!("Got IPv4 packet from {:?} to {:?}", src, dst );
     let len = dns_read_u16(packet, 2)? - ihl;
     let next_header = packet[9];
     packet_info.set_dest_ip(dst);
@@ -242,6 +247,7 @@ fn parse_tunneling(
         }
         let ip_ver = packet[0] >> 4;
         if ip_ver == 4 {
+            debug!("Got IPIP packet");
             parse_ipv4(packet, packet_info, stats, tcp_list, config, skip_list)
         } else if ip_ver == 6 {
             parse_ipv6(packet, packet_info, stats, tcp_list, config, skip_list)
@@ -249,6 +255,7 @@ fn parse_tunneling(
             Err(ParseError::new(Invalid_IP_Version, &format!("{ip_ver}")).into())
         }
     } else {
+        debug!("Got tunneling packet {} -> {}", packet_info.s_addr.to_string(), packet_info.d_addr.to_string());
         parse_ip_data(
             packet,
             next_header,
