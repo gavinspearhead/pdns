@@ -447,7 +447,6 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
         };
         *config = new_config.clone();
     }
-    println!("Promisc: {}", config.promiscuous);
     config.http_server = matches
         .get_one::<String>("http_server")
         .unwrap_or(&config.http_server)
