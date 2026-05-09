@@ -1,8 +1,8 @@
 use crate::dns_helper::names_list;
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::ParseErrorType::Invalid_packet_index;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
+use crate::errors::ParseErrorType::Invalid_packet_index;
 use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, Default, Hash, PartialEq, Eq, PartialOrd, Ord, Copy)]
 pub struct RR_EUI48 {
@@ -47,9 +47,9 @@ impl Display for RR_EUI48 {
     }
 }
 
-impl DNSRecord for RR_EUI48 {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::EUI48
+impl DnsRecord for RR_EUI48 {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::EUI48
     }
 
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {

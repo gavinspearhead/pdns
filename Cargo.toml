@@ -39,7 +39,7 @@ sqlx = { version = "0.8", features = ["runtime-async-std-native-tls", "mysql", "
 futures = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-data-encoding = "2.10"
+data-encoding = "2.11"
 regex = "1.12"
 publicsuffix="2.3"
 log = "0.4"

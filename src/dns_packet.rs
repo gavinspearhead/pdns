@@ -3,23 +3,22 @@ use crate::dns_class::DnsClass;
 use crate::dns_edns::parse_edns;
 use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u32};
 use crate::dns_name::dns_parse_name;
-use crate::dns_opcodes::DNSOpcodes;
-use crate::dns_record::DNSRecord;
+use crate::dns_opcodes::DnsOpcodes;
+use crate::dns_record::DnsRecord;
 use crate::dns_reply_type::DnsReplyType;
 use crate::dns_rr::dns_parse_rdata;
-use crate::dns_rr_type::DNS_RR_type;
-use crate::edns::DNSExtendedError;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
 use crate::errors::ParseErrorType;
 use crate::packet_info::PacketInfo;
 use crate::skiplist::SkipList;
 use crate::statistics::Statistics;
 use publicsuffix::Psl as _;
-use tracing::{debug};
+use tracing::debug;
 
 #[derive(Debug, Clone, Default, Hash, PartialEq, Eq, Ord, PartialOrd)]
 pub(crate) struct DnsQuestion {
-    pub dns_rr_type: DNS_RR_type,
+    pub dns_rr_type: DnsRRType,
     pub dns_class_type: DnsClass,
     pub name: String,
 }
@@ -41,7 +40,7 @@ impl DnsQuestion {
         let rrtype_val = dns_read_u16(packet, offset)?;
         let class_val = dns_read_u16(packet, offset + 2)?;
         name.clone_into(&mut self.name);
-        self.dns_rr_type = DNS_RR_type::find(rrtype_val)?;
+        self.dns_rr_type = DnsRRType::find(rrtype_val)?;
         self.dns_class_type = DnsClass::find(class_val)?;
         Ok(offset + 4)
     }
@@ -57,10 +56,10 @@ fn parse_question(
 ) -> Result<usize, Box<dyn std::error::Error>> {
     let mut dns_question = DnsQuestion::new();
     let offset = dns_question.parse(packet, offset_in, skip_list)?;
-    let rrtype = dns_question.dns_rr_type;
-    debug!("Question: {} {rrtype}", dns_question.name);
+    let rr_type = dns_question.dns_rr_type;
+    debug!("Question: {} {rr_type}", dns_question.name);
     let class = dns_question.dns_class_type;
-    *stats.qtypes.entry(rrtype).or_insert(0) += 1;
+    *stats.qtypes.entry(rr_type).or_insert(0) += 1;
     *stats.qclass.entry(class).or_insert(0) += 1;
     stats.total_time_stats.add(packet_info.timestamp, 1);
 
@@ -75,21 +74,16 @@ fn parse_question(
     }
 
     if rcode != DnsReplyType::NOERROR {
-        let rec = DNSRecord {
-            rr_type: rrtype,
-            ttl: 0,
+        let rec = DnsRecord::new(
+            rr_type,
             class,
-            name: dns_question.name,
-            rdata: String::new(),
-            count: 1,
-            timestamp: packet_info.timestamp,
-            domain: String::new(),
-            asn: 0,
-            asn_owner: String::new(),
-            prefix: String::new(),
-            error: rcode,
-            extended_error: DNSExtendedError::None,
-        };
+            rcode,
+            1,
+            packet_info.timestamp,
+            &dns_question.name,
+            0,
+            "",
+        );
         packet_info.add_dns_record(rec);
     }
     let len = offset - offset_in;
@@ -109,8 +103,8 @@ fn parse_answer(
         return Err(ParseError::new(ParseErrorType::Skipped_Message, &name).into());
     }
     let rrtype_val = dns_read_u16(packet, offset)?;
-    let rrtype = DNS_RR_type::find(rrtype_val)?;
-    if rrtype == DNS_RR_type::OPT {
+    let rrtype = DnsRRType::find(rrtype_val)?;
+    if rrtype == DnsRRType::OPT {
         offset += 2;
         let len = parse_edns(packet_info, packet, offset, stats)?;
         let len = offset + len - offset_in;
@@ -132,21 +126,17 @@ fn parse_answer(
     offset += 10;
     let data = dns_parse_slice(packet, offset..offset + data_len)?;
     let rdata = dns_parse_rdata(data, rrtype, packet, offset)?;
-    let rec = DNSRecord {
-        rr_type: rrtype,
-        ttl,
+    let rec = DnsRecord::new(
+        rrtype,
         class,
-        name,
-        rdata,
-        count: 1,
-        timestamp: packet_info.timestamp,
-        domain: String::new(), //domain_str,
-        asn: 0,
-        asn_owner: String::new(),
-        prefix: String::new(),
-        error: DnsReplyType::NOERROR,
-        extended_error: DNSExtendedError::None,
-    };
+        DnsReplyType::NOERROR,
+        1,
+        packet_info.timestamp,
+        &name,
+        ttl,
+        &rdata,
+    );
+
     packet_info.add_dns_record(rec);
     offset += data_len;
     let len = offset - offset_in;
@@ -171,7 +161,7 @@ pub(crate) struct DnsHeader {
     pub flags: u16,
     // Flags
     pub qr: u8,              // Query/Response flag
-    pub opcode: DNSOpcodes,  // Operation code
+    pub opcode: DnsOpcodes,  // Operation code
     pub aa: u8,              // Authoritative Answer flag
     pub tc: u8,              // Truncation flag
     pub rd: u8,              // Recursion Desired flag
@@ -199,7 +189,7 @@ impl DnsHeader {
         self.flags = flags;
         self.qr = ((flags & 0x8000) >> 15) as u8;
         let opcode_val = (flags >> 11) & 0x000f;
-        self.opcode = DNSOpcodes::find(opcode_val)?;
+        self.opcode = DnsOpcodes::find(opcode_val)?;
         self.aa = ((flags >> 10) & 0x0001) as u8;
         self.tc = ((flags >> 9) & 0x0001) as u8;
         self.rd = ((flags >> 8) & 0x0001) as u8;
@@ -229,7 +219,7 @@ pub(crate) fn parse_dns(
     let mut offset = dns_header.parse(packet)?;
 
     *stats.opcodes.entry(dns_header.opcode).or_insert(0) += 1;
-    if dns_header.opcode != DNSOpcodes::Query {
+    if dns_header.opcode != DnsOpcodes::Query {
         // Query
         debug!("Skipping DNS packets that are not queries");
         return Ok(());

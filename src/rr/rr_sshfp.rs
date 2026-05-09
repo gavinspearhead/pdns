@@ -1,9 +1,9 @@
 use crate::dns::{sshfp_algorithm, sshfp_fp_type};
 use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list};
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::ParseErrorType::Invalid_Resource_Record;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
+use crate::errors::ParseErrorType::Invalid_Resource_Record;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default)]
@@ -50,16 +50,16 @@ impl Display for RR_SSHFP {
         write!(
             f,
             "{alg} {fp_type} {fp}",
-            alg = sshfp_algorithm(self.alg).unwrap(),
-            fp_type = sshfp_fp_type(self.fp_type).unwrap(),
+            alg = sshfp_algorithm(self.alg).map_err(|_| std::fmt::Error)?,
+            fp_type = sshfp_fp_type(self.fp_type).map_err(|_| std::fmt::Error)?,
             fp = hex::encode(&self.fingerprint)
         )
     }
 }
 
-impl DNSRecord for RR_SSHFP {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::SSHFP
+impl DnsRecord for RR_SSHFP {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::SSHFP
     }
 
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {

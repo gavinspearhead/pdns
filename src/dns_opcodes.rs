@@ -1,5 +1,5 @@
-use crate::errors::DNS_Error_Type::Invalid_Opcode;
-use crate::errors::DNS_error;
+use crate::errors::DnsError;
+use crate::errors::DnsErrorType::Invalid_Opcode;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
@@ -21,9 +21,8 @@ use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
     Ord,
     Default,
 )]
-
 #[repr(u16)]
-pub(crate) enum DNSOpcodes {
+pub(crate) enum DnsOpcodes {
     #[default]
     Query = 0,
     IQuery = 1,
@@ -33,20 +32,20 @@ pub(crate) enum DNSOpcodes {
     DSO = 6,
 }
 
-impl DNSOpcodes {
+impl DnsOpcodes {
     #[inline]
     pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
-    pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
-        match DNSOpcodes::from_repr(val) {
+    pub(crate) fn find(val: u16) -> Result<Self, DnsError> {
+        match DnsOpcodes::from_repr(val) {
             Some(x) => Ok(x),
-            None => Err(DNS_error::new(Invalid_Opcode, &format!("{val}"))),
+            None => Err(DnsError::new(Invalid_Opcode, &format!("{val}"))),
         }
     }
 }
 
-impl fmt::Display for DNSOpcodes {
+impl fmt::Display for DnsOpcodes {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_str())
     }
@@ -54,19 +53,19 @@ impl fmt::Display for DNSOpcodes {
 
 #[cfg(test)]
 mod dns_opcodes_tests {
-    use crate::dns_opcodes::DNSOpcodes;
+    use crate::dns_opcodes::DnsOpcodes;
 
     #[test]
     fn test_dns_opcodes() {
-        assert_eq!(DNSOpcodes::Query.to_str(), "Query");
-        assert_eq!(DNSOpcodes::Update.to_str(), "Update");
+        assert_eq!(DnsOpcodes::Query.to_str(), "Query");
+        assert_eq!(DnsOpcodes::Update.to_str(), "Update");
     }
     #[test]
     fn test_dns_opcodes1() {
-        assert_eq!(DNSOpcodes::find(4).unwrap(), DNSOpcodes::Notify);
+        assert_eq!(DnsOpcodes::find(4).unwrap(), DnsOpcodes::Notify);
     }
     #[test]
     fn test_dns_opcodes2() {
-        assert!(DNSOpcodes::find(114).is_err());
+        assert!(DnsOpcodes::find(114).is_err());
     }
 }

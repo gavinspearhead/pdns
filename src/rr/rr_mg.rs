@@ -1,6 +1,6 @@
 use crate::dns_helper::names_list;
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
 use crate::rr::rr_mb::RR_MB;
 use std::fmt::{Display, Formatter};
@@ -33,9 +33,9 @@ impl Display for RR_MG {
     }
 }
 
-impl DNSRecord for RR_MG {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::MG
+impl DnsRecord for RR_MG {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::MG
     }
 
     fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {

@@ -1,7 +1,7 @@
 use crate::dns::dhcid_alg;
 use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, names_list};
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
 use base64::display::Base64Display;
 use base64::engine::general_purpose::STANDARD;
@@ -48,9 +48,9 @@ impl Display for RR_DHCID {
     }
 }
 
-impl DNSRecord for RR_DHCID {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::DHCID
+impl DnsRecord for RR_DHCID {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::DHCID
     }
 
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {

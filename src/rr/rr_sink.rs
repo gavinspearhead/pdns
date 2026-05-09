@@ -1,6 +1,6 @@
 use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list};
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
@@ -52,9 +52,9 @@ impl Display for RR_SINK {
     }
 }
 
-impl DNSRecord for RR_SINK {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::SINK
+impl DnsRecord for RR_SINK {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::SINK
     }
 
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {

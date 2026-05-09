@@ -3,8 +3,8 @@ use crate::dns_helper::{
     process_bitmap,
 };
 use crate::dns_name::dns_parse_name;
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
@@ -28,7 +28,7 @@ impl RR_NSEC {
             bitmap: Vec::new(),
         }
     }
-    pub fn set(&mut self, domain: String, bitmap: Vec<DNS_RR_type>) {
+    pub fn set(&mut self, domain: String, bitmap: Vec<DnsRRType>) {
         self.domain = domain;
         let mut sorted_bitmap = bitmap;
         sorted_bitmap.sort_by_key(|x| u16::from(*x));
@@ -54,9 +54,9 @@ impl Display for RR_NSEC {
     }
 }
 
-impl DNSRecord for RR_NSEC {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::NSEC
+impl DnsRecord for RR_NSEC {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::NSEC
     }
 
     fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {

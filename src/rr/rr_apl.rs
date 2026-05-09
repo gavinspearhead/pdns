@@ -1,9 +1,9 @@
 use crate::dns_helper::{
     dns_append_u16, dns_append_u8, dns_parse_slice, dns_read_u16, dns_read_u8, names_list,
 };
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::{ParseErrorType, ParseError};
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
+use crate::errors::{ParseError, ParseErrorType};
 use std::fmt::{Display, Formatter};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -119,9 +119,9 @@ impl Display for ApItem {
     }
 }
 
-impl DNSRecord for RR_APL {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::APL
+impl DnsRecord for RR_APL {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::APL
     }
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
         let mut res = Vec::new();

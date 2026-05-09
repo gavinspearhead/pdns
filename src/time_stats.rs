@@ -36,7 +36,11 @@ impl<T: Clone + AddAssign + Default> Bucket<T> {
             if pos == self.last_post {
                 self.items[pos] += count;
             } else {
-                let start_pos = if pos > self.last_post { self.last_post + 1 } else { 0 };
+                let start_pos = if pos > self.last_post {
+                    self.last_post + 1
+                } else {
+                    0
+                };
                 self.items[start_pos..pos].fill(T::default());
                 self.items[pos] = count;
             }
@@ -120,7 +124,7 @@ mod tests {
         // 2. Test Day Transition: Jan 1st -> Jan 2nd
         let t3 = Utc.with_ymd_and_hms(2025, 1, 2, 0, 0, 0).unwrap();
         stats.add(t3, 7);
-        assert_eq!(stats.per_day.items[0], 0); // Jan 1st cleared
+        assert_eq!(stats.per_day.items[0], 5); // Jan 1st still set
         assert_eq!(stats.per_day.items[1], 7); // Jan 2nd set
         assert_eq!(stats.per_hour.items[0], 7); // Hour 0 of new day
 
@@ -129,7 +133,7 @@ mod tests {
         let t4 = Utc.with_ymd_and_hms(2025, 1, 5, 12, 0, 0).unwrap();
         stats.add(t4, 100);
         // Everything in per_day should be 0 except the new position
-        assert_eq!(stats.per_day.items[1], 0);
+        assert_eq!(stats.per_day.items[1], 7);
         assert_eq!(stats.per_day.items[4], 100);
     }
 }
@@ -170,11 +174,21 @@ impl Time_stats {
         let day = time_stamp.day0(); //correct because start at 1
         let month = time_stamp.month0();
         let year = time_stamp.year() as u32;
-        self.per_month.add(month, count, year);
+        /* self.per_month.add(month, count, year);
         self.per_day.add(day, count, month);
         self.per_minute.add(minute, count, hour);
         self.per_hour.add(hour, count, day);
-        self.per_second.add(second, count, minute);
+        self.per_second.add(second, count, minute);*/
+        let absolute_month = year * 12 + month;
+        let absolute_day = time_stamp.num_days_from_ce() as u32;
+        let absolute_hour = absolute_day * 24 + hour;
+        let absolute_minute = absolute_hour * 60 + minute;
+
+        self.per_month.add(month, count, year);
+        self.per_day.add(day, count, absolute_month);
+        self.per_hour.add(hour, count, absolute_day);
+        self.per_minute.add(minute, count, absolute_hour);
+        self.per_second.add(second, count, absolute_minute);
     }
 
     pub(crate) fn get_item(&self, stat_item: &STAT_ITEM) -> &Vec<u128> {

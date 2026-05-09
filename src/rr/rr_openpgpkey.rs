@@ -1,6 +1,6 @@
 use crate::dns_helper::names_list;
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use base64::Engine;
@@ -32,9 +32,9 @@ impl Display for RR_OPENPGPKEY {
     }
 }
 
-impl DNSRecord for RR_OPENPGPKEY {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::OPENPGPKEY
+impl DnsRecord for RR_OPENPGPKEY {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::OPENPGPKEY
     }
 
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {

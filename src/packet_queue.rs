@@ -1,9 +1,9 @@
 use chrono::{DateTime, Utc};
+use pcap::Linktype;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
-use pcap::Linktype;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub(crate) struct PacketQueue {
     queue: Arc<Mutex<VecDeque<Option<(Vec<u8>, DateTime<Utc>, Linktype)>>>>,
 }
@@ -19,14 +19,32 @@ impl PacketQueue {
         }
     }
     #[inline]
-    pub fn push_back(&self, packet: Option<(Vec<u8>, DateTime<Utc>, Linktype)>) {
-        let mut queue = self.queue.lock().unwrap();
-        if queue.len() < Self::MAX_QUEUE_SIZE {
+    pub fn push_back(&self, packet: Option<(Vec<u8>, DateTime<Utc>, Linktype)>) -> bool {
+        let mut queue = self.queue.lock().unwrap_or_else(|poisoned| {
+            // Clear the poison and recover the data
+            poisoned.into_inner()
+        });
+        if queue.len() < Self::MAX_QUEUE_SIZE || packet == None {
             queue.push_back(packet);
+            true
+        } else {
+            false
         }
     }
     #[inline]
     pub fn pop_front(&self) -> Option<Option<(Vec<u8>, DateTime<Utc>, Linktype)>> {
-        self.queue.lock().unwrap().pop_front()
+        self.queue
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                // Clear the poison and recover the data
+                poisoned.into_inner()
+            })
+            .pop_front()
+    }
+}
+
+impl Default for PacketQueue {
+    fn default() -> Self {
+        Self::new()
     }
 }

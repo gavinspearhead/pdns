@@ -1,7 +1,7 @@
 use crate::dns_helper::{dns_read_u16, dns_read_u8, names_list};
 use crate::dns_name::dns_parse_name;
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, Default)]
@@ -37,7 +37,7 @@ impl RR_DSYNC {
 
 impl Display for RR_DSYNC {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match DNS_RR_type::find(self.rrtype) {
+        match DnsRRType::find(self.rrtype) {
             Ok(rrtype) => write!(
                 f,
                 "{} {} {} {}",
@@ -48,9 +48,9 @@ impl Display for RR_DSYNC {
     }
 }
 
-impl DNSRecord for RR_DSYNC {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::DSYNC
+impl DnsRecord for RR_DSYNC {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::DSYNC
     }
 
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {

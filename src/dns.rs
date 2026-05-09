@@ -1,6 +1,6 @@
-use crate::errors::DNS_Error_Type::Invalid_Param;
+use crate::errors::DnsErrorType::Invalid_Param;
 use crate::errors::ParseErrorType::Invalid_Parameter;
-use crate::errors::{DNS_error, ParseError};
+use crate::errors::{DnsError, ParseError};
 use std::fmt;
 use strum_macros::IntoStaticStr;
 use strum_macros::{EnumIter, FromRepr};
@@ -178,10 +178,10 @@ impl SVC_Param_Keys {
     pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
-    pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
+    pub(crate) fn find(val: u16) -> Result<Self, DnsError> {
         match SVC_Param_Keys::from_repr(val) {
             Some(x) => Ok(x),
-            None => Err(DNS_error::new(Invalid_Param, &format!("{val}"))),
+            None => Err(DnsError::new(Invalid_Param, &format!("{val}"))),
         }
     }
 }

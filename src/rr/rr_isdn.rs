@@ -1,6 +1,6 @@
 use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list, parse_dns_str};
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -45,9 +45,9 @@ impl Display for RR_ISDN {
     }
 }
 
-impl DNSRecord for RR_ISDN {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::ISDN
+impl DnsRecord for RR_ISDN {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::ISDN
     }
 
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {

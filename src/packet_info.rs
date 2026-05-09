@@ -1,6 +1,6 @@
-use crate::dns_protocol::DNSProtocol;
-use crate::dns_record::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_protocol::DnsProtocol;
+use crate::dns_record::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use asn_db2::{Database, IpEntry};
 use chrono::{DateTime, Utc};
 use std::fmt::Write;
@@ -19,8 +19,8 @@ pub(crate) struct PacketInfo {
     pub ip_len: u16,
     pub frame_len: u32,
     pub data_len: u32,
-    pub protocol: DNSProtocol,
-    pub dns_records: Vec<DNSRecord>,
+    pub protocol: DnsProtocol,
+    pub dns_records: Vec<DnsRecord>,
 }
 
 impl PacketInfo {
@@ -34,7 +34,7 @@ impl PacketInfo {
             ip_len: 0,
             frame_len: 0,
             data_len: 0,
-            protocol: DNSProtocol::UDP,
+            protocol: DnsProtocol::UDP,
             dns_records: Vec::new(),
         }
     }
@@ -48,7 +48,7 @@ impl PacketInfo {
         self.sp = port;
     }
     #[inline]
-    pub fn set_protocol(&mut self, protocol: DNSProtocol) {
+    pub fn set_protocol(&mut self, protocol: DnsProtocol) {
         self.protocol = protocol;
     }
     #[inline]
@@ -72,7 +72,7 @@ impl PacketInfo {
         self.data_len = len;
     }
     #[inline]
-    pub fn add_dns_record(&mut self, rec: DNSRecord) {
+    pub fn add_dns_record(&mut self, rec: DnsRecord) {
         self.dns_records.push(rec);
     }
 
@@ -120,8 +120,7 @@ impl PacketInfo {
                 i.name,
                 i.rdata,
                 1
-            )?
-
+            )?;
         }
         Ok(s)
     }
@@ -135,7 +134,7 @@ impl PacketInfo {
     }
     pub fn update_asn(&mut self, asn_db: &Database) {
         for record in &mut self.dns_records {
-            if matches!(record.rr_type, DNS_RR_type::A | DNS_RR_type::AAAA) {
+            if matches!(record.rr_type, DnsRRType::A | DnsRRType::AAAA) {
                 if let Some(ip_asn_data) = PacketInfo::find_asn(asn_db, &record.rdata) {
                     match ip_asn_data {
                         IpEntry::V4(v4) => {

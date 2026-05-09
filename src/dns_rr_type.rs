@@ -1,6 +1,6 @@
-use crate::dns_rr_type::DNS_RR_type::Private;
-use crate::errors::DNS_Error_Type::Invalid_RR;
-use crate::errors::DNS_error;
+use crate::dns_rr_type::DnsRRType::Private;
+use crate::errors::DnsError;
+use crate::errors::DnsErrorType::Invalid_RR;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
@@ -24,9 +24,8 @@ use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
     Ord,
     Default,
 )]
-
 #[repr(u16)]
-pub enum DNS_RR_type {
+pub enum DnsRRType {
     #[default]
     A = 1,
     A6 = 38,
@@ -130,53 +129,53 @@ pub enum DNS_RR_type {
     Private = 65534,
 }
 
-impl DNS_RR_type {
+impl DnsRRType {
     #[inline]
     pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
 
-    pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
-        match DNS_RR_type::from_repr(val) {
+    pub(crate) fn find(val: u16) -> Result<Self, DnsError> {
+        match DnsRRType::from_repr(val) {
             Some(x) => Ok(x),
             None => {
                 if val > 65280 {
                     Ok(Private)
                 } else {
-                    Err(DNS_error::new(Invalid_RR, &format!("{val}")))
+                    Err(DnsError::new(Invalid_RR, &format!("{val}")))
                 }
             }
         }
     }
 
     #[inline]
-    pub(crate) fn collect_dns_rr_types() -> Vec<DNS_RR_type> {
-        DNS_RR_type::iter().collect::<Vec<_>>()
+    pub(crate) fn collect_dns_rr_types() -> Vec<DnsRRType> {
+        DnsRRType::iter().collect::<Vec<_>>()
     }
     #[inline]
-    pub(crate) fn from_string(s: &str) -> Result<DNS_RR_type, strum::ParseError> {
-        DNS_RR_type::from_str(s)
+    pub(crate) fn from_string(s: &str) -> Result<DnsRRType, strum::ParseError> {
+        DnsRRType::from_str(s)
     }
 }
 
-impl fmt::Display for DNS_RR_type {
+impl fmt::Display for DnsRRType {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_str())
     }
 }
 
-impl From<DNS_RR_type> for u16 {
+impl From<DnsRRType> for u16 {
     #[inline]
-    fn from(t: DNS_RR_type) -> Self {
+    fn from(t: DnsRRType) -> Self {
         t as u16
     }
 }
 
 // (Optional) If you also want ergonomic conversion from references:
-impl From<&DNS_RR_type> for u16 {
+impl From<&DnsRRType> for u16 {
     #[inline]
-    fn from(t: &DNS_RR_type) -> Self {
+    fn from(t: &DnsRRType) -> Self {
         (*t) as u16
     }
 }
@@ -184,29 +183,29 @@ impl From<&DNS_RR_type> for u16 {
 mod tests1 {
     use std::str::FromStr;
 
-    use crate::dns_rr_type::DNS_RR_type;
+    use crate::dns_rr_type::DnsRRType;
 
     #[test]
     fn test_dns_rr() {
-        assert_eq!(DNS_RR_type::HTTPS.to_str(), "HTTPS");
-        assert_eq!(DNS_RR_type::AAAA.to_str(), "AAAA");
+        assert_eq!(DnsRRType::HTTPS.to_str(), "HTTPS");
+        assert_eq!(DnsRRType::AAAA.to_str(), "AAAA");
     }
     #[test]
     fn test_dns_rr1() {
-        assert_eq!(DNS_RR_type::from_str("HTTPS").unwrap(), DNS_RR_type::HTTPS);
-        assert_eq!(DNS_RR_type::from_str("AAAA").unwrap(), DNS_RR_type::AAAA);
+        assert_eq!(DnsRRType::from_str("HTTPS").unwrap(), DnsRRType::HTTPS);
+        assert_eq!(DnsRRType::from_str("AAAA").unwrap(), DnsRRType::AAAA);
         assert_eq!(
-            DNS_RR_type::from_str("NSEC3PARAM").unwrap(),
-            DNS_RR_type::NSEC3PARAM
+            DnsRRType::from_str("NSEC3PARAM").unwrap(),
+            DnsRRType::NSEC3PARAM
         );
     }
 
     #[test]
     fn test_dns_rr2() {
-        assert_eq!(DNS_RR_type::find(1).unwrap(), DNS_RR_type::A);
-        assert_eq!(DNS_RR_type::find(28).unwrap(), DNS_RR_type::AAAA);
-        assert_eq!(DNS_RR_type::find(65534).unwrap(), DNS_RR_type::Private);
-        assert!(DNS_RR_type::find(0).is_err());
-        assert!(DNS_RR_type::find(999).is_err());
+        assert_eq!(DnsRRType::find(1).unwrap(), DnsRRType::A);
+        assert_eq!(DnsRRType::find(28).unwrap(), DnsRRType::AAAA);
+        assert_eq!(DnsRRType::find(65534).unwrap(), DnsRRType::Private);
+        assert!(DnsRRType::find(0).is_err());
+        assert!(DnsRRType::find(999).is_err());
     }
 }

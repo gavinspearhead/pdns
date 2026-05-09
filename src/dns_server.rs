@@ -4,7 +4,7 @@ use base64::engine::general_purpose::STANDARD;
 use crate::dns_class::DnsClass;
 use crate::dns_packet::{DnsHeader, DnsQuestion};
 use crate::dns_reply_type::DnsReplyType;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_rr_type::DnsRRType;
 use crate::rr::rr_a::RR_A;
 use crate::skiplist::SkipList;
 use base64::Engine;
@@ -15,7 +15,7 @@ use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{filter, fmt, reload, Layer};
 pub mod dns_record_trait;
-use crate::dns_record_trait::DNSRecord;
+use crate::dns_record_trait::DnsRecord;
 
 pub mod config;
 pub mod dns;
@@ -137,7 +137,7 @@ pub(crate) fn make_reply(
     let mut offset = 0;
     let ttl = 60;
     match dns_query.dns_rr_type {
-        DNS_RR_type::A => {
+        DnsRRType::A => {
             let mut primary_record = RR_A::new();
             let mut secondary_record = RR_A::new();
             primary_record.set(&Ipv4Addr::new(192, 168, 178, 121));
@@ -150,7 +150,7 @@ pub(crate) fn make_reply(
                 ttl,
             )?;
         }
-        DNS_RR_type::MX => {
+        DnsRRType::MX => {
             let mut primary_record = RR_MX::new();
             primary_record.set(10, "mail_mx.nu.nl");
             let mut sec_record = RR_MX::new();
@@ -163,7 +163,7 @@ pub(crate) fn make_reply(
                 ttl,
             )?;
         }
-        DNS_RR_type::NAPTR => {
+        DnsRRType::NAPTR => {
             let mut primary_record = RR_NAPTR::new();
             primary_record.set(20, 10, "s", "http+N2L+N2C+N2R", "", "www.netmeister.org");
             let mut sec_record = RR_NAPTR::new();
@@ -183,54 +183,54 @@ pub(crate) fn make_reply(
                 ttl,
             )?;
         }
-        DNS_RR_type::MINFO => {
+        DnsRRType::MINFO => {
             let mut primary_record = RR_MINFO::new();
             primary_record.set("mail.nu.nl", "foomail.nu.nl");
             offset = add_records_with_log(dns_answer, dns_query, &[&primary_record], 0, ttl)?;
         }
-        DNS_RR_type::MG => {
+        DnsRRType::MG => {
             let mut primary_record = RR_MG::new();
             primary_record.set("mail.nu.nl");
             offset = add_records_with_log(dns_answer, dns_query, &[&primary_record], 0, ttl)?;
         }
-        DNS_RR_type::MF => {
+        DnsRRType::MF => {
             let mut primary_record = RR_MF::new();
             primary_record.set("mail.nu.nl");
             offset = add_records_with_log(dns_answer, dns_query, &[&primary_record], 0, ttl)?;
         }
-        DNS_RR_type::MD => {
+        DnsRRType::MD => {
             let mut primary_record = RR_MD::new();
             primary_record.set("mail.nu.nl");
             offset = add_records_with_log(dns_answer, dns_query, &[&primary_record], 0, ttl)?;
         }
-        DNS_RR_type::MB => {
+        DnsRRType::MB => {
             let mut primary_record = RR_MB::new();
             primary_record.set("mail.nu.nl");
             offset = add_records_with_log(dns_answer, dns_query, &[&primary_record], 0, ttl)?;
         }
-        DNS_RR_type::MAILB => {
+        DnsRRType::MAILB => {
             let mut primary_record = RR_MAILB::new();
             primary_record.set(Ipv4Addr::new(192, 168, 178, 121));
             offset = add_records_with_log(dns_answer, dns_query, &[&primary_record], 0, ttl)?;
         }
-        DNS_RR_type::MAILA => {
+        DnsRRType::MAILA => {
             let mut primary_record = RR_MAILA::new();
             primary_record.set(Ipv4Addr::new(192, 168, 178, 121));
             offset = add_records_with_log(dns_answer, dns_query, &[&primary_record], 0, ttl)?;
         }
-        DNS_RR_type::NULL => {
+        DnsRRType::NULL => {
             let mut null_record = RR_NULL::new();
             null_record.set(&[1, 2, 3, 4, 5, 6, 7, 8, 9]);
             add_records_with_log(dns_answer, dns_query, &[&null_record], 0, ttl)?;
         }
-        DNS_RR_type::AAAA => {
+        DnsRRType::AAAA => {
             let mut aaaa_record = RR_AAAA::new();
             aaaa_record.set(&Ipv6Addr::new(
                 0x2a02, 0xa469, 0x4c52, 0x0001, 0x1ac0, 0x4dff, 0xfeaf, 0x8631,
             ));
             add_records_with_log(dns_answer, dns_query, &[&aaaa_record], 0, ttl)?;
         }
-        DNS_RR_type::A6 => {
+        DnsRRType::A6 => {
             let mut a6_record = RR_A6::new();
             a6_record.set(
                 64,
@@ -239,45 +239,45 @@ pub(crate) fn make_reply(
             );
             add_records_with_log(dns_answer, dns_query, &[&a6_record], 0, ttl)?;
         }
-        DNS_RR_type::NS => {
+        DnsRRType::NS => {
             let mut ns_record1 = RR_NS::new();
             let mut ns_record2 = RR_NS::new();
             ns_record1.set("ns.nu.nl");
             ns_record2.set("ns.google.com");
             add_records_with_log(dns_answer, dns_query, &[&ns_record1, &ns_record2], 0, ttl)?;
         }
-        DNS_RR_type::CNAME => {
+        DnsRRType::CNAME => {
             let mut cname_record = RR_CNAME::new();
             cname_record.set("test.nu.nl");
             add_records_with_log(dns_answer, dns_query, &[&cname_record], 0, ttl)?;
         }
-        DNS_RR_type::DNAME => {
+        DnsRRType::DNAME => {
             let mut dname_record = RR_DNAME::new();
             dname_record.set("testdname.nu.nl");
             add_records_with_log(dns_answer, dns_query, &[&dname_record], 0, ttl)?;
         }
-        DNS_RR_type::PTR => {
+        DnsRRType::PTR => {
             let mut ptr_record = RR_PTR::new();
             ptr_record.set("test.nu.nl");
             add_records_with_log(dns_answer, dns_query, &[&ptr_record], 0, ttl)?;
         }
-        DNS_RR_type::WALLET => {
+        DnsRRType::WALLET => {
             let mut wallet_record = RR_WALLET::new();
             wallet_record.set("WALLET STRING");
             add_records_with_log(dns_answer, dns_query, &[&wallet_record], 0, ttl)?;
         }
-        DNS_RR_type::AVC => {
+        DnsRRType::AVC => {
             let mut avc_record = RR_AVC::new();
             avc_record.set("This is a serious test");
             avc_record.set("And a second string");
             add_records_with_log(dns_answer, dns_query, &[&avc_record], 0, ttl)?;
         }
-        DNS_RR_type::TALINK => {
+        DnsRRType::TALINK => {
             let mut talink_record = RR_TALINK::new();
             talink_record.set(".", "_talink1.dns.netmeister.org.");
             add_records_with_log(dns_answer, dns_query, &[&talink_record], 0, ttl)?;
         }
-        DNS_RR_type::SSHFP => {
+        DnsRRType::SSHFP => {
             let mut sshfp_record = RR_SSHFP::new();
             sshfp_record.set(
                 1,
@@ -286,12 +286,12 @@ pub(crate) fn make_reply(
             );
             add_records_with_log(dns_answer, dns_query, &[&sshfp_record], 0, ttl)?;
         }
-        DNS_RR_type::SPF => {
+        DnsRRType::SPF => {
             let mut spf_record = RR_SPF::new();
             spf_record.set("v=spf1 a mx -all");
             add_records_with_log(dns_answer, dns_query, &[&spf_record], 0, ttl)?;
         }
-        DNS_RR_type::TXT => {
+        DnsRRType::TXT => {
             let mut txt_record = RR_TXT::new();
             txt_record.set("This is a serious test");
             txt_record.set("And a second string");
@@ -302,22 +302,22 @@ pub(crate) fn make_reply(
             add_records_with_log(dns_answer, dns_query, &[&txt_record], 0, ttl)?;
         }
 
-        DNS_RR_type::GID => {
+        DnsRRType::GID => {
             let mut gid_record = RR_GID::new();
             gid_record.set(0x0123_4567);
             add_records_with_log(dns_answer, dns_query, &[&gid_record], 0, ttl)?;
         }
-        DNS_RR_type::UID => {
+        DnsRRType::UID => {
             let mut uid_record = RR_UID::new();
             uid_record.set(1_234_567);
             add_records_with_log(dns_answer, dns_query, &[&uid_record], 0, ttl)?;
         }
-        DNS_RR_type::CAA => {
+        DnsRRType::CAA => {
             let mut caa_record = RR_CAA::new();
             caa_record.set(0, "issue", "letsencrypt.org");
             add_records_with_log(dns_answer, dns_query, &[&caa_record], 0, ttl)?;
         }
-        DNS_RR_type::SOA => {
+        DnsRRType::SOA => {
             let mut soa_record = RR_SOA::new();
             soa_record.set(
                 "ns1.nu.nl.",
@@ -330,49 +330,49 @@ pub(crate) fn make_reply(
             );
             add_records_with_log(dns_answer, dns_query, &[&soa_record], 0, ttl)?;
         }
-        DNS_RR_type::URI => {
+        DnsRRType::URI => {
             let mut uri_record = RR_URI::new();
             uri_record.set(1, 2, "https://test.nu.nl/foo.html".as_ref());
             add_records_with_log(dns_answer, dns_query, &[&uri_record], 0, ttl)?;
         }
-        DNS_RR_type::X25 => {
+        DnsRRType::X25 => {
             let mut x25_record = RR_X25::new();
             x25_record.set("124356890");
             debug!("FFOO {x25_record}");
             add_records_with_log(dns_answer, dns_query, &[&x25_record], 0, ttl)?;
         }
-        DNS_RR_type::WKS => {
+        DnsRRType::WKS => {
             let mut wks_record = RR_WKS::new();
             wks_record.set("10.1.2.4".parse().unwrap(), 6, &[25, 80, 443, 23, 22]);
             let mut wks_record1 = RR_WKS::new();
             wks_record1.set("10.1.2.4".parse().unwrap(), 17, &[53, 5353, 5355]);
             add_records_with_log(dns_answer, dns_query, &[&wks_record, &wks_record1], 0, ttl)?;
         }
-        DNS_RR_type::TLSA => {
+        DnsRRType::TLSA => {
             let mut tlsa_record = RR_TLSA::new();
             tlsa_record.set(3, 1, 1, &vec![0x12, 0x34, 0x56, 0x78]);
             add_records_with_log(dns_answer, dns_query, &[&tlsa_record], 0, ttl)?;
         }
-        DNS_RR_type::CERT => {
+        DnsRRType::CERT => {
             let mut cert_record = RR_CERT::new();
             cert_record.set(6, 0, 0, b"99CE1DC7770AC5A809A60DCD66CE4FE96F6BD3D7");
             add_records_with_log(dns_answer, dns_query, &[&cert_record], 0, ttl)?;
         }
-        DNS_RR_type::CSYNC => {
+        DnsRRType::CSYNC => {
             let mut csync_record = RR_CSYNC::new();
             csync_record.set(
                 2_021_071_001,
                 3,
                 &[
-                    DNS_RR_type::A,
-                    DNS_RR_type::AAAA,
-                    DNS_RR_type::NS,
-                    DNS_RR_type::CNAME,
+                    DnsRRType::A,
+                    DnsRRType::AAAA,
+                    DnsRRType::NS,
+                    DnsRRType::CNAME,
                 ],
             );
             add_records_with_log(dns_answer, dns_query, &[&csync_record], 0, ttl)?;
         }
-        DNS_RR_type::DHCID => {
+        DnsRRType::DHCID => {
             let mut dhcid_record = RR_DHCID::new();
             dhcid_record.set(
                 1,
@@ -384,27 +384,27 @@ pub(crate) fn make_reply(
             );
             add_records_with_log(dns_answer, dns_query, &[&dhcid_record], 0, ttl)?;
         }
-        DNS_RR_type::EUI48 => {
+        DnsRRType::EUI48 => {
             let mut eui48_record = RR_EUI48::new();
             eui48_record.set(&[100, 200, 44, 23, 45, 33]);
             add_records_with_log(dns_answer, dns_query, &[&eui48_record], 0, ttl)?;
         }
-        DNS_RR_type::EUI64 => {
+        DnsRRType::EUI64 => {
             let mut eui64_record = RR_EUI64::new();
             eui64_record.set(&[100, 200, 34, 22, 44, 23, 45, 33]);
             add_records_with_log(dns_answer, dns_query, &[&eui64_record], 0, ttl)?;
         }
-        DNS_RR_type::GPOS => {
+        DnsRRType::GPOS => {
             let mut gpos_record = RR_GPOS::new();
             gpos_record.set("40.731", "-73.9919", "10.0");
             add_records_with_log(dns_answer, dns_query, &[&gpos_record], 0, ttl)?;
         }
-        DNS_RR_type::HINFO => {
+        DnsRRType::HINFO => {
             let mut hinfo_record = RR_HINFO::new();
             hinfo_record.set("PDP-11", "UNIX");
             add_records_with_log(dns_answer, dns_query, &[&hinfo_record], 0, ttl)?;
         }
-        DNS_RR_type::HIP => {
+        DnsRRType::HIP => {
             let mut hip_record = RR_HIP::new();
             hip_record.set(
                 2,
@@ -428,19 +428,19 @@ pub(crate) fn make_reply(
             );
             add_records_with_log(dns_answer, dns_query, &[&hip_record], 0, ttl)?;
         }
-        DNS_RR_type::LP => {
+        DnsRRType::LP => {
             let mut lp_record1 = RR_LP::new();
             lp_record1.set(10, "l64.nu.nl");
             let mut lp_record2 = RR_LP::new();
             lp_record2.set(20, "l32.nu.nl");
             add_records_with_log(dns_answer, dns_query, &[&lp_record1, &lp_record2], 0, ttl)?;
         }
-        DNS_RR_type::LOC => {
+        DnsRRType::LOC => {
             let mut loc_record = RR_LOC::new();
             loc_record.set("34 03 00.000 N 118 14 00.000 W -10.00m 20.00m 5.00m 10.00m");
             add_records_with_log(dns_answer, dns_query, &[&loc_record], 0, ttl)?;
         }
-        DNS_RR_type::L64 => {
+        DnsRRType::L64 => {
             let mut l64_record = RR_L64::new();
             l64_record.set(
                 10,
@@ -450,12 +450,12 @@ pub(crate) fn make_reply(
             );
             add_records_with_log(dns_answer, dns_query, &[&l64_record], 0, ttl)?;
         }
-        DNS_RR_type::L32 => {
+        DnsRRType::L32 => {
             let mut l32_record = RR_L32::new();
             l32_record.set(10, "203.0.113.44".parse().unwrap_or(Ipv4Addr::UNSPECIFIED));
             add_records_with_log(dns_answer, dns_query, &[&l32_record], 0, ttl)?;
         }
-        DNS_RR_type::SINK => {
+        DnsRRType::SINK => {
             let mut sink_record = RR_SINK::new();
             let val = STANDARD
                 .decode("ZG5zLm5ldG1laXN0ZXIub3JnLg==")
@@ -464,22 +464,22 @@ pub(crate) fn make_reply(
             sink_record.set(64, 1, &val);
             add_records_with_log(dns_answer, dns_query, &[&sink_record], 0, ttl)?;
         }
-        DNS_RR_type::RT => {
+        DnsRRType::RT => {
             let mut rt_record = RR_RT::new();
             rt_record.set(10, "rttost.nu.nl");
             add_records_with_log(dns_answer, dns_query, &[&rt_record], 0, ttl)?;
         }
-        DNS_RR_type::KX => {
+        DnsRRType::KX => {
             let mut kx_record = RR_KX::new();
             kx_record.set(10, "kxtost.nu.nl");
             add_records_with_log(dns_answer, dns_query, &[&kx_record], 0, ttl)?;
         }
-        DNS_RR_type::ISDN => {
+        DnsRRType::ISDN => {
             let mut isdn_record = RR_ISDN::new();
             isdn_record.set("150862028003217", "004");
             add_records_with_log(dns_answer, dns_query, &[&isdn_record], 0, ttl)?;
         }
-        DNS_RR_type::IPSECKEY => {
+        DnsRRType::IPSECKEY => {
             let mut ipseckey_record = RR_IPSECKEY::new();
             ipseckey_record.set(
                 10,
@@ -496,27 +496,27 @@ pub(crate) fn make_reply(
             );
             add_records_with_log(dns_answer, dns_query, &[&ipseckey_record], 0, ttl)?;
         }
-        DNS_RR_type::KEY => {
+        DnsRRType::KEY => {
             let mut key_record = RR_KEY::new();
             key_record.set(512, 255, 2, &STANDARD.decode("ACDtkdVR2HWmc0HPEwkrM+SOrWZd8yPTAytLYZj2u33KgwABAgAg6jav9rTK68C8j+kfLv7+re8KAb1qJXqdSrmL+1l3Js4=").unwrap_or_default());
             add_records_with_log(dns_answer, dns_query, &[&key_record], 0, ttl)?;
         }
-        DNS_RR_type::IPN => {
+        DnsRRType::IPN => {
             let mut ipn_record = RR_IPN::new();
             ipn_record.set(0xdead_beef_cafe_babe_u64);
             add_records_with_log(dns_answer, dns_query, &[&ipn_record], 0, ttl)?;
         }
-        DNS_RR_type::RESINFO => {
+        DnsRRType::RESINFO => {
             let mut res_info_record = RR_RESINFO::new();
             res_info_record.set("qnamemin");
             res_info_record.set("exterr-16.15.17");
             res_info_record.set("resinfourl=https://resolver.example.com/guide");
             add_records_with_log(dns_answer, dns_query, &[&res_info_record], 0, ttl)?;
         }
-        DNS_RR_type::RRSIG => {
+        DnsRRType::RRSIG => {
             let mut rrsig_record = RR_RRSIG::new();
             rrsig_record.set(
-                DNS_RR_type::A,
+                DnsRRType::A,
                 1,
                 1,
                 64,
@@ -528,25 +528,25 @@ pub(crate) fn make_reply(
             );
             add_records_with_log(dns_answer, dns_query, &[&rrsig_record], 0, ttl)?;
         }
-        DNS_RR_type::RP => {
+        DnsRRType::RP => {
             let mut px_record = RR_RP::new();
             px_record.set("jschauma.netmeister.org.", "contact.netmeister.org.");
             add_records_with_log(dns_answer, dns_query, &[&px_record], 0, ttl)?;
         }
-        DNS_RR_type::PX => {
+        DnsRRType::PX => {
             let mut px_record = RR_PX::new();
             px_record.set(10, "ab.net2.it.", "O-ab.PRMD-net2.ADMDb.C-it.");
             add_records_with_log(dns_answer, dns_query, &[&px_record], 0, ttl)?;
         }
-        DNS_RR_type::NXT => {
+        DnsRRType::NXT => {
             let mut nxt_record = RR_NXT::new();
             nxt_record.set(
                 "foo".into(),
-                vec![DNS_RR_type::TXT, DNS_RR_type::OPENPGPKEY, DNS_RR_type::CAA],
+                vec![DnsRRType::TXT, DnsRRType::OPENPGPKEY, DnsRRType::CAA],
             );
             add_records_with_log(dns_answer, dns_query, &[&nxt_record], 0, ttl)?;
         }
-        DNS_RR_type::OPENPGPKEY => {
+        DnsRRType::OPENPGPKEY => {
             let mut openpgpkey_record = RR_OPENPGPKEY::new();
             openpgpkey_record.set(&[
                 0x99, 0x01, 0x0D, 0x04, 0x5C, 0x4D, 0x44, 0x0B, 0x02, 0x03, 0x04, 0x00, 0x02, 0x00,
@@ -556,12 +556,12 @@ pub(crate) fn make_reply(
             ]);
             add_records_with_log(dns_answer, dns_query, &[&openpgpkey_record], 0, ttl)?;
         }
-        DNS_RR_type::NSEC3PARAM => {
+        DnsRRType::NSEC3PARAM => {
             let mut nsec3param_record = RR_NSEC3PARAM::new();
             nsec3param_record.set(1, 0, 15, &[0xCB, 0x49, 0x10, 0x54, 0x66, 0xD3, 0x6A, 0x0D]);
             add_records_with_log(dns_answer, dns_query, &[&nsec3param_record], 0, ttl)?;
         }
-        DNS_RR_type::NSEC3 => {
+        DnsRRType::NSEC3 => {
             let mut nsec3_record = RR_NSEC3::new();
             nsec3_record.set(
                 1,
@@ -569,65 +569,65 @@ pub(crate) fn make_reply(
                 0,
                 b"",
                 b"058AJ9V7U8T8TGT5F9UPL1D5BRDP8JKO",
-                vec![DNS_RR_type::A, DNS_RR_type::A6, DNS_RR_type::CAA],
+                vec![DnsRRType::A, DnsRRType::A6, DnsRRType::CAA],
             );
             add_records_with_log(dns_answer, dns_query, &[&nsec3_record], 0, ttl)?;
         }
-        DNS_RR_type::NSEC => {
+        DnsRRType::NSEC => {
             let mut nsec_record = RR_NSEC::new();
             nsec_record.set(
                 "new.test.nu.nl".into(),
                 vec![
-                    DNS_RR_type::A,
-                    DNS_RR_type::AAAA,
-                    DNS_RR_type::NS,
-                    DNS_RR_type::CNAME,
-                    DNS_RR_type::TXT,
-                    DNS_RR_type::CAA,
+                    DnsRRType::A,
+                    DnsRRType::AAAA,
+                    DnsRRType::NS,
+                    DnsRRType::CNAME,
+                    DnsRRType::TXT,
+                    DnsRRType::CAA,
                 ],
             );
             add_records_with_log(dns_answer, dns_query, &[&nsec_record], 0, ttl)?;
         }
-        DNS_RR_type::NSAP_PTR => {
+        DnsRRType::NSAP_PTR => {
             let mut nsap_ptr_record = RR_NSAP_PTR::new();
             nsap_ptr_record.set("test_nsap_ptr.nu.nl");
             add_records_with_log(dns_answer, dns_query, &[&nsap_ptr_record], 0, ttl)?;
         }
-        DNS_RR_type::EID => {
+        DnsRRType::EID => {
             let mut eid_record = RR_EID::new();
             let nsap_bytes = hex::decode("CAFEFACE1234").unwrap_or_default();
             eid_record.set(&nsap_bytes);
             add_records_with_log(dns_answer, dns_query, &[&eid_record], 0, ttl)?;
         }
-        DNS_RR_type::NSAP => {
+        DnsRRType::NSAP => {
             let mut nsap_record = RR_NSAP::new();
             let nsap_bytes =
                 hex::decode("39840f80005a0000000001e13708002010726e00").unwrap_or_default();
             nsap_record.set(&nsap_bytes);
             add_records_with_log(dns_answer, dns_query, &[&nsap_record], 0, ttl)?;
         }
-        DNS_RR_type::DOA => {
+        DnsRRType::DOA => {
             let mut doa_record = RR_DOA::new();
             doa_record.set(0, 1, 2, "test", &[100, 200, 44, 23, 44]);
             add_records_with_log(dns_answer, dns_query, &[&doa_record], 0, ttl)?;
         }
-        DNS_RR_type::NINFO => {
+        DnsRRType::NINFO => {
             let mut ninifo_record = RR_NINFO::new();
             ninifo_record.set("testing 123");
             ninifo_record.set("testing 345");
             add_records_with_log(dns_answer, dns_query, &[&ninifo_record], 0, ttl)?;
         }
-        DNS_RR_type::NID => {
+        DnsRRType::NID => {
             let mut nid_record = RR_NID::new();
             nid_record.set(0, 0x0014_4fff_ff20_ee64);
             add_records_with_log(dns_answer, dns_query, &[&nid_record], 0, ttl)?;
         }
-        DNS_RR_type::CLA => {
+        DnsRRType::CLA => {
             let mut cla_record = RR_CLA::new();
             cla_record.set("TCP-V4-V6");
             add_records_with_log(dns_answer, dns_query, &[&cla_record], 0, ttl)?;
         }
-        DNS_RR_type::CDS => {
+        DnsRRType::CDS => {
             let mut cds_record = RR_CDS::new();
             cds_record.set(
                 56039,
@@ -637,17 +637,17 @@ pub(crate) fn make_reply(
             );
             add_records_with_log(dns_answer, dns_query, &[&cds_record], 0, ttl)?;
         }
-        DNS_RR_type::CDNSKEY => {
+        DnsRRType::CDNSKEY => {
             let mut cdnskey_record = RR_CDNSKEY::new();
             cdnskey_record.set(257, 3, 13, "JErBf5lZ1osSWg7r51+4VfEiWIdONph0L70X0ToT7DkbikKQIp+qvuOOZri7j3qVComv7tgTIBhKxeDQercdKQ==".into());
             add_records_with_log(dns_answer, dns_query, &[&cdnskey_record], 0, ttl)?;
         }
-        DNS_RR_type::SRV => {
+        DnsRRType::SRV => {
             let mut srv_record = RR_SRV::new();
             srv_record.set(10, 1, 443, "test.nu.nl");
             add_records_with_log(dns_answer, dns_query, &[&srv_record], 0, ttl)?;
         }
-        DNS_RR_type::HTTPS => {
+        DnsRRType::HTTPS => {
             let mut https_record = RR_HTTPS::new();
             let https_param: HttpsSvcParam =
                 HttpsSvcParam::Alpn(vec!["h1".to_string(), "h2".to_string()]);
@@ -672,7 +672,7 @@ pub(crate) fn make_reply(
 fn add_records_with_log(
     dns_answer: &mut DnsAnswer,
     question: &DnsQuestion,
-    records: &[&impl DNSRecord],
+    records: &[&impl DnsRecord],
     offset_in: usize,
     ttl: u32,
 ) -> Result<usize, Box<dyn std::error::Error>> {

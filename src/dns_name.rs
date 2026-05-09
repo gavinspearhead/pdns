@@ -1,6 +1,6 @@
 use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8};
-use crate::errors::ParseErrorType::{Invalid_Domain_name, Invalid_packet_index};
 use crate::errors::ParseError;
+use crate::errors::ParseErrorType::{Invalid_Domain_name, Invalid_packet_index};
 use std::borrow::Cow;
 use tracing::debug;
 
@@ -263,7 +263,8 @@ fn dns_parse_name_internal(
             // it is just a length value.
             let label_len = usize::from(val & 0x3f);
             idx += 1;
-            let end = idx.checked_add(label_len)
+            let end = idx
+                .checked_add(label_len)
                 .ok_or_else(|| ParseError::new(Invalid_packet_index, &format!("{idx}")))?;
             let label = dns_parse_slice(packet, idx..end)?;
             match std::str::from_utf8(label) {

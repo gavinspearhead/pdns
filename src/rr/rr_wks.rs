@@ -1,9 +1,11 @@
-use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list, parse_bitmap_vec, parse_ipv4_addr};
-use crate::dns_protocol::DNSProtocol;
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::ParseErrorType::Invalid_Parameter;
+use crate::dns_helper::{
+    dns_parse_slice, dns_read_u8, names_list, parse_bitmap_vec, parse_ipv4_addr,
+};
+use crate::dns_protocol::DnsProtocol;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
+use crate::errors::ParseErrorType::Invalid_Parameter;
 use std::fmt::{Display, Formatter};
 use std::net::{IpAddr, Ipv4Addr};
 
@@ -63,7 +65,7 @@ impl RR_WKS {
 
 impl Display for RR_WKS {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let protocol = DNSProtocol::find(self.protocol.into()).unwrap_or_default();
+        let protocol = DnsProtocol::find(self.protocol.into()).unwrap_or_default();
         write!(
             f,
             "{} {} {}",
@@ -77,9 +79,9 @@ impl Display for RR_WKS {
     }
 }
 
-impl DNSRecord for RR_WKS {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::WKS
+impl DnsRecord for RR_WKS {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::WKS
     }
 
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {

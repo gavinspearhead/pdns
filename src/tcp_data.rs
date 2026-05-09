@@ -16,7 +16,7 @@ impl TcpData {
             data: Vec::with_capacity(Self::INIT_LEN),
             max_tcp_len: (max_size as usize)
                 .checked_mul(1024 * 1024)
-                .unwrap_or(10usize * 1024usize * 1024usize ), // convert to megabytes
+                .unwrap_or(10usize * 1024usize * 1024usize), // convert to megabytes
         }
     }
 

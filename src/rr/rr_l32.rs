@@ -1,7 +1,7 @@
 use crate::dns_helper::{dns_parse_slice, dns_read_u16, names_list, parse_ipv4_addr};
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::{ParseErrorType, ParseError};
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
+use crate::errors::{ParseError, ParseErrorType};
 use std::fmt::{Display, Formatter};
 use std::net::{IpAddr, Ipv4Addr};
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -49,9 +49,9 @@ impl Display for RR_L32 {
     }
 }
 
-impl DNSRecord for RR_L32 {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::L32
+impl DnsRecord for RR_L32 {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::L32
     }
 
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {

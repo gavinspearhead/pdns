@@ -1,8 +1,8 @@
 use crate::dns_helper::{dns_read_u32, dns_read_u8, names_list};
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::ParseErrorType::Invalid_Parameter;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
+use crate::errors::ParseErrorType::Invalid_Parameter;
 use std::fmt::{Display, Formatter};
 
 fn decode_gpos_size(val: u8) -> String {
@@ -271,9 +271,9 @@ impl Display for RR_LOC {
     }
 }
 
-impl DNSRecord for RR_LOC {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::LOC
+impl DnsRecord for RR_LOC {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::LOC
     }
 
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {

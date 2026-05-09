@@ -3,8 +3,8 @@ use crate::dns_helper::{
     base32hex_encode, dns_parse_slice, dns_read_u16, dns_read_u8, map_bitmap_to_rr, names_list,
     parse_nsec_bitmap_vec, process_bitmap,
 };
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
@@ -43,7 +43,7 @@ impl RR_NSEC3 {
         iterations: u16,
         salt: &[u8],
         next_owner: &[u8],
-        bitmap: Vec<DNS_RR_type>,
+        bitmap: Vec<DnsRRType>,
     ) {
         assert!(salt.len() < 256 && next_owner.len() < 256);
         self.hash_alg = hash_alg;
@@ -51,7 +51,7 @@ impl RR_NSEC3 {
         self.iterations = iterations;
         self.salt = salt.to_vec();
         self.next_owner = next_owner.to_vec();
-        let mut sorted_bitmap: Vec<DNS_RR_type> = bitmap;
+        let mut sorted_bitmap: Vec<DnsRRType> = bitmap;
         sorted_bitmap.sort_by_key(|x| u16::from(*x));
         self.bitmap = sorted_bitmap.iter().map(u16::from).collect();
     }
@@ -84,9 +84,9 @@ impl Display for RR_NSEC3 {
     }
 }
 
-impl DNSRecord for RR_NSEC3 {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::NSEC3
+impl DnsRecord for RR_NSEC3 {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::NSEC3
     }
 
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {

@@ -2,8 +2,8 @@ use crate::dns_helper::{
     build_bitmap_from_vec, dns_format_name, map_bitmap_to_rr, names_list, parse_bitmap_vec,
 };
 use crate::dns_name::dns_parse_name;
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
@@ -18,9 +18,9 @@ impl RR_NXT {
     pub fn new() -> RR_NXT {
         RR_NXT::default()
     }
-    pub fn set(&mut self, next: String, bitmap: Vec<DNS_RR_type>) {
+    pub fn set(&mut self, next: String, bitmap: Vec<DnsRRType>) {
         self.next = next;
-        let mut sorted_bitmap: Vec<DNS_RR_type> = bitmap;
+        let mut sorted_bitmap: Vec<DnsRRType> = bitmap;
         sorted_bitmap.sort_by_key(|x| u16::from(*x));
         self.bitmap = sorted_bitmap.iter().map(u16::from).collect();
     }
@@ -48,9 +48,9 @@ impl Display for RR_NXT {
     }
 }
 
-impl DNSRecord for RR_NXT {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::NXT
+impl DnsRecord for RR_NXT {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::NXT
     }
 
     fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {

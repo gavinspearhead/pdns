@@ -1,7 +1,7 @@
 use crate::dns_helper::{dns_format_name, dns_parse_slice, dns_read_u16, dns_read_u8, names_list};
 use crate::dns_name::dns_parse_name;
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use base64::Engine;
@@ -69,9 +69,9 @@ impl Display for RR_HIP {
     }
 }
 
-impl DNSRecord for RR_HIP {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::HIP
+impl DnsRecord for RR_HIP {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::HIP
     }
 
     fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {

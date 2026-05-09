@@ -2,15 +2,16 @@ use clap::{arg, builder::PossibleValuesParser, value_parser, ArgAction, Command}
 use serde::{Deserialize, Serialize};
 use serde_json::Error;
 
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_rr_type::DnsRRType;
 use crate::version::{AUTHOR, DESCRIPTION, PROGNAME, VERSION};
+use std::net::{IpAddr, ToSocketAddrs};
 use std::{fs::File, io::BufReader};
 use tracing::{debug, error};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub(crate) struct Config {
-    pub rr_type: Vec<DNS_RR_type>,
+    pub rr_type: Vec<DnsRRType>,
     pub interface: Vec<String>,
     pub filter: String,
     pub output: String,
@@ -49,12 +50,20 @@ pub(crate) struct Config {
     pub stats_dump_interval: u32,
     pub compress_stats: bool,
     pub ports: Vec<u16>,
+    pub ignore_hosts: Vec<String>,
+    pub ignore_addresses: Vec<IpAddr>,
 }
 
 impl Config {
     pub fn new() -> Config {
         Config {
-            rr_type: vec![ DNS_RR_type::A, DNS_RR_type::AAAA, DNS_RR_type::NS, DNS_RR_type::PTR, DNS_RR_type::MX],
+            rr_type: vec![
+                DnsRRType::A,
+                DnsRRType::AAAA,
+                DnsRRType::NS,
+                DnsRRType::PTR,
+                DnsRRType::MX,
+            ],
             interface: Vec::new(),
             filter: String::new(),
             output: String::new(),
@@ -93,21 +102,23 @@ impl Config {
             stats_dump_interval: 3600,
             compress_stats: false,
             ports: vec![53],
+            ignore_hosts: Vec::new(),
+            ignore_addresses: Vec::new(),
         }
     }
 }
 
-pub(crate) fn parse_rrtypes(config_str: &str) -> Vec<DNS_RR_type> {
+pub(crate) fn parse_rrtypes(config_str: &str) -> Vec<DnsRRType> {
     if config_str.is_empty() {
         return Vec::new();
     } else if config_str == "*" {
-        return DNS_RR_type::collect_dns_rr_types();
+        return DnsRRType::collect_dns_rr_types();
     }
-    let rrtypes: Vec<DNS_RR_type> = config_str
+    let rrtypes: Vec<DnsRRType> = config_str
         .split(',')
         .map(str::trim)
         .filter_map(|i| {
-            DNS_RR_type::from_string(i)
+            DnsRRType::from_string(i)
                 .map_err(|_| error!("Invalid RR type: {i}"))
                 .ok()
         })
@@ -117,34 +128,97 @@ pub(crate) fn parse_rrtypes(config_str: &str) -> Vec<DNS_RR_type> {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::parse_rrtypes;
-    use crate::dns_rr_type::DNS_RR_type;
+    use crate::config::{parse_hosts, parse_rrtypes, Config};
+    use crate::dns_rr_type::DnsRRType;
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
     #[test]
     fn test_parse_rrtypes1() {
         assert_eq!(
             parse_rrtypes("A,    AAAA,   A6,HTTPS"),
             vec![
-                DNS_RR_type::A,
-                DNS_RR_type::AAAA,
-                DNS_RR_type::A6,
-                DNS_RR_type::HTTPS
+                DnsRRType::A,
+                DnsRRType::AAAA,
+                DnsRRType::A6,
+                DnsRRType::HTTPS
             ]
         );
     }
+
     #[test]
     fn test_parse_rrtypes2() {
         assert_eq!(
             parse_rrtypes("A,AAAA,A6,HTTPS, NS"),
             vec![
-                DNS_RR_type::A,
-                DNS_RR_type::AAAA,
-                DNS_RR_type::A6,
-                DNS_RR_type::HTTPS,
-                DNS_RR_type::NS
+                DnsRRType::A,
+                DnsRRType::AAAA,
+                DnsRRType::A6,
+                DnsRRType::HTTPS,
+                DnsRRType::NS
             ]
         );
     }
+
+    #[test]
+    fn test_parse_hosts_ipv4_address() {
+        let mut config = Config::new();
+        config.ignore_hosts = vec!["192.0.2.1".to_string()];
+
+        parse_hosts(&mut config);
+
+        assert_eq!(
+            config.ignore_addresses,
+            vec![IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1))]
+        );
+    }
+
+    #[test]
+    fn test_parse_hosts_ipv6_address() {
+        let mut config = Config::new();
+        config.ignore_hosts = vec!["2001:db8::1".to_string()];
+
+        parse_hosts(&mut config);
+
+        assert_eq!(
+            config.ignore_addresses,
+            vec![IpAddr::V6(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 1))]
+        );
+    }
+
+    #[test]
+    fn test_parse_hosts_hostname() {
+        let mut config = Config::new();
+        config.ignore_hosts = vec!["localhost".to_string()];
+
+        parse_hosts(&mut config);
+
+        assert!(!config.ignore_addresses.is_empty());
+        assert!(
+            config.ignore_addresses.iter().any(|ip| ip.is_loopback()),
+            "expected localhost to resolve to at least one loopback address, got {:?}",
+            config.ignore_addresses
+        );
+    }
+}
+
+pub(crate) fn parse_hosts(config: &mut Config) {
+    let mut ignore_addresses: Vec<IpAddr> = Vec::new();
+    for i in &config.ignore_hosts {
+        if let Ok(ip) = i.parse() {
+            ignore_addresses.push(ip);
+        } else {
+            let addresses = format!("{i}:0").to_socket_addrs();
+            if let Ok(addrs) = addresses {
+                for addr in addrs {
+                    ignore_addresses.push(addr.ip());
+                }
+            } else {
+                debug!("Error parsing address: {i}");
+            }
+        }
+    }
+    debug!("ignore_addresses {:?}", &ignore_addresses);
+    config.ignore_addresses = ignore_addresses;
 }
 
 pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
@@ -414,7 +488,13 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
                     .required(false)
                     .action(ArgAction::SetFalse)
                     .long_help("Do not log to syslog"),
-            ) 
+            )
+            .arg(
+                arg!(--ignore_hosts <HOSTS>)
+                    .required(false)
+                    .value_delimiter(',').num_args(1..).value_parser(value_parser!(String))
+                    .long_help("hosts to ignore (comma separated)")
+            )
             .arg(
                 arg!(--ports <VALUE>).required(false)
                     .value_delimiter(',')
@@ -464,7 +544,7 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
         .get_one::<String>("path")
         .unwrap_or(&empty_str)
         .clone_into(pcap_path);
-    
+
     let interfaces: Vec<String> = matches
         .get_many::<String>("interface")
         .unwrap_or_default() // Returns an empty iterator if arg is missing
@@ -494,7 +574,7 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
         .get_one::<String>("output_type")
         .unwrap_or(&config.output_type)
         .clone();
-    
+
     config.dbname = matches
         .get_one::<String>("dbname")
         .unwrap_or(&config.dbname)
@@ -503,12 +583,24 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
         .get_one::<String>("database")
         .unwrap_or(&config.database)
         .clone();
-    if matches.get_flag("daemon") { config.daemon = true  ; }
-    if matches.get_flag("nodaemon") { config.daemon = false; }
-    if matches.get_flag("debug") { config.debug = true ;}
-    if matches.get_flag("nodebug") { config.debug = false; }
-    if matches.get_flag("promisc") { config.promiscuous = true; }
-    if matches.get_flag("nopromisc") { config.promiscuous = false ;}
+    if matches.get_flag("daemon") {
+        config.daemon = true;
+    }
+    if matches.get_flag("nodaemon") {
+        config.daemon = false;
+    }
+    if matches.get_flag("debug") {
+        config.debug = true;
+    }
+    if matches.get_flag("nodebug") {
+        config.debug = false;
+    }
+    if matches.get_flag("promisc") {
+        config.promiscuous = true;
+    }
+    if matches.get_flag("nopromisc") {
+        config.promiscuous = false;
+    }
     config.toplistsize = *matches
         .get_one::<usize>("toplistsize")
         .unwrap_or(&config.toplistsize);
@@ -550,16 +642,34 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
         .get_one::<String>("export_stats")
         .unwrap_or(&config.export_stats)
         .clone();
-    if matches.get_flag("syslog") { config.syslog = true }
-    if matches.get_flag("nosyslog") { config.syslog = false }
-    if matches.get_flag("additional") { config.additional = true }
-    if matches.get_flag("noadditional") { config.additional = false }
-    if matches.get_flag("authority") { config.authority = true }
-    if matches.get_flag("noauthority") { config.authority = false }
-    if matches.get_flag("capture_tcp") { config.capture_tcp = true }
-    if matches.get_flag("nocapture_tcp") { config.capture_tcp = false }
+    if matches.get_flag("syslog") {
+        config.syslog = true
+    }
+    if matches.get_flag("nosyslog") {
+        config.syslog = false
+    }
+    if matches.get_flag("additional") {
+        config.additional = true
+    }
+    if matches.get_flag("noadditional") {
+        config.additional = false
+    }
+    if matches.get_flag("authority") {
+        config.authority = true
+    }
+    if matches.get_flag("noauthority") {
+        config.authority = false
+    }
+    if matches.get_flag("capture_tcp") {
+        config.capture_tcp = true
+    }
+    if matches.get_flag("nocapture_tcp") {
+        config.capture_tcp = false
+    }
 
-    if matches.contains_id("create_database") { config.create_database = matches.get_flag("create_database") ; }
+    if matches.contains_id("create_database") {
+        config.create_database = matches.get_flag("create_database");
+    }
     let ports: Vec<u16> = matches
         .get_many::<u16>("ports")
         .unwrap_or_default() // Returns an empty iterator if arg is missing
@@ -568,7 +678,22 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
     if !ports.is_empty() {
         config.ports = ports;
     }
-    let rr_types = parse_rrtypes(&matches.get_one::<String>("rrtypes").unwrap_or(&empty_str).clone());
+    let ignore_hosts: Vec<String> = matches
+        .get_many::<String>("ignore_hosts")
+        .unwrap_or_default()
+        .map(String::clone)
+        .collect();
+    debug!("Ignore hosts {:?}", ignore_hosts);
+    if !ignore_hosts.is_empty() {
+        config.ignore_hosts = ignore_hosts;
+    }
+
+    let rr_types = parse_rrtypes(
+        &matches
+            .get_one::<String>("rrtypes")
+            .unwrap_or(&empty_str)
+            .clone(),
+    );
     // let rr_types = parse_rrtypes(config.rr_type);
     if !rr_types.is_empty() {
         config.rr_type = rr_types;

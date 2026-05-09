@@ -1,5 +1,5 @@
-use crate::errors::DNS_Error_Type::{Invalid_Extended_Error_Code, Invalid_Extended_Option_Code};
-use crate::errors::DNS_error;
+use crate::errors::DnsError;
+use crate::errors::DnsErrorType::{Invalid_Extended_Error_Code, Invalid_Extended_Option_Code};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use strum_macros::{EnumIter, FromRepr};
@@ -19,7 +19,6 @@ use strum_macros::{EnumString, IntoStaticStr};
     Deserialize,
     FromRepr,
 )]
-
 #[repr(u16)]
 pub(crate) enum EDNSOptionCodes {
     LLQ = 1,
@@ -52,10 +51,10 @@ impl EDNSOptionCodes {
         self.into()
     }
 
-    pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
+    pub(crate) fn find(val: u16) -> Result<Self, DnsError> {
         match EDNSOptionCodes::from_repr(val) {
             Some(x) => Ok(x),
-            None => Err(DNS_error::new(
+            None => Err(DnsError::new(
                 Invalid_Extended_Option_Code,
                 &format!("{val}"),
             )),
@@ -86,10 +85,8 @@ impl fmt::Display for EDNSOptionCodes {
     Ord,
     Hash,
 )]
-
-
 #[repr(u16)]
-pub(crate) enum DNSExtendedError {
+pub(crate) enum DnsExtendedError {
     #[default]
     None = 0xffff,
     Other = 0,
@@ -126,20 +123,20 @@ pub(crate) enum DNSExtendedError {
     Private = 65534,
 }
 
-impl DNSExtendedError {
+impl DnsExtendedError {
     #[inline]
     pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
 
-    pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
-        match DNSExtendedError::from_repr(val) {
+    pub(crate) fn find(val: u16) -> Result<Self, DnsError> {
+        match DnsExtendedError::from_repr(val) {
             Some(x) => Ok(x),
             None => {
                 if (49152..65535).contains(&val) {
-                    Ok(DNSExtendedError::Private)
+                    Ok(DnsExtendedError::Private)
                 } else {
-                    Err(DNS_error::new(
+                    Err(DnsError::new(
                         Invalid_Extended_Error_Code,
                         &format!("{val}"),
                     ))
@@ -149,7 +146,7 @@ impl DNSExtendedError {
     }
 }
 
-impl fmt::Display for DNSExtendedError {
+impl fmt::Display for DnsExtendedError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_str())
     }

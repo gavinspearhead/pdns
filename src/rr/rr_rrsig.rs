@@ -4,16 +4,16 @@ use crate::dns_helper::{
     timestamp_to_str,
 };
 use crate::dns_name::dns_parse_name;
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::ParseErrorType::Invalid_Parameter;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
+use crate::errors::ParseErrorType::Invalid_Parameter;
 use base64::Engine;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default)]
 pub struct RR_RRSIG {
-    sig_rrtype: DNS_RR_type,
+    sig_rrtype: DnsRRType,
     alg: u8,
     labels: u8,
     ttl: u32,
@@ -31,7 +31,7 @@ impl RR_RRSIG {
     }
     pub fn set(
         &mut self,
-        sig_rrtype: DNS_RR_type,
+        sig_rrtype: DnsRRType,
         alg: u8,
         labels: u8,
         ttl: u32,
@@ -54,7 +54,7 @@ impl RR_RRSIG {
     pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_RRSIG, ParseError> {
         let mut rr_sig = RR_RRSIG::new();
         let sig_rrtype_val = dns_read_u16(packet, offset_in)?;
-        rr_sig.sig_rrtype = DNS_RR_type::find(sig_rrtype_val)
+        rr_sig.sig_rrtype = DnsRRType::find(sig_rrtype_val)
             .map_err(|_| ParseError::new(Invalid_Parameter, &sig_rrtype_val.to_string()))?;
         rr_sig.alg = dns_read_u8(packet, offset_in + 2)?;
         rr_sig.labels = dns_read_u8(packet, offset_in + 3)?;
@@ -89,9 +89,9 @@ impl Display for RR_RRSIG {
     }
 }
 
-impl DNSRecord for RR_RRSIG {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::RRSIG
+impl DnsRecord for RR_RRSIG {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::RRSIG
     }
 
     fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {

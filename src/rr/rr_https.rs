@@ -1,12 +1,14 @@
 use crate::dns::SVC_Param_Keys;
 use crate::dns_helper::{
-    dns_parse_slice, dns_read_u16, dns_read_u8, names_list, parse_dns_str, parse_ipv4_addr, parse_ipv6_addr,
+    dns_parse_slice, dns_read_u16, dns_read_u8, names_list, parse_dns_str, parse_ipv4_addr,
+    parse_ipv6_addr,
 };
 use crate::dns_name::dns_parse_name;
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::ParseErrorType::Invalid_Parameter;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
+use crate::ech::ECHConfig;
 use crate::errors::ParseError;
+use crate::errors::ParseErrorType::Invalid_Parameter;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use std::fmt::Write;
@@ -200,7 +202,7 @@ impl std::fmt::Display for RR_HTTPS {
                     write!(f, "ohttp")?;
                 }
                 HttpsSvcParam::NoDefaultAlpn => {
-                    write!(f, "no-default-alpn")?;
+                    write!(f, " no-default-alpn")?;
                 }
                 HttpsSvcParam::Port(port) => {
                     write!(f, " port={port}")?;
@@ -239,7 +241,12 @@ impl std::fmt::Display for RR_HTTPS {
                     write!(f, " ipv6hint={res1}")?;
                 }
                 HttpsSvcParam::ECH(data) => {
-                    write!(f, " ech={}", &STANDARD.encode(data))?;
+                    let ech = ECHConfig::parse(data).unwrap();
+
+                    write!(f, " ech=")?;
+                    for i in ech {
+                        write!(f, "{i}")?
+                    }
                 }
                 HttpsSvcParam::KeyValue(key, value) => {
                     write!(f, " key{}={}", key, STANDARD.encode(value))?;
@@ -250,9 +257,9 @@ impl std::fmt::Display for RR_HTTPS {
     }
 }
 
-impl DNSRecord for RR_HTTPS {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::HTTPS
+impl DnsRecord for RR_HTTPS {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::HTTPS
     }
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
         let mut result = Vec::new();

@@ -2,7 +2,7 @@ use crate::dns_class::DnsClass;
 use crate::dns_helper::{dns_format_name, names_list};
 use crate::dns_packet::{DnsHeader, DnsQuestion};
 use crate::dns_reply_type::DnsReplyType;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_rr_type::DnsRRType;
 use std::fmt::Display;
 use tracing::debug;
 use zerocopy::IntoBytes;
@@ -33,10 +33,7 @@ impl DnsAnswer {
         self.header.rcode = rcode;
     }
 
-    pub fn add_header(
-        &mut self,
-        dns_header: &DnsHeader,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn add_header(&mut self, dns_header: &DnsHeader) -> Result<(), Box<dyn std::error::Error>> {
         self.header = *dns_header;
         self.header.qr = 1;
         self.header.ancount = 0;
@@ -117,7 +114,7 @@ pub fn write_data_record(
     buf: &mut Vec<u8>,
     offset: usize,
     name_in: &str,
-    rr_type: DNS_RR_type,
+    rr_type: DnsRRType,
     class_type: DnsClass,
     ttl: u32,
     answer_slice: &[u8],

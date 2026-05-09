@@ -1,13 +1,13 @@
 use crate::dns_answers::DnsAnswer;
 use crate::dns_class::DnsClass;
 use crate::dns_packet::DnsQuestion;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_rr_type::DnsRRType;
 use tracing::debug;
 
 use crate::dns_answers::write_data_record;
 use crate::dns_helper::names_list;
 
-pub(crate) trait DNSRecord {
+pub(crate) trait DnsRecord {
     fn add_to_answer(
         &self,
         answer: &mut DnsAnswer,
@@ -28,6 +28,6 @@ pub(crate) trait DNSRecord {
         )?;
         Ok(offset)
     }
-    fn get_type(&self) -> DNS_RR_type;
+    fn get_type(&self) -> DnsRRType;
     fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8>;
 }

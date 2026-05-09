@@ -1,9 +1,9 @@
 use crate::dns::{dnssec_algorithm, dnssec_digest};
 use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, names_list};
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::ParseErrorType::Invalid_Resource_Record;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
+use crate::errors::ParseErrorType::Invalid_Resource_Record;
 use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
 pub struct RR_CDS {
@@ -50,9 +50,9 @@ impl Display for RR_CDS {
     }
 }
 
-impl DNSRecord for RR_CDS {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::CDS
+impl DnsRecord for RR_CDS {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::CDS
     }
 
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {

@@ -1,6 +1,6 @@
 use crate::dns_helper::names_list;
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
@@ -30,9 +30,9 @@ impl Display for RR_EID {
     }
 }
 
-impl DNSRecord for RR_EID {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::EID
+impl DnsRecord for RR_EID {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::EID
     }
 
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {

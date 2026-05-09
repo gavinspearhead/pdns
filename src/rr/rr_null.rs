@@ -1,7 +1,7 @@
 use crate::dns_helper::{base32hex_encode, names_list};
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::{ParseErrorType, ParseError};
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
+use crate::errors::{ParseError, ParseErrorType};
 use std::fmt::{Display, Formatter};
 #[derive(Default, Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
 pub struct RR_NULL {
@@ -35,9 +35,9 @@ impl Display for RR_NULL {
     }
 }
 
-impl DNSRecord for RR_NULL {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::NULL
+impl DnsRecord for RR_NULL {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::NULL
     }
 
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {

@@ -5,10 +5,10 @@ use serde_json;
 
 use crate::config::Config;
 use crate::dns_class::DnsClass;
-use crate::dns_opcodes::DNSOpcodes;
+use crate::dns_opcodes::DnsOpcodes;
 use crate::dns_reply_type::DnsReplyType;
-use crate::dns_rr_type::DNS_RR_type;
-use crate::edns::DNSExtendedError;
+use crate::dns_rr_type::DnsRRType;
+use crate::edns::DnsExtendedError;
 use crate::util::ordered_map_value;
 use chrono::Utc;
 use flate2::write::GzEncoder;
@@ -36,17 +36,17 @@ pub(crate) struct Statistics {
     #[serde(serialize_with = "ordered_map_value")]
     pub errors: HashMap<DnsReplyType, u128>,
     #[serde(serialize_with = "ordered_map_value")]
-    pub qtypes: HashMap<DNS_RR_type, u128>,
+    pub qtypes: HashMap<DnsRRType, u128>,
     #[serde(serialize_with = "ordered_map_value")]
-    pub atypes: HashMap<DNS_RR_type, u128>,
+    pub atypes: HashMap<DnsRRType, u128>,
     #[serde(serialize_with = "ordered_map_value")]
     pub qclass: HashMap<DnsClass, u128>,
     #[serde(serialize_with = "ordered_map_value")]
     pub aclass: HashMap<DnsClass, u128>,
     #[serde(serialize_with = "ordered_map_value")]
-    pub opcodes: HashMap<DNSOpcodes, u128>,
+    pub opcodes: HashMap<DnsOpcodes, u128>,
     #[serde(serialize_with = "ordered_map_value")]
-    pub extended_error: HashMap<DNSExtendedError, u128>,
+    pub extended_error: HashMap<DnsExtendedError, u128>,
     //#[serde(deserialize_with = "deserialize_ignore_any")]
     pub sources: Rank<IpAddr>,
     // #[serde(deserialize_with = "deserialize_ignore_any")]
@@ -143,7 +143,7 @@ impl Statistics {
                 Ok(file) => {
                     if config.compress_stats {
                         debug!("Dumping and compressing stats to {filename:?}");
-               //         let file = File::create(format!("{}", filename.to_string_lossy()))?;
+                        //         let file = File::create(format!("{}", filename.to_string_lossy()))?;
                         let encoder = GzEncoder::new(file, flate2::Compression::default());
                         let mut writer = BufWriter::new(encoder);
                         serde_json::to_writer_pretty(&mut writer, self)?;

@@ -1,7 +1,7 @@
 use crate::dns_helper::{dns_format_name, dns_read_u32, names_list};
 use crate::dns_name::dns_parse_name;
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
@@ -60,10 +60,10 @@ impl Display for RR_SOA {
     }
 }
 
-impl DNSRecord for RR_SOA {
+impl DnsRecord for RR_SOA {
     #[inline]
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::SOA
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::SOA
     }
 
     #[inline]

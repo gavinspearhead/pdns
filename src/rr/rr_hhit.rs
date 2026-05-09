@@ -1,8 +1,8 @@
 use crate::dns_helper::{dns_parse_slice, dns_read_u32, names_list};
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::ParseErrorType::Invalid_Resource_Record;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
+use crate::errors::ParseErrorType::Invalid_Resource_Record;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default)]
@@ -41,9 +41,9 @@ impl Display for RR_HHIT {
     }
 }
 
-impl DNSRecord for RR_HHIT {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::HHIT
+impl DnsRecord for RR_HHIT {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::HHIT
     }
 
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {

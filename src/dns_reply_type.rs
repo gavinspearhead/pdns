@@ -1,5 +1,5 @@
-use crate::errors::DNS_Error_Type::Invalid_reply_type;
-use crate::errors::DNS_error;
+use crate::errors::DnsError;
+use crate::errors::DnsErrorType::Invalid_reply_type;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
@@ -21,7 +21,6 @@ use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
     PartialOrd,
     Ord,
 )]
-
 #[repr(u16)]
 pub enum DnsReplyType {
     #[default]
@@ -52,10 +51,10 @@ impl DnsReplyType {
     pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
-    pub(crate) fn find(val: u16) -> Result<Self, DNS_error> {
+    pub(crate) fn find(val: u16) -> Result<Self, DnsError> {
         match DnsReplyType::from_repr(val) {
             Some(x) => Ok(x),
-            None => Err(DNS_error::new(Invalid_reply_type, &format!("{val}"))),
+            None => Err(DnsError::new(Invalid_reply_type, &format!("{val}"))),
         }
     }
 }
@@ -67,7 +66,7 @@ impl fmt::Display for DnsReplyType {
 }
 #[cfg(test)]
 mod tests2 {
-    use crate::dns_opcodes::DNSOpcodes;
+    use crate::dns_opcodes::DnsOpcodes;
     use crate::dns_reply_type::DnsReplyType;
     use std::str::FromStr;
 
@@ -91,6 +90,6 @@ mod tests2 {
     fn test_dns_rt2() {
         assert_eq!(DnsReplyType::find(19).unwrap(), DnsReplyType::BADMODE);
         assert_eq!(DnsReplyType::find(23).unwrap(), DnsReplyType::BADCOOKIE);
-        assert!(DNSOpcodes::find(111).is_err());
+        assert!(DnsOpcodes::find(111).is_err());
     }
 }

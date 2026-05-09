@@ -1,7 +1,7 @@
 use crate::dns_class::DnsClass;
-use crate::dns_protocol::DNSProtocol;
+use crate::dns_protocol::DnsProtocol;
 use crate::dns_reply_type::DnsReplyType;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_rr_type::DnsRRType;
 use crate::packet_info::PacketInfo;
 use core::fmt;
 use serde::{Deserialize, Serialize};
@@ -164,7 +164,7 @@ impl Filter {
     fn matches(&self, packet_info: &PacketInfo) -> bool {
         match self.expr.0 {
             FilterFields::PROTOCOL => {
-                let Ok(prot) = DNSProtocol::from_str(&self.expr.2.to_uppercase()) else {
+                let Ok(prot) = DnsProtocol::from_str(&self.expr.2.to_uppercase()) else {
                     return false;
                 };
                 if self.expr.1 == FilterOperator::EQUAL {
@@ -303,7 +303,7 @@ impl Filter {
             }
 
             FilterFields::RR_TYPE => {
-                let Ok(match_class) = DNS_RR_type::from_str(self.expr.2.as_str()) else {
+                let Ok(match_class) = DnsRRType::from_str(self.expr.2.as_str()) else {
                     return false;
                 };
                 if self.expr.1 == FilterOperator::EQUAL {

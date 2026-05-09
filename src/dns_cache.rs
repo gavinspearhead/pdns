@@ -1,20 +1,20 @@
-use crate::dns_record::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_record::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use chrono::Utc;
 use std::cmp::max;
 use std::{collections::HashMap, fmt};
 
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
-pub(crate) struct DNSCache {
+pub(crate) struct DnsCache {
     timeout: i64,
     max_size: usize,
-    items: HashMap<(DNS_RR_type, String, String), (Option<DNSRecord>, i64)>,
+    items: HashMap<(DnsRRType, String, String), (Option<DnsRecord>, i64)>,
 }
 
 const MAX_CACHE_SIZE: usize = 1024;
-impl DNSCache {
-    pub fn new(time_out: i64) -> DNSCache {
-        DNSCache {
+impl DnsCache {
+    pub fn new(time_out: i64) -> DnsCache {
+        DnsCache {
             items: HashMap::new(),
             timeout: time_out,
             max_size: MAX_CACHE_SIZE,
@@ -34,7 +34,7 @@ impl DNSCache {
         self.items.len()
     }
 
-    pub fn add(&mut self, record: DNSRecord) {
+    pub fn add(&mut self, record: DnsRecord) {
         self.items
             .entry((record.rr_type, record.name.clone(), record.rdata.clone()))
             .and_modify(|f| {
@@ -45,11 +45,11 @@ impl DNSCache {
             .or_insert_with(|| (Some(record), Utc::now().timestamp()));
     }
     #[inline]
-    pub(crate) fn push_all(&mut self) -> Vec<DNSRecord> {
+    pub(crate) fn push_all(&mut self) -> Vec<DnsRecord> {
         self.items.drain().filter_map(|(_, v)| v.0).collect()
     }
 
-    pub fn push_timed(&mut self, force: bool) -> (Vec<DNSRecord>, i64) {
+    pub fn push_timed(&mut self, force: bool) -> (Vec<DnsRecord>, i64) {
         if force {
             return (self.push_all(), 0);
         }
@@ -75,7 +75,7 @@ impl DNSCache {
     }
 }
 
-impl fmt::Display for DNSCache {
+impl fmt::Display for DnsCache {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for v in self.items.values() {
             write!(f, "{v:?}")?;

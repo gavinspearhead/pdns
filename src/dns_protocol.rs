@@ -1,5 +1,5 @@
-use crate::errors::ParseErrorType::Unknown_Protocol;
 use crate::errors::ParseError;
+use crate::errors::ParseErrorType::Unknown_Protocol;
 use std::fmt;
 use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
 
@@ -18,9 +18,8 @@ use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
     Ord,
     PartialOrd,
 )]
-
 #[repr(u8)]
-pub(crate) enum DNSProtocol {
+pub(crate) enum DnsProtocol {
     #[default]
     Unknown = 0,
     TCP = 6,
@@ -28,13 +27,13 @@ pub(crate) enum DNSProtocol {
     SCTP = 132,
 }
 
-impl DNSProtocol {
+impl DnsProtocol {
     #[inline]
     pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
     pub(crate) fn find(val: u8) -> Result<Self, ParseError> {
-        match DNSProtocol::from_repr(val) {
+        match DnsProtocol::from_repr(val) {
             Some(x) => Ok(x),
             None => Err(ParseError::new(Unknown_Protocol, &val.to_string())),
         }
@@ -43,10 +42,9 @@ impl DNSProtocol {
     pub(crate) fn as_u8(self) -> u8 {
         self as u8
     }
-
 }
 
-impl fmt::Display for DNSProtocol {
+impl fmt::Display for DnsProtocol {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_str())

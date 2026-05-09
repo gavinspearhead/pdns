@@ -1,6 +1,6 @@
 use crate::dns_helper::names_list;
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
 use crate::rr::rr_cds::RR_CDS;
 
@@ -22,9 +22,9 @@ impl RR_DLV {
     }
 }
 
-impl DNSRecord for RR_DLV {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::DLV
+impl DnsRecord for RR_DLV {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::DLV
     }
     fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {
         self.0.to_bytes(names, offset)

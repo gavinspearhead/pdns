@@ -1,8 +1,8 @@
 use crate::dns_helper::{names_list, parse_ipv6_addr};
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::ParseErrorType::{Invalid_Parameter, Invalid_Resource_Record};
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
+use crate::errors::ParseErrorType::{Invalid_Parameter, Invalid_Resource_Record};
 use std::fmt::{Display, Formatter};
 use std::net::{IpAddr, Ipv6Addr};
 
@@ -53,10 +53,10 @@ impl Display for RR_AAAA {
     }
 }
 
-impl DNSRecord for RR_AAAA {
+impl DnsRecord for RR_AAAA {
     #[inline]
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::AAAA
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::AAAA
     }
 
     #[inline]

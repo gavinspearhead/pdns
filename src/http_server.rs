@@ -1,13 +1,13 @@
 use crate::config::Config;
 use crate::statistics::Statistics;
-use crate::tcp_connection::TCPConnections;
+use crate::tcp_connection::TcpConnections;
 use crate::time_stats::STAT_ITEM::{DAY, HOUR, MINUTE, MONTH, SECOND};
 use crate::version::VERSION;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
+use chrono::{DateTime, Utc};
 use log::debug;
 use parking_lot::Mutex;
 use std::sync::Arc;
-use chrono::{DateTime, Utc};
 
 async fn get_version() -> impl Responder {
     HttpResponse::Ok().json(VERSION)
@@ -145,7 +145,7 @@ async fn get_config(config: web::Data<Config>) -> impl Responder {
     }
     HttpResponse::Ok().json(&config_copy)
 }
-async fn get_debug(tcp_list: web::Data<Arc<Mutex<TCPConnections>>>) -> impl Responder {
+async fn get_debug(tcp_list: web::Data<Arc<Mutex<TcpConnections>>>) -> impl Responder {
     let tcp_data = tcp_list.lock().clone();
     HttpResponse::Ok().json(&tcp_data)
 }
@@ -156,10 +156,9 @@ async fn get_uptime(start_time: web::Data<DateTime<Utc>>) -> impl Responder {
     let hours = uptime.num_hours() % 24;
     let minutes = uptime.num_minutes() % 60;
     let seconds = uptime.num_seconds() % 60;
-    let uptime_str = format!("{} days, {} hours, {} minutes, {} seconds", days, hours, minutes, seconds);
+    let uptime_str = format!("{days} days, {hours} hours, {minutes} minutes, {seconds} seconds");
     HttpResponse::Ok().json(uptime_str)
 }
-
 
 async fn get_endpoints() -> impl Responder {
     let endpoints = vec![
@@ -204,7 +203,7 @@ async fn get_endpoints() -> impl Responder {
 #[actix_web::main]
 pub(crate) async fn listen(
     stats: &Arc<Mutex<Statistics>>,
-    tcp_list: &Arc<Mutex<TCPConnections>>,
+    tcp_list: &Arc<Mutex<TcpConnections>>,
     config: &Config,
     start_time: DateTime<Utc>,
 ) -> std::io::Result<()> {

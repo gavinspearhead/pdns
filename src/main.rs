@@ -1,6 +1,7 @@
 // TODO
 // parametrize Rank with IP address type
 // improve filter on livedump
+// move skiplist to config
 
 #![allow(non_camel_case_types)]
 pub mod config;
@@ -8,6 +9,7 @@ pub mod dns;
 pub mod dns_answers;
 pub mod dns_cache;
 pub mod dns_class;
+pub mod dns_edns;
 pub mod dns_helper;
 pub mod dns_name;
 pub mod dns_opcodes;
@@ -36,9 +38,10 @@ pub mod tcp_data;
 pub mod time_stats;
 pub mod util;
 pub mod version;
-pub mod dns_edns;
 
-use crate::config::Config;
+use crate::config::{parse_hosts, Config};
+use crate::errors::ParseError;
+use crate::errors::ParseErrorType::Unknown_Link_Type;
 use crate::http_server::listen;
 use crate::network_packet::{parse_eth, parse_ip};
 use crate::packet_info::PacketInfo;
@@ -47,10 +50,10 @@ use crate::util::load_asn_database;
 use crate::util::read_public_suffix_file;
 use crate::version::{PROGNAME, VERSION};
 use chrono::{DateTime, Utc};
-use clap::{Parser};
+use clap::Parser;
 use config::parse_config;
 use daemonize_me::{Daemon, Group, User};
-use dns_cache::DNSCache;
+use dns_cache::DnsCache;
 use live_dump::LiveDump;
 use mysql_connection::{create_database, MysqlConnection};
 use packet_queue::PacketQueue;
@@ -66,14 +69,12 @@ use std::sync::mpsc::TryRecvError;
 use std::sync::{mpsc, Arc};
 use std::thread::sleep;
 use std::{io, thread, time};
-use tcp_connection::{clean_tcp_list, TCPConnections};
-use tracing::{debug, error};
+use tcp_connection::{clean_tcp_list, TcpConnections};
+use tracing::{debug, error, info};
 use tracing_rfc_5424::layer::Layer;
 use tracing_rfc_5424::transport::UnixSocket;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{filter, fmt, prelude::*, reload};
-use crate::errors::ParseError;
-use crate::errors::ParseErrorType::Unknown_Link_Type;
 
 #[derive(Parser, Clone, Debug, PartialEq)]
 struct Args {
@@ -81,10 +82,18 @@ struct Args {
     path: std::path::PathBuf,
 }
 
-fn packet_loop<T: Activated + 'static>(cap: &mut Capture<T>, packet_queue: &PacketQueue, interface: &str) {
+fn packet_loop<T: Activated + 'static>(
+    cap: &mut Capture<T>,
+    packet_queue: &PacketQueue,
+    interface: &str,
+) {
     let link_type = cap.get_datalink();
-    if link_type != Linktype::ETHERNET && link_type != Linktype(12) && link_type != Linktype::RAW && link_type != Linktype(14) {
-        error!("Not ethernet {link_type:?} {interface:?}");
+    if link_type != Linktype::ETHERNET
+        && link_type != Linktype(12)
+        && link_type != Linktype::RAW
+        && link_type != Linktype(14)
+    {
+        error!("Not ethernet {link_type:?} on {interface:?}");
         exit(1);
     }
 
@@ -97,21 +106,34 @@ fn packet_loop<T: Activated + 'static>(cap: &mut Capture<T>, packet_queue: &Pack
                     packet.header.ts.tv_usec as u32 * 1000,
                 )
                 .unwrap_or_else(Utc::now);
-                packet_queue.push_back(Some((packet.data.to_vec(), ts, link_type)));
+                let res = packet_queue.push_back(Some((packet.data.to_vec(), ts, link_type)));
+                if !res {
+                    info!("Packet queue full on {interface}");
+                }
             }
             Err(pcap::Error::TimeoutExpired) => {
-                debug!("Packet capture error: {} {interface}" , pcap::Error::TimeoutExpired);
+                debug!(
+                    "Packet capture error: {} on {interface}",
+                    pcap::Error::TimeoutExpired
+                );
             }
             Err(e) => {
-                error!("Packet capture error:  {e} {}", interface) ;
-                packet_queue.push_back(None);
+                error!("Packet capture error: {e} on {interface}");
+                let res = packet_queue.push_back(None);
+                if !res {
+                    info!("Packet queue full on {interface}");
+                }
                 break;
             }
         }
     }
 }
 
-fn write_output(of: &mut File, p1: &PacketInfo, config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+fn write_output(
+    of: &mut File,
+    p1: &PacketInfo,
+    config: &Config,
+) -> Result<(), Box<dyn std::error::Error>> {
     if config.output_type == "csv" {
         if let Err(e) = of.write_all(p1.to_csv()?.as_bytes()) {
             error!("Write csv output failed, {e}");
@@ -133,7 +155,7 @@ fn parse_dns_packet(
     packet_queue: &PacketQueue,
     skip_list: &SkipList,
     stats: &Arc<Mutex<Statistics>>,
-    tcp_list: &Arc<Mutex<TCPConnections>>,
+    tcp_list: &Arc<Mutex<TcpConnections>>,
     config: &Config,
 ) -> Option<Option<PacketInfo>> {
     let mut packet_info = PacketInfo::new();
@@ -141,22 +163,38 @@ fn parse_dns_packet(
         match a_packet {
             Some((packet, ts, link_type)) => {
                 packet_info.set_timestamp(ts);
-                let result =
-                    if link_type == Linktype::ETHERNET {
-                        parse_eth(&packet, &mut packet_info, &mut stats.lock(), tcp_list, config, skip_list, )
-                    } else if link_type == Linktype(12) || link_type == Linktype::RAW || link_type == Linktype(14) {
-                        parse_ip(&packet, &mut packet_info, stats, tcp_list, config, skip_list)
-                    } else {
-                        Err(ParseError::new(Unknown_Link_Type, "" ).into())
-                    };
+                let result = if link_type == Linktype::ETHERNET {
+                    parse_eth(
+                        &packet,
+                        &mut packet_info,
+                        &mut stats.lock(),
+                        tcp_list,
+                        config,
+                        skip_list,
+                    )
+                } else if link_type == Linktype(12)
+                    || link_type == Linktype::RAW
+                    || link_type == Linktype(14)
+                {
+                    parse_ip(
+                        &packet,
+                        &mut packet_info,
+                        stats,
+                        tcp_list,
+                        config,
+                        skip_list,
+                    )
+                } else {
+                    Err(ParseError::new(Unknown_Link_Type, "").into())
+                };
 
                 return match result {
                     Err(error) => {
                         debug!("{error:?}");
                         None
                     }
-                    Ok(()) => Some(Some(packet_info))
-                }
+                    Ok(()) => Some(Some(packet_info)),
+                };
             }
             None => {
                 return Some(None);
@@ -172,7 +210,7 @@ fn poll(
     rx: mpsc::Receiver<String>,
     skip_list: &SkipList,
     stats: &Arc<Mutex<Statistics>>,
-    tcp_list: &Arc<Mutex<TCPConnections>>,
+    tcp_list: &Arc<Mutex<TcpConnections>>,
 ) {
     let mut output_file: Option<File> = None;
 
@@ -194,7 +232,7 @@ fn poll(
             &config.dbhostname,
             &config.dbusername,
             &config.dbpassword,
-            &config.dbport,
+            config.dbport,
             &config.dbname,
         );
         Some(x)
@@ -203,7 +241,7 @@ fn poll(
     let publicsuffixlist: publicsuffix::List = read_public_suffix_file(&config.public_suffix_file);
     let mut timeout = 50;
     let mut live_dump = LiveDump::new(&config.live_dump_host, config.live_dump_port);
-    let mut dns_cache: DNSCache = DNSCache::new(15);
+    let mut dns_cache: DnsCache = DnsCache::new(15);
     let mut last_push = Utc::now().timestamp();
     loop {
         live_dump.accept();
@@ -256,7 +294,7 @@ fn poll(
 }
 
 fn db_insert(
-    dns_cache: &mut DNSCache,
+    dns_cache: &mut DnsCache,
     database_conn: &mut Option<MysqlConnection>,
     last_push: &mut i64,
     force: bool,
@@ -279,11 +317,11 @@ fn cleanup_task(config: &Config) {
                 &config.dbhostname,
                 &config.dbusername,
                 &config.dbpassword,
-                &config.dbport,
+                config.dbport,
                 &config.dbname,
             );
             x.clean_database(config);
-            sleep(time::Duration::from_secs(24 * 3600));
+            sleep(time::Duration::from_hours(24));
         }
     }
 }
@@ -318,7 +356,7 @@ fn capture_from_file(
     pcap_path: &str,
     skiplist: &SkipList,
     stats: &Arc<Mutex<Statistics>>,
-    tcp_list: &Arc<Mutex<TCPConnections>>,
+    tcp_list: &Arc<Mutex<TcpConnections>>,
     packet_queue: &PacketQueue,
 ) {
     let (_pq_tx, pq_rx) = mpsc::channel();
@@ -364,7 +402,7 @@ fn capture_from_interface(
     config: &Config,
     skiplist: &SkipList,
     stats: &Arc<Mutex<Statistics>>,
-    tcp_list: &Arc<Mutex<TCPConnections>>,
+    tcp_list: &Arc<Mutex<TcpConnections>>,
     packet_queue: &PacketQueue,
     mut cap_in: Vec<(Capture<Active>, &String)>,
     start_time: DateTime<Utc>,
@@ -393,7 +431,7 @@ fn capture_from_interface(
         let handle_stats_dump = s.spawn(|| stats_dump(config, stats));
         let handle_cleanup = s.spawn(|| cleanup_task(config));
         let mut handle_packet_loop = Vec::new();
-        for (i, name) in cap_in.iter_mut() {
+        for (i, name) in &mut cap_in {
             let h = s.spawn(|| {
                 if !config.filter.is_empty() {
                     if let Err(e) = i.filter(&config.filter, false) {
@@ -431,7 +469,9 @@ fn stats_dump(config: &Config, statistics: &Arc<Mutex<Statistics>>) {
             if let Err(e) = statistics.lock().dump_stats(config, false) {
                 error!("Cannot dump stats: {e}");
             }
-            sleep(time::Duration::from_secs(config.stats_dump_interval as u64));
+            sleep(time::Duration::from_secs(u64::from(
+                config.stats_dump_interval,
+            )));
         }
     }
 }
@@ -444,7 +484,7 @@ fn run(
     start_time: DateTime<Utc>,
 ) {
     let packet_queue = PacketQueue::new();
-    let tcp_list = Arc::new(Mutex::new(TCPConnections::new(config.tcp_memory)));
+    let tcp_list = Arc::new(Mutex::new(TcpConnections::new(config.tcp_memory)));
     let mut skiplist = SkipList::new();
     skiplist.read_skip_list(&config.skip_list_file);
     if !pcap_path.is_empty() {
@@ -461,7 +501,15 @@ fn run(
             error!("Something wrong with the capture");
             exit(1);
         };
-        capture_from_interface(config, &skiplist, stats, &tcp_list, &packet_queue, cap, start_time);
+        capture_from_interface(
+            config,
+            &skiplist,
+            stats,
+            &tcp_list,
+            &packet_queue,
+            cap,
+            start_time,
+        );
     }
 }
 
@@ -482,6 +530,7 @@ fn main() {
         .with(tracing_layers)
         .init();
     parse_config(&mut config, &mut pcap_path);
+    parse_hosts(&mut config);
 
     if config.debug {
         let _ = reload_handle.modify(|filter| *filter = filter::LevelFilter::DEBUG);
@@ -510,8 +559,18 @@ fn main() {
     if config.syslog {
         let _ = reload_handle1.modify(|layers| {
             (*layers).push(
-                Layer::with_transport(UnixSocket::new("/var/run/systemd/journal/syslog").unwrap())
-                    .boxed(),
+                Layer::with_transport(
+                    UnixSocket::new("/var/run/systemd/journal/syslog")
+                        .map_err(|e| {
+                            error!("Failed to create Unix socket for syslog: {e}");
+                            e
+                        })
+                        .unwrap_or_else(|_| {
+                            error!("Falling back to stderr for logging");
+                            exit(1);
+                        }),
+                )
+                .boxed(),
             );
         });
     }
@@ -542,33 +601,33 @@ fn main() {
                 }
             }
         }
-        if !cap_list.is_empty() {
-            Some(cap_list)
-        } else {
+        if cap_list.is_empty() {
             None
+        } else {
+            Some(cap_list)
         }
     } else {
         None
     };
     /*    if !config.interface.is_empty() {
-            // do it here otherwise PCAP hangs on open if we do it after daemonizing
-            debug!("Interface: {}", config.interface);
-            cap = match Capture::from_device(config.interface.as_str())
-                .unwrap()
-                .timeout(1000)
-                .promisc(config.promisc)
-                .open()
-            {
-                Ok(x) => Some(x),
-                Err(e) => {
-                    error!(
-                        "Cannot open capture on interface '{}' {e}",
-                        &config.interface
-                    );
-                    exit(-1);
-                }
-            };
-        }*/
+        // do it here otherwise PCAP hangs on open if we do it after daemonizing
+        debug!("Interface: {}", config.interface);
+        cap = match Capture::from_device(config.interface.as_str())
+            .unwrap()
+            .timeout(1000)
+            .promisc(config.promisc)
+            .open()
+        {
+            Ok(x) => Some(x),
+            Err(e) => {
+                error!(
+                    "Cannot open capture on interface '{}' {e}",
+                    &config.interface
+                );
+                exit(-1);
+            }
+        };
+    }*/
     /*let mut options = OpenOptions::new();
     std::fs::write(
         "config.json",

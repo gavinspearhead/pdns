@@ -1,11 +1,14 @@
-use tracing::{debug, error};
 use crate::dns::{dnssec_algorithm, dnssec_digest};
-use crate::dns_helper::{dns_parse_slice, dns_read_u128, dns_read_u16, dns_read_u32, dns_read_u64, dns_read_u8, parse_ipv4_addr, parse_ipv6_addr};
+use crate::dns_helper::{
+    dns_parse_slice, dns_read_u128, dns_read_u16, dns_read_u32, dns_read_u64, dns_read_u8,
+    parse_ipv4_addr, parse_ipv6_addr,
+};
 use crate::dns_name::dns_parse_name;
 use crate::dns_reply_type::DnsReplyType;
-use crate::edns::{DNSExtendedError, EDNSOptionCodes};
+use crate::edns::{DnsExtendedError, EDNSOptionCodes};
 use crate::packet_info::PacketInfo;
 use crate::statistics::Statistics;
+use tracing::{debug, error};
 
 fn parse_edns_extended_dns_error(
     packet_info: &mut PacketInfo,
@@ -14,7 +17,7 @@ fn parse_edns_extended_dns_error(
     _option_length: usize,
     stats: &mut Statistics,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let info_code = DNSExtendedError::find(dns_read_u16(rdata, offset + 4)?)?;
+    let info_code = DnsExtendedError::find(dns_read_u16(rdata, offset + 4)?)?;
     // debug!("info code {info_code}");
     /*let info_text = std::str::from_utf8(dns_parse_slice(
         rdata,
@@ -30,10 +33,10 @@ fn parse_edns_extended_dns_error(
 
 fn parse_edns_dau(
     rdata: &[u8],
-    offset: usize,
+    offset_in: usize,
     option_length: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut offset = offset + 4;
+    let mut offset = offset_in + 4;
     for _ in 0..option_length {
         let alg = dns_read_u8(rdata, offset)?;
         debug!("DNS Signing Algorithm: {}", dnssec_algorithm(alg)?);
@@ -226,7 +229,7 @@ fn parse_edns_padding(
     Ok(())
 }
 
-pub (crate) fn parse_edns(
+pub(crate) fn parse_edns(
     packet_info: &mut PacketInfo,
     packet: &[u8],
     offset_in: usize,

@@ -1,6 +1,6 @@
 use crate::dns_helper::names_list;
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
 use crate::rr::rr_maila::RR_MAILA;
 use std::fmt::{Display, Formatter};
@@ -23,9 +23,9 @@ impl RR_MAILB {
         self.0.set(addr);
     }
 }
-impl DNSRecord for RR_MAILB {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::MAILB
+impl DnsRecord for RR_MAILB {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::MAILB
     }
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
         self.0.addr.octets().to_vec()

@@ -2,8 +2,8 @@ use crate::dns_helper::{
     dns_format_name, dns_parse_slice, dns_read_u16, dns_read_u8, names_list, parse_dns_str,
 };
 use crate::dns_name::dns_parse_name;
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
@@ -69,9 +69,9 @@ impl Display for RR_NAPTR {
     }
 }
 
-impl DNSRecord for RR_NAPTR {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::NAPTR
+impl DnsRecord for RR_NAPTR {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::NAPTR
     }
 
     fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {

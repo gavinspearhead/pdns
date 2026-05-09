@@ -83,7 +83,7 @@ impl Error for ParseError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
-pub(crate) enum DNS_Error_Type {
+pub(crate) enum DnsErrorType {
     Invalid_RR,
     Invalid_Param,
     Invalid_Class,
@@ -94,25 +94,25 @@ pub(crate) enum DNS_Error_Type {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct DNS_error {
+pub(crate) struct DnsError {
     //error_type: DNS_Error_Type,
     error_str: String,
     value: String,
 }
 
-impl DNS_error {
-    pub(crate) fn new(err_t: DNS_Error_Type, val: &str) -> DNS_error {
+impl DnsError {
+    pub(crate) fn new(err_t: DnsErrorType, val: &str) -> DnsError {
         let s = match err_t {
-            DNS_Error_Type::Invalid_Class => "Invalid Class",
-            DNS_Error_Type::Invalid_Param => "Invalid Parameter",
-            DNS_Error_Type::Invalid_RR => "Invalid RR Type",
-            DNS_Error_Type::Invalid_reply_type => "Invalid Reply type",
-            DNS_Error_Type::Invalid_Opcode => "Invalid Opcode",
-            DNS_Error_Type::Invalid_Extended_Error_Code => "Invalid Extended Error Code",
-            DNS_Error_Type::Invalid_Extended_Option_Code => "Invalid Extended Option Code",
+            DnsErrorType::Invalid_Class => "Invalid Class",
+            DnsErrorType::Invalid_Param => "Invalid Parameter",
+            DnsErrorType::Invalid_RR => "Invalid RR Type",
+            DnsErrorType::Invalid_reply_type => "Invalid Reply type",
+            DnsErrorType::Invalid_Opcode => "Invalid Opcode",
+            DnsErrorType::Invalid_Extended_Error_Code => "Invalid Extended Error Code",
+            DnsErrorType::Invalid_Extended_Option_Code => "Invalid Extended Option Code",
         };
 
-        DNS_error {
+        DnsError {
             //error_type: err_t,
             error_str: s.to_owned(),
             value: val.to_owned(),
@@ -120,13 +120,13 @@ impl DNS_error {
     }
 }
 
-impl fmt::Display for DNS_error {
+impl fmt::Display for DnsError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}: {}", self.error_str, self.value)
     }
 }
 
-impl Error for DNS_error {
+impl Error for DnsError {
     fn description(&self) -> &str {
         &self.error_str
     }

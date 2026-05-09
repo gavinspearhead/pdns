@@ -1,7 +1,7 @@
 use crate::dns_helper::{dns_format_name, dns_read_u8, names_list};
 use crate::dns_name::dns_parse_name;
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 use std::net::Ipv6Addr;
@@ -22,9 +22,9 @@ impl Default for RR_A6 {
     }
 }
 
-impl DNSRecord for RR_A6 {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::A6
+impl DnsRecord for RR_A6 {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::A6
     }
     fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {
         let mut result = Vec::new();

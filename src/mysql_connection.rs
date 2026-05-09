@@ -8,7 +8,7 @@ use std::str::FromStr;
 use tracing::debug;
 
 use crate::config::Config;
-use crate::dns_record::DNSRecord;
+use crate::dns_record::DnsRecord;
 use crate::dns_reply_type::DnsReplyType;
 
 #[derive(Debug, Clone)]
@@ -17,14 +17,8 @@ pub(crate) struct MysqlConnection {
 }
 
 impl MysqlConnection {
-    pub fn connect(
-        host: &str,
-        user: &str,
-        pass: &str,
-        port: &u16,
-        dbname: &str,
-    ) -> MysqlConnection {
-         block_on(Self::_connect(host, user, pass, port, dbname))
+    pub fn connect(host: &str, user: &str, pass: &str, port: u16, dbname: &str) -> MysqlConnection {
+        block_on(Self::_connect(host, user, pass, &port, dbname))
     }
     pub async fn _connect(
         host: &str,
@@ -58,7 +52,7 @@ impl MysqlConnection {
             }
         }
     }
-    pub fn insert_or_update_record(&mut self, dns_record: &DNSRecord) {
+    pub fn insert_or_update_record(&mut self, dns_record: &DnsRecord) {
         let ts = dns_record.timestamp.timestamp();
         let q_res = if dns_record.error == DnsReplyType::NOERROR {
             static INSERT_QUERY_PDNS: &str = "INSERT INTO pdns (QUERY,RR,MAPTYPE,ANSWER,TTL,COUNT,LAST_SEEN,FIRST_SEEN,DOMAIN,asn,asn_owner,prefix) 
@@ -228,7 +222,7 @@ pub(crate) fn create_database(config: &Config) {
             &config.dbhostname,
             &config.dbusername,
             &config.dbpassword,
-            &config.dbport,
+            config.dbport,
             &config.dbname,
         );
 

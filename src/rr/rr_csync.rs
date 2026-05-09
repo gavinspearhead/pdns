@@ -2,8 +2,8 @@ use crate::dns_helper::{
     dns_parse_slice, dns_read_u16, dns_read_u32, encode_nsec3_bitmap, map_bitmap_to_rr, names_list,
     parse_nsec_bitmap_vec,
 };
-use crate::dns_record_trait::DNSRecord;
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_record_trait::DnsRecord;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
 use std::fmt::{Display, Formatter};
 
@@ -19,7 +19,7 @@ impl RR_CSYNC {
     pub fn new() -> Self {
         Self::default()
     }
-    pub fn set(&mut self, soa: u32, flags: u16, bitmap: &[DNS_RR_type]) {
+    pub fn set(&mut self, soa: u32, flags: u16, bitmap: &[DnsRRType]) {
         self.soa = soa;
         self.flags = flags;
         self.bitmap = bitmap.iter().map(|x| *x as u16).collect();
@@ -40,9 +40,9 @@ impl Display for RR_CSYNC {
     }
 }
 
-impl DNSRecord for RR_CSYNC {
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::CSYNC
+impl DnsRecord for RR_CSYNC {
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::CSYNC
     }
 
     fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {

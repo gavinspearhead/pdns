@@ -1,8 +1,8 @@
-use crate::dns_rr_type::DNS_RR_type;
+use crate::dns_rr_type::DnsRRType;
+use crate::errors::ParseError;
 use crate::errors::ParseErrorType::{
     Invalid_DNS_Packet, Invalid_Parameter, Invalid_packet_index, Invalid_timestamp,
 };
-use crate::errors::{ParseError};
 use byteorder::{BigEndian, ByteOrder as _};
 use chrono::DateTime;
 use data_encoding::BASE32HEX_NOPAD;
@@ -113,7 +113,7 @@ pub fn parse_nsec_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, ParseError> {
 pub fn map_bitmap_to_rr(bitmap: &[u16]) -> Result<String, ParseError> {
     let mut res = String::new();
     for i in bitmap {
-        let Ok(x) = DNS_RR_type::find(*i) else {
+        let Ok(x) = DnsRRType::find(*i) else {
             return Err(ParseError::new(Invalid_Parameter, ""));
         };
         write!(res, "{x} ").map_err(|_| ParseError::new(Invalid_Parameter, ""))?;
@@ -144,7 +144,7 @@ pub fn build_bitmap_from_vec(indices: &[u16]) -> Result<Vec<u8>, ParseError> {
     }
 
     // Find the highest bit index to size the bitmap
-    let &max_idx = indices.iter().max().unwrap();
+    let &max_idx = indices.iter().max().unwrap_or(&0);
     let needed_len = (usize::from(max_idx) / 8) + 1;
     let mut bitmap = vec![0u8; needed_len];
 
@@ -161,7 +161,9 @@ pub fn build_bitmap_from_vec(indices: &[u16]) -> Result<Vec<u8>, ParseError> {
 }
 #[must_use]
 pub fn process_bitmap(bitmap: &[u16]) -> Vec<u8> {
-    if bitmap.is_empty() { return Vec::new();}
+    if bitmap.is_empty() {
+        return Vec::new();
+    }
     let mut bitmap_bytes = Vec::new();
     let mut window_bytes = Vec::new();
     let mut current_window = bitmap[0] >> 8;
@@ -199,12 +201,16 @@ where
 {
     let start = match range.start_bound() {
         std::ops::Bound::Included(&s) => s,
-        std::ops::Bound::Excluded(&s) => s.checked_add(1).ok_or_else(|| ParseError::new(Invalid_packet_index, ""))?,
+        std::ops::Bound::Excluded(&s) => s
+            .checked_add(1)
+            .ok_or_else(|| ParseError::new(Invalid_packet_index, ""))?,
         std::ops::Bound::Unbounded => 0,
     };
 
     let end = match range.end_bound() {
-        std::ops::Bound::Included(&e) => e.checked_add(1).ok_or_else(|| ParseError::new(Invalid_packet_index, ""))?,
+        std::ops::Bound::Included(&e) => e
+            .checked_add(1)
+            .ok_or_else(|| ParseError::new(Invalid_packet_index, ""))?,
         std::ops::Bound::Excluded(&e) => e,
         std::ops::Bound::Unbounded => packet.len(),
     };
@@ -225,7 +231,9 @@ pub(crate) fn parse_dns_str(rdata: &[u8]) -> Result<String, ParseError> {
 }
 
 pub(crate) fn parse_ipv4_addr(data: &[u8]) -> Result<IpAddr, ParseError> {
-    let r: [u8; 4] =  data.try_into().map_err(|_| ParseError::new(Invalid_DNS_Packet, ""))?;
+    let r: [u8; 4] = data
+        .try_into()
+        .map_err(|_| ParseError::new(Invalid_DNS_Packet, ""))?;
     Ok(IpAddr::V4(Ipv4Addr::from(r)))
 }
 
@@ -236,7 +244,6 @@ pub(crate) fn parse_ipv6_addr(data: &[u8]) -> Result<IpAddr, ParseError> {
 
     Ok(IpAddr::V6(Ipv6Addr::from(octets)))
 }
-
 
 #[derive(Debug, Clone)]
 struct elem {
@@ -295,7 +302,6 @@ impl names_list {
     }
 }
 
-
 #[cfg(test)]
 mod tests_names_list {
     use crate::dns_helper::names_list;
@@ -334,7 +340,7 @@ pub(crate) fn dns_format_name(name_in: &str, names: &mut names_list, pos_in: usi
             res.push(x.len() as u8);
             // res.push(0xc0);
             res.extend_from_slice(x.as_bytes());
-//            res.append(x.as_bytes().to_vec().as_mut());
+            //            res.append(x.as_bytes().to_vec().as_mut());
         }
     }
     if len != 0 {
@@ -387,7 +393,8 @@ mod tests {
         ])
         .is_err());
         assert!(
-            parse_ipv6_addr(&[0x0, 0x0, 0x0, 0x1a, 0xc0, 0x4d, 0xff, 0xfe, 0xaf, 0x86, 0x31]).is_err()
+            parse_ipv6_addr(&[0x0, 0x0, 0x0, 0x1a, 0xc0, 0x4d, 0xff, 0xfe, 0xaf, 0x86, 0x31])
+                .is_err()
         );
     }
 

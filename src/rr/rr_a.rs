@@ -1,8 +1,8 @@
-use super::super::dns_record_trait::DNSRecord;
+use super::super::dns_record_trait::DnsRecord;
 use crate::dns_helper::names_list;
-use crate::dns_rr_type::DNS_RR_type;
-use crate::errors::ParseErrorType::Invalid_Resource_Record;
+use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
+use crate::errors::ParseErrorType::Invalid_Resource_Record;
 use std::fmt::{Display, Formatter};
 use std::net::Ipv4Addr;
 
@@ -11,10 +11,10 @@ pub struct RR_A {
     addr: Ipv4Addr,
 }
 
-impl DNSRecord for RR_A {
+impl DnsRecord for RR_A {
     #[inline]
-    fn get_type(&self) -> DNS_RR_type {
-        DNS_RR_type::A
+    fn get_type(&self) -> DnsRRType {
+        DnsRRType::A
     }
 
     #[inline]
