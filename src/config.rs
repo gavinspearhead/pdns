@@ -1,11 +1,11 @@
 use clap::{arg, builder::PossibleValuesParser, value_parser, ArgAction, Command};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Error;
-
 use crate::dns_rr_type::DnsRRType;
 use crate::version::{AUTHOR, DESCRIPTION, PROGNAME, VERSION};
 use std::net::{IpAddr, ToSocketAddrs};
 use std::{fs::File, io::BufReader};
+use regex::{Regex, RegexBuilder};
 use tracing::{debug, error};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -28,7 +28,6 @@ pub(crate) struct Config {
     pub dbpassword: String,
     pub dbname: String,
     pub toplistsize: usize,
-    pub skip_list_file: String,
     pub pid_file: String,
     pub uid: String,
     pub gid: String,
@@ -52,6 +51,8 @@ pub(crate) struct Config {
     pub ports: Vec<u16>,
     pub ignore_hosts: Vec<String>,
     pub ignore_addresses: Vec<IpAddr>,
+    #[serde(deserialize_with = "deserialize_regex", serialize_with = "serialize_regex")]
+    pub skip_domains: Vec<Regex>,
 }
 
 impl Config {
@@ -80,7 +81,6 @@ impl Config {
             dbusername: String::new(),
             dbname: String::new(),
             toplistsize: 20,
-            skip_list_file: String::new(),
             pid_file: String::new(),
             gid: String::new(),
             uid: String::new(),
@@ -104,9 +104,40 @@ impl Config {
             ports: vec![53],
             ignore_hosts: Vec::new(),
             ignore_addresses: Vec::new(),
+            skip_domains: Vec::new(),
         }
     }
 }
+
+
+fn deserialize_regex<'de, D>(
+    deserializer: D,
+) -> Result<Vec<Regex>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let patterns: Vec<String> = Vec::deserialize(deserializer)?;
+    patterns
+        .into_iter()
+        .map(|pattern| {
+            RegexBuilder::new(&pattern).case_insensitive(true).build().map_err(|e| {
+                serde::de::Error::custom(format!("Invalid regex pattern '{pattern}': {e}"))
+            })
+        })
+        .collect()
+}
+
+fn serialize_regex<S>(
+    regexes: &[Regex],
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let patterns: Vec<String> = regexes.iter().map(|r| r.as_str().to_string()).collect();
+    patterns.serialize(serializer)
+}
+
 
 pub(crate) fn parse_rrtypes(config_str: &str) -> Vec<DnsRRType> {
     if config_str.is_empty() {
@@ -265,12 +296,6 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
                     .required(false)
                     .long_help("Location of a pcap file to parse"),
             )
-            .arg(
-                arg!(-S --skip_list_file <VALUE>)
-                    .required(false)
-                    .long_help(
-                "location of the file, containing regular expressions with domains to ignore",
-            ))
             .arg(
                 arg!(-l --http_server <VALUE>)
                     .required(false)
@@ -562,10 +587,6 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
         .get_one::<String>("filter")
         .unwrap_or(&config.filter)
         .clone();
-    config.skip_list_file = matches
-        .get_one::<String>("skip_list_file")
-        .unwrap_or(&config.skip_list_file)
-        .clone();
     config.output = matches
         .get_one::<String>("output")
         .unwrap_or(&config.output)
@@ -643,28 +664,28 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
         .unwrap_or(&config.export_stats)
         .clone();
     if matches.get_flag("syslog") {
-        config.syslog = true
+        config.syslog = true;
     }
     if matches.get_flag("nosyslog") {
-        config.syslog = false
+        config.syslog = false;
     }
     if matches.get_flag("additional") {
-        config.additional = true
+        config.additional = true;
     }
     if matches.get_flag("noadditional") {
-        config.additional = false
+        config.additional = false;
     }
     if matches.get_flag("authority") {
-        config.authority = true
+        config.authority = true;
     }
     if matches.get_flag("noauthority") {
-        config.authority = false
+        config.authority = false;
     }
     if matches.get_flag("capture_tcp") {
-        config.capture_tcp = true
+        config.capture_tcp = true;
     }
     if matches.get_flag("nocapture_tcp") {
-        config.capture_tcp = false
+        config.capture_tcp = false;
     }
 
     if matches.contains_id("create_database") {

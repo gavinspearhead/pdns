@@ -1,8 +1,6 @@
 use crate::rank::Rank;
-use crate::time_stats::Time_stats;
+use crate::time_stats::TimeStats;
 use serde::{Deserialize, Serialize};
-use serde_json;
-
 use crate::config::Config;
 use crate::dns_class::DnsClass;
 use crate::dns_opcodes::DnsOpcodes;
@@ -13,11 +11,11 @@ use crate::util::ordered_map_value;
 use chrono::Utc;
 use flate2::write::GzEncoder;
 use std::fs::remove_file;
-use std::io::{BufWriter, Write};
 use std::net::IpAddr;
 use std::path::Path;
-use std::{collections::HashMap, fs::File, io::BufReader};
+use std::{collections::HashMap, fs::File, io::BufReader, io::BufWriter, io::Write};
 use tracing::debug;
+use crate::dns::SvcParamKeys;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(default)]
@@ -55,9 +53,12 @@ pub(crate) struct Statistics {
     pub topdomain: Rank<String>,
     //  #[serde(deserialize_with = "deserialize_ignore_any")]
     pub topnx: Rank<String>,
-    pub total_time_stats: Time_stats,
-    pub blocked_time_stats: Time_stats,
-    pub success_time_stats: Time_stats,
+    pub total_time_stats: TimeStats,
+    pub blocked_time_stats: TimeStats,
+    pub success_time_stats: TimeStats,
+    #[serde(serialize_with = "ordered_map_value")]
+    pub svc_stats: HashMap<SvcParamKeys, u128>,
+    pub alpn_stats: HashMap<String, u128>,
 }
 
 impl Statistics {
@@ -83,11 +84,13 @@ impl Statistics {
             tcp: 0,
             topdomain: Rank::new(toplistsize),
             topnx: Rank::new(toplistsize),
-            total_time_stats: Time_stats::new(),
-            success_time_stats: Time_stats::new(),
-            blocked_time_stats: Time_stats::new(),
+            total_time_stats: TimeStats::new(),
+            success_time_stats: TimeStats::new(),
+            blocked_time_stats: TimeStats::new(),
             skipped: 0,
             erroneous: 0,
+            svc_stats: HashMap::new(),
+            alpn_stats: HashMap::new(),
         }
     }
 

@@ -4,6 +4,7 @@ use std::cmp::Ordering::Equal;
 use std::fmt::Debug;
 use std::{collections::HashMap, fmt};
 
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Rank<T>
 where
@@ -86,7 +87,7 @@ where
         }
         l.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(Equal));
         for (k, v) in &l {
-            writeln!(f, "{k}: {v}")?
+            writeln!(f, "{k}: {v}")?;
         }
         write!(f, "")
     }

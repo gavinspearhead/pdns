@@ -41,7 +41,6 @@ pub mod packet_info;
 pub mod packet_queue;
 pub mod rank;
 pub mod rr;
-pub mod skiplist;
 pub mod statistics;
 pub mod tcp_connection;
 pub mod tcp_data;

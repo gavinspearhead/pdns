@@ -3,6 +3,7 @@ use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
 use crate::rr::rr_https::{HttpsSvcParam, RR_HTTPS};
+use crate::statistics::Statistics;
 
 #[derive(Debug, Clone, Default)]
 pub struct RR_SVCB(RR_HTTPS);
@@ -13,11 +14,11 @@ impl RR_SVCB {
         RR_SVCB(RR_HTTPS::new())
     }
 
-    pub fn parse(rdata: &[u8]) -> Result<Self, ParseError> {
-        Ok(RR_SVCB(RR_HTTPS::parse(rdata)?))
+    pub(crate) fn parse(rdata: &[u8], statistics: &mut Statistics) -> Result<Self, ParseError> {
+        Ok(RR_SVCB(RR_HTTPS::parse(rdata, statistics)?))
     }
 
-    pub fn set(&mut self, domain: &str, prio: u16, params: &[HttpsSvcParam]) {
+    pub(crate) fn set(&mut self, domain: &str, prio: u16, params: &[HttpsSvcParam]) {
         self.0.set(domain, prio, params);
     }
 }

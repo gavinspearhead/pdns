@@ -8,7 +8,6 @@ use crate::errors::ParseErrorType::{
     Invalid_TCP_Header, Invalid_UDP_Header, Packet_Too_Small,
 };
 use crate::packet_info::PacketInfo;
-use crate::skiplist::SkipList;
 use crate::statistics::Statistics;
 use crate::{errors, tcp_connection};
 use errors::ParseError;
@@ -27,7 +26,6 @@ fn parse_tcp(
     stats: &mut Statistics,
     tcp_list: &Arc<Mutex<TcpConnections>>,
     config: &Config,
-    skip_list: &SkipList,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < 20 {
         return Err(ParseError::new(Invalid_TCP_Header, "packet too short").into());
@@ -96,7 +94,7 @@ fn parse_tcp(
                     return Ok(());
                 }
             };
-            let rv = parse_dns(dns_payload, packet_info, stats, config, skip_list);
+            let rv = parse_dns(dns_payload, packet_info, stats, config);
             if let Err(e) = rv {
                 if let Some(parse_error) = e.downcast_ref::<ParseError>() {
                     if parse_error.error_type == ParseErrorType::Skipped_Message {
@@ -126,7 +124,6 @@ fn parse_udp(
     packet_info: &mut PacketInfo,
     stats: &mut Statistics,
     config: &Config,
-    skip_list: &SkipList,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < UDP_MIN_PACKET_LEN {
         return Err(ParseError::new(Invalid_UDP_Header, "").into());
@@ -149,7 +146,7 @@ fn parse_udp(
                 return Ok(());
             }
         };
-        let rv = parse_dns(dns_payload, packet_info, stats, config, skip_list);
+        let rv = parse_dns(dns_payload, packet_info, stats, config);
 
         if let Err(e) = rv {
             if let Some(parse_error) = e.downcast_ref::<ParseError>() {
@@ -177,14 +174,13 @@ fn parse_ip_data(
     stats: &mut Statistics,
     tcp_list: &Arc<Mutex<TcpConnections>>,
     config: &Config,
-    skip_list: &SkipList,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if protocol == DnsProtocol::TCP.as_u8() {
         // TCP
         //        debug!("Got TCP packet");
         if config.capture_tcp {
             packet_info.set_protocol(DnsProtocol::TCP);
-            parse_tcp(packet, packet_info, stats, tcp_list, config, skip_list)
+            parse_tcp(packet, packet_info, stats, tcp_list, config, )
         } else {
             Ok(())
         }
@@ -192,7 +188,7 @@ fn parse_ip_data(
         //  UDP
         //        debug!("Got UDP packet");
         packet_info.set_protocol(DnsProtocol::UDP);
-        parse_udp(packet, packet_info, stats, config, skip_list)
+        parse_udp(packet, packet_info, stats, config, )
     } else if protocol == DnsProtocol::SCTP.as_u8() {
         // sctp TODO
         Ok(())
@@ -207,7 +203,6 @@ fn parse_ipv4(
     stats: &mut Statistics,
     tcp_list: &Arc<Mutex<TcpConnections>>,
     config: &Config,
-    skip_list: &SkipList,
 ) -> Result<(), Box<dyn std::error::Error>> {
     stats.ipv4 += 1;
     if packet.len() < IPV4_MIN_PACKET_LEN {
@@ -240,7 +235,6 @@ fn parse_ipv4(
         stats,
         tcp_list,
         config,
-        skip_list,
     )
 }
 
@@ -251,7 +245,6 @@ fn parse_tunneling(
     stats: &mut Statistics,
     tcp_list: &Arc<Mutex<TcpConnections>>,
     config: &Config,
-    skip_list: &SkipList,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if next_header == 4 || next_header == 41 {
         // IPIP
@@ -262,9 +255,9 @@ fn parse_tunneling(
         let ip_ver = packet[0] >> 4;
         if ip_ver == 4 {
             //            debug!("Got IPIP packet");
-            parse_ipv4(packet, packet_info, stats, tcp_list, config, skip_list)
+            parse_ipv4(packet, packet_info, stats, tcp_list, config, )
         } else if ip_ver == 6 {
-            parse_ipv6(packet, packet_info, stats, tcp_list, config, skip_list)
+            parse_ipv6(packet, packet_info, stats, tcp_list, config, )
         } else {
             Err(ParseError::new(Invalid_IP_Version, &format!("{ip_ver}")).into())
         }
@@ -277,7 +270,6 @@ fn parse_tunneling(
             stats,
             tcp_list,
             config,
-            skip_list,
         )
     }
 }
@@ -288,7 +280,6 @@ fn parse_ipv6(
     stats: &mut Statistics,
     tcp_list: &Arc<Mutex<TcpConnections>>,
     config: &Config,
-    skip_list: &SkipList,
 ) -> Result<(), Box<dyn std::error::Error>> {
     stats.ipv6 += 1;
     if packet.len() < IPV6_MIN_PACKET_LEN {
@@ -315,7 +306,6 @@ fn parse_ipv6(
         stats,
         tcp_list,
         config,
-        skip_list,
     )
 }
 
@@ -325,7 +315,6 @@ pub(crate) fn parse_ip(
     stats: &Arc<Mutex<Statistics>>,
     tcp_list: &Arc<Mutex<TcpConnections>>,
     config: &Config,
-    skip_list: &SkipList,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.is_empty() {
         debug!("Empty packet for link_type");
@@ -340,7 +329,6 @@ pub(crate) fn parse_ip(
             &mut stats.lock(),
             tcp_list,
             config,
-            skip_list,
         )
     } else {
         parse_ipv4(
@@ -349,7 +337,6 @@ pub(crate) fn parse_ip(
             &mut stats.lock(),
             tcp_list,
             config,
-            skip_list,
         )
     }
 }
@@ -360,7 +347,6 @@ pub(crate) fn parse_eth(
     stats: &mut Statistics,
     tcp_list: &Arc<Mutex<TcpConnections>>,
     config: &Config,
-    skip_list: &SkipList,
 ) -> Result<(), Box<dyn std::error::Error>> {
     packet_info.frame_len = u32::try_from(packet.len())?;
     let mut offset = 12;
@@ -380,7 +366,6 @@ pub(crate) fn parse_eth(
             stats,
             tcp_list,
             config,
-            skip_list,
         )
     } else if eth_type_field == 0x86dd {
         parse_ipv6(
@@ -389,7 +374,6 @@ pub(crate) fn parse_eth(
             stats,
             tcp_list,
             config,
-            skip_list,
         )
     } else {
         Err(ParseError::new(Invalid_IP_Version, &format!("{}", &packet[0] >> 4)).into())

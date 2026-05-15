@@ -1,7 +1,6 @@
 // TODO
 // parametrize Rank with IP address type
 // improve filter on livedump
-// move skiplist to config
 
 #![allow(non_camel_case_types)]
 pub mod config;
@@ -31,7 +30,6 @@ pub mod packet_info;
 pub mod packet_queue;
 pub mod rank;
 pub mod rr;
-pub mod skiplist;
 pub mod statistics;
 pub mod tcp_connection;
 pub mod tcp_data;
@@ -60,7 +58,6 @@ use packet_queue::PacketQueue;
 use parking_lot::Mutex;
 use pcap::{Activated, Active, Capture, Linktype};
 use signal_hook::iterator::Signals;
-use skiplist::SkipList;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::process::exit;
@@ -153,7 +150,6 @@ fn write_output(
 
 fn parse_dns_packet(
     packet_queue: &PacketQueue,
-    skip_list: &SkipList,
     stats: &Arc<Mutex<Statistics>>,
     tcp_list: &Arc<Mutex<TcpConnections>>,
     config: &Config,
@@ -170,7 +166,6 @@ fn parse_dns_packet(
                         &mut stats.lock(),
                         tcp_list,
                         config,
-                        skip_list,
                     )
                 } else if link_type == Linktype(12)
                     || link_type == Linktype::RAW
@@ -182,7 +177,6 @@ fn parse_dns_packet(
                         stats,
                         tcp_list,
                         config,
-                        skip_list,
                     )
                 } else {
                     Err(ParseError::new(Unknown_Link_Type, "").into())
@@ -208,7 +202,6 @@ fn poll(
     packet_queue: &PacketQueue,
     config: &Config,
     rx: mpsc::Receiver<String>,
-    skip_list: &SkipList,
     stats: &Arc<Mutex<Statistics>>,
     tcp_list: &Arc<Mutex<TcpConnections>>,
 ) {
@@ -247,7 +240,7 @@ fn poll(
         live_dump.accept();
         live_dump.read_all();
 
-        let packet_info = parse_dns_packet(packet_queue, skip_list, stats, tcp_list, config);
+        let packet_info = parse_dns_packet(packet_queue, stats, tcp_list, config);
         if let Some(p) = packet_info {
             if let Some(mut p1) = p {
                 if !p1.dns_records.is_empty() {
@@ -354,7 +347,6 @@ fn terminate_loop(stats: &Arc<Mutex<Statistics>>, config: &Arc<Config>) {
 fn capture_from_file(
     config: &Config,
     pcap_path: &str,
-    skiplist: &SkipList,
     stats: &Arc<Mutex<Statistics>>,
     tcp_list: &Arc<Mutex<TcpConnections>>,
     packet_queue: &PacketQueue,
@@ -376,7 +368,6 @@ fn capture_from_file(
                         &packet_queue.clone(),
                         config,
                         pq_rx,
-                        skiplist,
                         stats,
                         tcp_list,
                     );
@@ -400,7 +391,6 @@ fn capture_from_file(
 
 fn capture_from_interface(
     config: &Config,
-    skiplist: &SkipList,
     stats: &Arc<Mutex<Statistics>>,
     tcp_list: &Arc<Mutex<TcpConnections>>,
     packet_queue: &PacketQueue,
@@ -420,7 +410,6 @@ fn capture_from_interface(
                 &packet_queue.clone(),
                 config,
                 pq_rx,
-                skiplist,
                 stats,
                 tcp_list,
             );
@@ -485,13 +474,10 @@ fn run(
 ) {
     let packet_queue = PacketQueue::new();
     let tcp_list = Arc::new(Mutex::new(TcpConnections::new(config.tcp_memory)));
-    let mut skiplist = SkipList::new();
-    skiplist.read_skip_list(&config.skip_list_file);
     if !pcap_path.is_empty() {
         capture_from_file(
             config,
             pcap_path,
-            &skiplist,
             stats,
             &tcp_list,
             &packet_queue,
@@ -503,7 +489,6 @@ fn run(
         };
         capture_from_interface(
             config,
-            &skiplist,
             stats,
             &tcp_list,
             &packet_queue,

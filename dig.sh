@@ -180,7 +180,9 @@ dig resolver.dns4all.eu resinfo $1
 dig _dns.resolver.arpa svcb @1.1.1.1
 dig _dns.resolver.arpa svcb @8.8.8.8
 dig _dns.resolver.arpa svcb @9.9.9.9
+dig _dns.resolver.arpa svcb @194.0.5.3
 dig https defo.ie
 dig zagreb._deleg.nlnetlabs.nl. SVCB
 #dig type666 xs4all.nl
 dig encryptedsni.com  https
+dig _dns.resolver.arpa svcb @149.112.121.30

@@ -985,3 +985,4 @@ dig +short zwaremetalen.com +dnssec $1
 dig +short eddie4.nl +dnssec $1
 dig miek.nl loc +dnssec +short $1
 dig forfun.net loc +dnssec +short $1
+dig kinky.nl +dnssec +short $1

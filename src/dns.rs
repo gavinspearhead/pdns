@@ -2,6 +2,7 @@ use crate::errors::DnsErrorType::Invalid_Param;
 use crate::errors::ParseErrorType::Invalid_Parameter;
 use crate::errors::{DnsError, ParseError};
 use std::fmt;
+use serde::{Deserialize, Serialize};
 use strum_macros::IntoStaticStr;
 use strum_macros::{EnumIter, FromRepr};
 
@@ -155,9 +156,11 @@ pub(crate) fn cert_type_str(t: u16) -> Result<&'static str, ParseError> {
     EnumIter,
     IntoStaticStr,
     FromRepr,
+    Serialize,
+    Deserialize,
 )]
 #[repr(u16)]
-pub enum SVC_Param_Keys {
+pub enum SvcParamKeys {
     mandatory = 0,
     alpn = 1,
     no_default_alpn = 2,
@@ -173,20 +176,20 @@ pub enum SVC_Param_Keys {
     key_value = 255,
 }
 
-impl SVC_Param_Keys {
+impl SvcParamKeys {
     #[inline]
     pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
     pub(crate) fn find(val: u16) -> Result<Self, DnsError> {
-        match SVC_Param_Keys::from_repr(val) {
+        match SvcParamKeys::from_repr(val) {
             Some(x) => Ok(x),
             None => Err(DnsError::new(Invalid_Param, &format!("{val}"))),
         }
     }
 }
 
-impl fmt::Display for SVC_Param_Keys {
+impl fmt::Display for SvcParamKeys {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self.to_str())

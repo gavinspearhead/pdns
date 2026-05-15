@@ -24,7 +24,7 @@ impl PacketQueue {
             // Clear the poison and recover the data
             poisoned.into_inner()
         });
-        if queue.len() < Self::MAX_QUEUE_SIZE || packet == None {
+        if queue.len() < Self::MAX_QUEUE_SIZE || packet.is_none() {
             queue.push_back(packet);
             true
         } else {

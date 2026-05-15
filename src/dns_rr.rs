@@ -95,12 +95,14 @@ use crate::rr::rr_wks::RR_WKS;
 use crate::rr::rr_x25::RR_X25;
 use crate::rr::rr_zonemd::RR_ZONEMD;
 use tracing::debug;
+use crate::statistics::Statistics;
 
 pub(crate) fn dns_parse_rdata(
     rdata: &[u8],
     rrtype: DnsRRType,
     packet: &[u8],
     offset_in: usize,
+    statistics: &mut Statistics
 ) -> Result<String, ParseError> {
     match rrtype {
         DnsRRType::A => Ok(RR_A::parse(rdata)?.to_string()),
@@ -134,7 +136,7 @@ pub(crate) fn dns_parse_rdata(
         DnsRRType::HINFO => Ok(RR_HINFO::parse(rdata)?.to_string()),
         DnsRRType::HHIT => Ok(RR_HHIT::parse(rdata)?.to_string()),
         DnsRRType::HIP => Ok(RR_HIP::parse(rdata, packet, offset_in)?.to_string()),
-        DnsRRType::HTTPS => Ok(RR_HTTPS::parse(rdata)?.to_string()),
+        DnsRRType::HTTPS => Ok(RR_HTTPS::parse(rdata, statistics)?.to_string()),
         DnsRRType::IPN => Ok(RR_IPN::parse(rdata)?.to_string()),
         DnsRRType::IPSECKEY => Ok(RR_IPSECKEY::parse(rdata, packet, offset_in)?.to_string()),
         DnsRRType::ISDN => Ok(RR_ISDN::parse(rdata)?.to_string()),
@@ -182,7 +184,7 @@ pub(crate) fn dns_parse_rdata(
         DnsRRType::SPF => Ok(RR_SPF::parse(rdata)?.to_string()),
         DnsRRType::SRV => Ok(RR_SRV::parse(packet, offset_in)?.to_string()),
         DnsRRType::SSHFP => Ok(RR_SSHFP::parse(rdata)?.to_string()),
-        DnsRRType::SVCB => Ok(RR_SVCB::parse(rdata)?.to_string()),
+        DnsRRType::SVCB => Ok(RR_SVCB::parse(rdata, statistics)?.to_string()),
         DnsRRType::TA => Ok(RR_TA::parse(rdata)?.to_string()),
         DnsRRType::TALINK => Ok(RR_TALINK::parse(packet, offset_in)?.to_string()),
         DnsRRType::TKEY => Ok(RR_TKEY::parse(packet, offset_in)?.to_string()),

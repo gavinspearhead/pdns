@@ -99,7 +99,7 @@ mod tests {
 
     #[test]
     fn test_time_stats_transitions() {
-        let mut stats = Time_stats::new();
+        let mut stats = TimeStats::new();
 
         // 1. Test Year Transition: Dec 31, 2024 23:59:59 -> Jan 1, 2025 00:00:00
         let t1 = Utc.with_ymd_and_hms(2024, 12, 31, 23, 59, 59).unwrap();
@@ -148,7 +148,7 @@ pub(crate) enum STAT_ITEM {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub(crate) struct Time_stats {
+pub(crate) struct TimeStats {
     pub(crate) per_month: Bucket<u128>,
     pub(crate) per_minute: Bucket<u128>,
     pub(crate) per_hour: Bucket<u128>,
@@ -156,9 +156,9 @@ pub(crate) struct Time_stats {
     pub(crate) per_second: Bucket<u128>,
 }
 
-impl Time_stats {
-    pub(crate) fn new() -> Time_stats {
-        Time_stats {
+impl TimeStats {
+    pub(crate) fn new() -> TimeStats {
+        TimeStats {
             per_minute: Bucket::new(60),
             per_hour: Bucket::new(24),
             per_day: Bucket::new(31),
