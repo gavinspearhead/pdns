@@ -1,6 +1,5 @@
 use chrono::{DateTime, Utc};
 use pcap::Linktype;
-use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
