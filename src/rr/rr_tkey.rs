@@ -1,5 +1,5 @@
 use crate::dns_helper::{
-    base32hex_encode, dns_format_name, dns_parse_slice, dns_read_u16, dns_read_u32, names_list,
+    base32hex_encode, dns_format_name, dns_parse_slice, dns_read_u16, dns_read_u32, NamesList,
 };
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DnsRecord;
@@ -82,11 +82,12 @@ impl Display for RR_TKEY {
 }
 
 impl DnsRecord for RR_TKEY {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::TKEY
     }
 
-    fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, names: &mut NamesList, offset: usize) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&dns_format_name(&self.name, names, offset));
         bytes.extend_from_slice(&self.inception.to_be_bytes());

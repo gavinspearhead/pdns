@@ -1,4 +1,4 @@
-use crate::dns_helper::{dns_format_name, dns_read_u32, names_list};
+use crate::dns_helper::{dns_format_name, dns_read_u32, NamesList};
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
@@ -67,7 +67,7 @@ impl DnsRecord for RR_SOA {
     }
 
     #[inline]
-    fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, names: &mut NamesList, offset: usize) -> Vec<u8> {
         let mut result = Vec::with_capacity(32);
         result.extend_from_slice(dns_format_name(&self.ns, names, offset).as_slice());
         let offset = result.len();

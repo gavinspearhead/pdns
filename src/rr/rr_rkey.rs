@@ -1,6 +1,6 @@
 use crate::rr::rr_key::RR_KEY;
 
-use crate::dns_helper::names_list;
+use crate::dns_helper::NamesList;
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
@@ -35,11 +35,12 @@ impl Display for RR_RKEY {
 }
 
 impl DnsRecord for RR_RKEY {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::RKEY
     }
 
-    fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, names: &mut NamesList, offset: usize) -> Vec<u8> {
         self.rr_key.to_bytes(names, offset)
     }
 }

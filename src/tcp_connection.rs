@@ -2,7 +2,7 @@ use crate::tcp_connection::TCPConnectionsErrorType::NotFound;
 use crate::tcp_data::TcpData;
 use chrono::{DateTime, Utc};
 use parking_lot::Mutex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::cmp::max;
 use std::{
@@ -24,7 +24,7 @@ pub(crate) enum TCPConnectionsErrorType {
     NotFound,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct TcpConnectionError {
     //error_type: TCP_Connections_Error_Type,
     error_str: String,

@@ -1,7 +1,7 @@
 use crate::config::Config;
 use crate::statistics::Statistics;
 use crate::tcp_connection::TcpConnections;
-use crate::time_stats::STAT_ITEM::{DAY, HOUR, MINUTE, MONTH, SECOND};
+use crate::time_stats::StatItem::{DAY, HOUR, MINUTE, MONTH, SECOND};
 use crate::version::VERSION;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use chrono::{DateTime, Utc};

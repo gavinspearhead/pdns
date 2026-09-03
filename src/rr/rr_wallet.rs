@@ -1,4 +1,4 @@
-use crate::dns_helper::names_list;
+use crate::dns_helper::NamesList;
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr::RR_TXT;
 use crate::dns_rr_type::DnsRRType;
@@ -20,8 +20,8 @@ impl RR_WALLET {
         self.txt.set(txt);
     }
 
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_WALLET, ParseError> {
-        Ok(RR_WALLET {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<Self, ParseError> {
+        Ok(Self {
             txt: RR_TXT::parse(rdata)?,
         })
     }
@@ -34,11 +34,12 @@ impl Display for RR_WALLET {
 }
 
 impl DnsRecord for RR_WALLET {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::WALLET
     }
 
-    fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, names: &mut NamesList, offset: usize) -> Vec<u8> {
         self.txt.to_bytes(names, offset)
     }
 }

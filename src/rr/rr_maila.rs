@@ -1,8 +1,8 @@
-use crate::dns_helper::{names_list, parse_ipv4_addr};
+use crate::dns_helper::{parse_ipv4_addr, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
-use crate::errors::ParseErrorType::Invalid_Parameter;
+use crate::errors::ParseErrorType::InvalidParameter;
 use std::fmt::{Display, Formatter};
 use std::net::{IpAddr, Ipv4Addr};
 
@@ -30,7 +30,7 @@ impl RR_MAILA {
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_MAILA, ParseError> {
         let addr = match parse_ipv4_addr(rdata)? {
             IpAddr::V4(addr) => addr,
-            IpAddr::V6(_) => return Err(ParseError::new(Invalid_Parameter, "")),
+            IpAddr::V6(_) => return Err(ParseError::new(InvalidParameter, "")),
         };
         Ok(RR_MAILA { addr })
     }
@@ -43,11 +43,12 @@ impl Display for RR_MAILA {
 }
 
 impl DnsRecord for RR_MAILA {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::MAILA
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         self.addr.octets().to_vec()
     }
 }

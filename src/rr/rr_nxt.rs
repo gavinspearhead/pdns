@@ -1,5 +1,5 @@
 use crate::dns_helper::{
-    build_bitmap_from_vec, dns_format_name, map_bitmap_to_rr, names_list, parse_bitmap_vec,
+    build_bitmap_from_vec, dns_format_name, map_bitmap_to_rr, parse_bitmap_vec, NamesList,
 };
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DnsRecord;
@@ -49,11 +49,12 @@ impl Display for RR_NXT {
 }
 
 impl DnsRecord for RR_NXT {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::NXT
     }
 
-    fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, names: &mut NamesList, offset: usize) -> Vec<u8> {
         let mut res: Vec<u8> = Vec::new();
         res.append(&mut dns_format_name(&self.next, names, offset));
         let bm = build_bitmap_from_vec(&self.bitmap).unwrap_or_default();

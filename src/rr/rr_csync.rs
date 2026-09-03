@@ -1,6 +1,6 @@
 use crate::dns_helper::{
-    dns_parse_slice, dns_read_u16, dns_read_u32, encode_nsec3_bitmap, map_bitmap_to_rr, names_list,
-    parse_nsec_bitmap_vec,
+    dns_parse_slice, dns_read_u16, dns_read_u32, encode_nsec3_bitmap, map_bitmap_to_rr,
+    parse_nsec_bitmap_vec, NamesList,
 };
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
@@ -41,11 +41,12 @@ impl Display for RR_CSYNC {
 }
 
 impl DnsRecord for RR_CSYNC {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::CSYNC
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&self.soa.to_be_bytes());
         bytes.extend_from_slice(&self.flags.to_be_bytes());

@@ -1,13 +1,13 @@
 use crate::dns::dnssec_algorithm;
 use crate::dns_helper::{
-    dns_format_name, dns_parse_slice, dns_read_u16, dns_read_u32, dns_read_u8, names_list,
-    timestamp_to_str,
+    dns_format_name, dns_parse_slice, dns_read_u16, dns_read_u32, dns_read_u8, timestamp_to_str,
+    NamesList,
 };
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
-use crate::errors::ParseErrorType::Invalid_Parameter;
+use crate::errors::ParseErrorType::InvalidParameter;
 use base64::Engine;
 use std::fmt::{Display, Formatter};
 
@@ -51,11 +51,11 @@ impl RR_RRSIG {
         self.signer = signer.to_string();
         self.signature = signature.to_vec();
     }
-    pub(crate) fn parse(packet: &[u8], offset_in: usize) -> Result<RR_RRSIG, ParseError> {
+    pub(crate) fn parse(packet: &[u8], rdata: &[u8],  offset_in: usize) -> Result<RR_RRSIG, ParseError> {
         let mut rr_sig = RR_RRSIG::new();
         let sig_rrtype_val = dns_read_u16(packet, offset_in)?;
         rr_sig.sig_rrtype = DnsRRType::find(sig_rrtype_val)
-            .map_err(|_| ParseError::new(Invalid_Parameter, &sig_rrtype_val.to_string()))?;
+            .map_err(|_| ParseError::new(InvalidParameter, &sig_rrtype_val.to_string()))?;
         rr_sig.alg = dns_read_u8(packet, offset_in + 2)?;
         rr_sig.labels = dns_read_u8(packet, offset_in + 3)?;
         rr_sig.ttl = dns_read_u32(packet, offset_in + 4)?;
@@ -64,7 +64,7 @@ impl RR_RRSIG {
         rr_sig.key_tag = dns_read_u16(packet, offset_in + 16)?;
         let offset_out;
         (rr_sig.signer, offset_out) = dns_parse_name(packet, offset_in + 18)?;
-        rr_sig.signature = dns_parse_slice(packet, offset_out..)?.to_vec();
+        rr_sig.signature = dns_parse_slice(rdata, offset_out - offset_in..)?.to_vec();
         Ok(rr_sig)
     }
 }
@@ -90,11 +90,12 @@ impl Display for RR_RRSIG {
 }
 
 impl DnsRecord for RR_RRSIG {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::RRSIG
     }
 
-    fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, names: &mut NamesList, offset: usize) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&(self.sig_rrtype as u16).to_be_bytes());
         bytes.push(self.alg);

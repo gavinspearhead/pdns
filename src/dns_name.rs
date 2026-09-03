@@ -1,6 +1,6 @@
 use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8};
 use crate::errors::ParseError;
-use crate::errors::ParseErrorType::{Invalid_Domain_name, Invalid_packet_index};
+use crate::errors::ParseErrorType::{InvalidDomainName, InvalidPacketIndex};
 use std::borrow::Cow;
 use tracing::debug;
 
@@ -28,6 +28,10 @@ mod tests {
         assert!(is_valid_dns_name("domain.example.com."));
         assert!(is_valid_dns_name("."));
         assert!(is_valid_dns_name("nic.energy"));
+        assert!(is_valid_dns_name("nl"));
+        assert!(is_valid_dns_name("com"));
+        assert!(is_valid_dns_name("org."));
+        assert!(is_valid_dns_name("domain")); // only one label
 
         // Invalid names
         assert!(!is_valid_dns_name("")); // Empty
@@ -41,7 +45,6 @@ mod tests {
         assert!(!is_valid_dns_name("domain.c")); // TLD too short
         assert!(!is_valid_dns_name("d.com")); // Second-level domain too short
         assert!(!is_valid_dns_name("d.c")); // first and Second-level domain too short
-        assert!(!is_valid_dns_name("domain")); // only one label
 
         // Invalid characters
         assert!(!is_valid_dns_name("domain$.com"));
@@ -126,7 +129,7 @@ mod tests {
     }
 }
 
-fn is_valid_dns_name(name: &str) -> bool {
+pub fn is_valid_dns_name(name: &str) -> bool {
     if name.is_empty() || name.len() > MAX_DOMAIN_NAME_LENGTH_WITH_DOT {
         return false;
     }
@@ -164,11 +167,10 @@ fn is_valid_dns_name(name: &str) -> bool {
         label_count += 1;
     }
 
-    if label_count < 2 {
-        return false;
+    if label_count >= 2 {
+        return second_last_label_len >= 2 && last_label_len >= 2;
     }
-
-    second_last_label_len >= 2 && last_label_len >= 2
+    return last_label_len>= 2;
 }
 
 fn is_valid_dns_label(label: &str) -> bool {
@@ -192,32 +194,6 @@ fn is_valid_dns_label(label: &str) -> bool {
     true
 }
 
-/*
-fn is_valid_dns_name_(name: &str) -> bool {
-    if name.is_empty()
-        || name.len() > MAX_DOMAIN_NAME_LENGTH_WITH_DOT
-        || (name.len() > MAX_DOMAIN_NAME_LENGTH && !name.ends_with('.'))
-    {
-        return false;
-    }
-
-    if name == "." {
-        return true;
-    }
-
-    if !DNS_NAME_REGEX.is_match(name) {
-        return false;
-    }
-
-    for label in name.split('.') {
-        if label.len() > MAX_LABEL_LENGTH {
-            return false;
-        }
-    }
-
-    true
-}*/
-
 pub(crate) fn dns_parse_name(packet: &[u8], offset: usize) -> Result<(String, usize), ParseError> {
     let (name, offset_out) = dns_parse_name_internal(packet, offset, 0)?;
     let name = if name.is_empty() {
@@ -225,15 +201,16 @@ pub(crate) fn dns_parse_name(packet: &[u8], offset: usize) -> Result<(String, us
     } else {
         let trimmed = name.strip_suffix('.').unwrap_or(&name);
         if trimmed.len() > MAX_DOMAIN_NAME_LENGTH {
-            return Err(ParseError::new(Invalid_Domain_name, &name));
+            return Err(ParseError::new(InvalidDomainName, &name));
+        }
+        if !is_valid_dns_name(trimmed) {
+            debug!("*Invalid DNS name: {name}");
         }
         Cow::Owned(trimmed.to_string())
     };
-    if !is_valid_dns_name(name.as_ref()) {
-        debug!("Invalid DNS name: {}", name);
-    }
     Ok((name.into_owned(), offset_out))
 }
+
 const POINTER_FLAG: u8 = 0xc0;
 const POINTER_MASK: u16 = 0x3fff;
 
@@ -244,7 +221,10 @@ fn dns_parse_name_internal(
 ) -> Result<(String, usize), ParseError> {
     if recursion_depth > MAX_RECURSION_DEPTH {
         debug!("Recursion depth exceeded");
-        return Err(ParseError::new(Invalid_packet_index, ""));
+        return Err(ParseError::new(
+            InvalidPacketIndex,
+            "Recursion depth exceeded",
+        ));
     }
     let mut idx = offset_in;
     let mut name = String::with_capacity(MAX_DOMAIN_NAME_LENGTH);
@@ -265,23 +245,23 @@ fn dns_parse_name_internal(
             idx += 1;
             let end = idx
                 .checked_add(label_len)
-                .ok_or_else(|| ParseError::new(Invalid_packet_index, &format!("{idx}")))?;
+                .ok_or_else(|| ParseError::new(InvalidPacketIndex, &format!("{idx}")))?;
             let label = dns_parse_slice(packet, idx..end)?;
             match std::str::from_utf8(label) {
                 Ok(t) => {
                     if name.len() + t.len() > MAX_DOMAIN_NAME_LENGTH {
-                        return Err(ParseError::new(Invalid_Domain_name, &name));
+                        return Err(ParseError::new(InvalidDomainName, &name));
                     }
                     name.push_str(t);
                 }
                 Err(_) => {
-                    return Err(ParseError::new(Invalid_packet_index, &format!("{idx}")));
+                    return Err(ParseError::new(InvalidPacketIndex, &format!("{idx}")));
                 }
             }
             name.push('.');
             idx += label_len;
         } else {
-            return Err(ParseError::new(Invalid_packet_index, &format!("{idx}")));
+            return Err(ParseError::new(InvalidPacketIndex, &format!("{idx}")));
         }
     }
     Ok((name, idx + 1))

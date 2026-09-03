@@ -1,4 +1,4 @@
-use crate::dns_helper::{dns_format_name, names_list};
+use crate::dns_helper::{dns_format_name, NamesList};
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
@@ -35,11 +35,12 @@ impl Display for RR_RP {
 }
 
 impl DnsRecord for RR_RP {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::RP
     }
 
-    fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, names: &mut NamesList, offset: usize) -> Vec<u8> {
         let mut res: Vec<u8> = Vec::new();
         res.extend_from_slice(dns_format_name(&self.mailbox, names, offset).as_slice());
         res.extend_from_slice(dns_format_name(&self.txt, names, offset).as_slice());

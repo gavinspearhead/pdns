@@ -1,8 +1,8 @@
-use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, names_list, parse_dns_str};
+use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, parse_dns_str, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
-use crate::errors::ParseErrorType::{Invalid_Parameter, Invalid_Resource_Record};
+use crate::errors::ParseErrorType::{InvalidParameter, InvalidResourceRecord};
 use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, Default)]
 pub struct RR_BRID {
@@ -61,7 +61,7 @@ impl RR_BRID {
     pub fn set(&mut self) {}
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_BRID, ParseError> {
         if rdata.is_empty() {
-            return Err(ParseError::new(Invalid_Resource_Record, "empty BRID RDATA"));
+            return Err(ParseError::new(InvalidResourceRecord, "empty BRID RDATA"));
         }
 
         let mut a = RR_BRID::new();
@@ -77,7 +77,7 @@ impl RR_BRID {
                 1 => {
                     if value.is_empty() {
                         return Err(ParseError::new(
-                            Invalid_Parameter,
+                            InvalidParameter,
                             "BRID uas-id group too short",
                         ));
                     }
@@ -89,7 +89,7 @@ impl RR_BRID {
                 2 => {
                     if value.is_empty() {
                         return Err(ParseError::new(
-                            Invalid_Parameter,
+                            InvalidParameter,
                             "BRID auth group too short",
                         ));
                     }
@@ -104,7 +104,7 @@ impl RR_BRID {
                 4 => {
                     if value.len() != 6 {
                         return Err(ParseError::new(
-                            Invalid_Parameter,
+                            InvalidParameter,
                             "BRID area group must be 6 bytes",
                         ));
                     }
@@ -117,7 +117,7 @@ impl RR_BRID {
                 5 => {
                     if value.len() != 2 {
                         return Err(ParseError::new(
-                            Invalid_Parameter,
+                            InvalidParameter,
                             "BRID classification group must be 2 bytes",
                         ));
                     }
@@ -129,7 +129,7 @@ impl RR_BRID {
                 6 => {
                     if value.is_empty() {
                         return Err(ParseError::new(
-                            Invalid_Parameter,
+                            InvalidParameter,
                             "BRID operator-id group too short",
                         ));
                     }
@@ -140,7 +140,7 @@ impl RR_BRID {
                 }
                 _ => {
                     return Err(ParseError::new(
-                        Invalid_Parameter,
+                        InvalidParameter,
                         &format!("unknown BRID group type {group_type}"),
                     ));
                 }
@@ -160,10 +160,11 @@ impl Display for RR_BRID {
 }
 
 impl DnsRecord for RR_BRID {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::BRID
     }
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         vec![]
     }
 }

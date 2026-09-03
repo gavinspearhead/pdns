@@ -1,5 +1,5 @@
 use crate::errors::DnsError;
-use crate::errors::DnsErrorType::Invalid_Class;
+use crate::errors::DnsErrorType::InvalidClass;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
@@ -31,11 +31,12 @@ pub enum DnsClass {
     HS = 4,
     NONE = 254,
     ANY = 255,
+    RESERVED = 65535,
 }
 
 impl DnsClass {
     #[inline]
-    pub(crate) fn to_str(self) -> &'static str {
+    pub fn to_str(self) -> &'static str {
         self.into()
     }
     pub(crate) fn find(val: u16) -> Result<Self, DnsError> {
@@ -43,8 +44,11 @@ impl DnsClass {
             Ok(x)
         } else {
             debug!("Error wrong class value {val}");
-            Err(DnsError::new(Invalid_Class, &format!("{val}")))
+            Err(DnsError::new(InvalidClass, &format!("{val}")))
         }
+    }
+    pub(crate) fn to_u16(self) -> u16 {
+        self as u16
     }
 }
 

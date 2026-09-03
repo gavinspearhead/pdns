@@ -1,4 +1,4 @@
-use crate::dns_helper::{dns_parse_slice, dns_read_u16, names_list, parse_ipv4_addr};
+use crate::dns_helper::{dns_parse_slice, dns_read_u16, parse_ipv4_addr, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::{ParseError, ParseErrorType};
@@ -34,7 +34,7 @@ impl RR_L32 {
             IpAddr::V4(addr) => addr,
             IpAddr::V6(_) => {
                 return Err(ParseError::new(
-                    ParseErrorType::Invalid_Data,
+                    ParseErrorType::InvalidData,
                     &format!("{:?}", &rdata[2..]),
                 ))
             }
@@ -50,11 +50,12 @@ impl Display for RR_L32 {
 }
 
 impl DnsRecord for RR_L32 {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::L32
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut result = Vec::new();
         result.extend_from_slice(&self.prio.to_be_bytes());
         result.extend_from_slice(&self.addr.octets());

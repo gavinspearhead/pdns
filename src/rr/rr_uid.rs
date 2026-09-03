@@ -1,4 +1,4 @@
-use crate::dns_helper::{dns_read_u32, names_list};
+use crate::dns_helper::{dns_read_u32, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
@@ -36,11 +36,12 @@ impl Display for RR_UID {
 }
 
 impl DnsRecord for RR_UID {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::UID
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         self.uid.to_be_bytes().to_vec()
     }
 }

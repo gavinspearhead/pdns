@@ -1,4 +1,4 @@
-use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list, parse_dns_str};
+use crate::dns_helper::{dns_parse_slice, dns_read_u8, parse_dns_str, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
@@ -46,11 +46,12 @@ impl Display for RR_ISDN {
 }
 
 impl DnsRecord for RR_ISDN {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::ISDN
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         debug_assert!(self.addr.len() < 256);
         debug_assert!(self.sub_addr_str.len() < 256);
         let mut bytes = Vec::new();

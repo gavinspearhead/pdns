@@ -1,4 +1,4 @@
-use crate::dns_helper::{dns_format_name, dns_parse_slice, dns_read_u16, dns_read_u8, names_list};
+use crate::dns_helper::{dns_format_name, dns_parse_slice, dns_read_u16, dns_read_u8, NamesList};
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
@@ -70,11 +70,12 @@ impl Display for RR_HIP {
 }
 
 impl DnsRecord for RR_HIP {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::HIP
     }
 
-    fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, names: &mut NamesList, offset: usize) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.push(self.hit_len);
         bytes.push(self.hit_alg);

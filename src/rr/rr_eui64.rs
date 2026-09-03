@@ -1,8 +1,8 @@
-use crate::dns_helper::names_list;
+use crate::dns_helper::NamesList;
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
-use crate::errors::ParseErrorType::Invalid_Resource_Record;
+use crate::errors::ParseErrorType::InvalidResourceRecord;
 use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, Default, Hash, PartialEq, Eq, PartialOrd, Ord, Copy)]
 pub struct RR_EUI64 {
@@ -20,7 +20,7 @@ impl RR_EUI64 {
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_EUI64, ParseError> {
         if rdata.len() != 8 {
             return Err(ParseError::new(
-                Invalid_Resource_Record,
+                InvalidResourceRecord,
                 "Invalid EUI64 record length",
             ));
         }
@@ -48,11 +48,12 @@ impl Display for RR_EUI64 {
 }
 
 impl DnsRecord for RR_EUI64 {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::EUI64
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         self.addr.to_vec()
     }
 }

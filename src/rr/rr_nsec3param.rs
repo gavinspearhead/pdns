@@ -1,4 +1,4 @@
-use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, names_list};
+use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
@@ -52,11 +52,12 @@ impl Display for RR_NSEC3PARAM {
 }
 
 impl DnsRecord for RR_NSEC3PARAM {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::NSEC3PARAM
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         debug_assert!(self.salt.len() < 256);
         let mut bytes = Vec::new();
         bytes.push(self.hash);

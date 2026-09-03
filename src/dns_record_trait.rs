@@ -5,7 +5,7 @@ use crate::dns_rr_type::DnsRRType;
 use tracing::debug;
 
 use crate::dns_answers::write_data_record;
-use crate::dns_helper::names_list;
+use crate::dns_helper::NamesList;
 
 pub(crate) trait DnsRecord {
     fn add_to_answer(
@@ -29,5 +29,5 @@ pub(crate) trait DnsRecord {
         Ok(offset)
     }
     fn get_type(&self) -> DnsRRType;
-    fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8>;
+    fn to_bytes(&self, names: &mut NamesList, offset: usize) -> Vec<u8>;
 }

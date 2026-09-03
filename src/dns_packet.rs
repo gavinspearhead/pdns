@@ -4,7 +4,8 @@ use crate::dns_edns::parse_edns;
 use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u32};
 use crate::dns_name::dns_parse_name;
 use crate::dns_opcodes::DnsOpcodes;
-use crate::dns_record::DnsRecord;
+use crate::dns_record::DnsField::{Additional, Answer, Authority, Question};
+use crate::dns_record::{DnsField, DnsRecord};
 use crate::dns_reply_type::DnsReplyType;
 use crate::dns_rr::dns_parse_rdata;
 use crate::dns_rr_type::DnsRRType;
@@ -14,25 +15,27 @@ use crate::packet_info::PacketInfo;
 use crate::statistics::Statistics;
 use publicsuffix::Psl as _;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-#[derive(Debug, Clone, Default, Hash, PartialEq, Eq, Ord, PartialOrd)]
-pub(crate) struct DnsQuestion {
+#[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize, Hash)]
+pub struct DnsQuestion {
     pub dns_rr_type: DnsRRType,
     pub dns_class_type: DnsClass,
     pub name: String,
 }
 
- #[must_use] 
- pub fn match_skip_list(list : &[Regex], name: &str) -> bool {
-        if list.is_empty() {
-            return false;
-        }
-        let clean_name = name.strip_suffix('.').unwrap_or(name);
-        list.iter().any(|r| r.is_match(clean_name))
+#[must_use]
+pub fn match_skip_list(list: &[Regex], name: &str) -> bool {
+    if list.is_empty() {
+        return false;
     }
+    let clean_name = name.strip_suffix('.').unwrap_or(name);
+    list.iter().any(|r| r.is_match(clean_name))
+}
 
 impl DnsQuestion {
+    #[must_use]
     pub fn new() -> DnsQuestion {
         DnsQuestion::default()
     }
@@ -44,7 +47,7 @@ impl DnsQuestion {
     ) -> Result<usize, Box<dyn std::error::Error>> {
         let (name, offset) = dns_parse_name(packet, offset_in)?;
         if match_skip_list(&config.skip_domains, &name) {
-            return Err(ParseError::new(ParseErrorType::Skipped_Message, &name).into());
+            return Err(ParseError::new(ParseErrorType::SkippedMessage, &name).into());
         }
         let rrtype_val = dns_read_u16(packet, offset)?;
         let class_val = dns_read_u16(packet, offset + 2)?;
@@ -61,21 +64,21 @@ fn parse_question(
     offset_in: usize,
     stats: &mut Statistics,
     rcode: DnsReplyType,
-    config: &Config
+    config: &Config,
 ) -> Result<usize, Box<dyn std::error::Error>> {
-    let mut dns_question = DnsQuestion::new();
-    let offset = dns_question.parse(packet, offset_in, config)?;
-    let rr_type = dns_question.dns_rr_type;
-    let class = dns_question.dns_class_type;
+    packet_info.question = DnsQuestion::new();
+    let offset = packet_info.question.parse(packet, offset_in, config)?;
+    let rr_type = packet_info.question.dns_rr_type;
+    let class = packet_info.question.dns_class_type;
     *stats.qtypes.entry(rr_type).or_insert(0) += 1;
     *stats.qclass.entry(class).or_insert(0) += 1;
     stats.total_time_stats.add(packet_info.timestamp, 1);
 
     if rcode == DnsReplyType::NXDOMAIN {
-        stats.topnx.add(&dns_question.name);
+        stats.topnx.add(&packet_info.question.name.to_lowercase());
         stats.blocked_time_stats.add(packet_info.timestamp, 1);
     } else if rcode == DnsReplyType::NOERROR {
-        stats.topdomain.add(&dns_question.name);
+        stats.topdomain.add(&packet_info.question.name.to_lowercase());
         stats.success_time_stats.add(packet_info.timestamp, 1);
     } else {
         debug!("Other rcode: {rcode:?}");
@@ -88,9 +91,10 @@ fn parse_question(
             rcode,
             1,
             packet_info.timestamp,
-            &dns_question.name,
+            &packet_info.question.name,
             0,
             "",
+            Question,
         );
         packet_info.add_dns_record(rec);
     }
@@ -104,10 +108,11 @@ fn parse_answer(
     offset_in: usize,
     stats: &mut Statistics,
     config: &Config,
+    source_field: DnsField,
 ) -> Result<usize, Box<dyn std::error::Error>> {
     let (name, mut offset) = dns_parse_name(packet, offset_in)?;
     if match_skip_list(&config.skip_domains, &name) {
-        return Err(ParseError::new(ParseErrorType::Skipped_Message, &name).into());
+        return Err(ParseError::new(ParseErrorType::SkippedMessage, &name).into());
     }
     let rrtype_val = dns_read_u16(packet, offset)?;
     let rrtype = DnsRRType::find(rrtype_val)?;
@@ -142,6 +147,7 @@ fn parse_answer(
         &name,
         ttl,
         &rdata,
+        source_field,
     );
 
     packet_info.add_dns_record(rec);
@@ -161,8 +167,10 @@ pub(crate) fn find_domain(publicsuffixlist: &publicsuffix::List, name: &str) -> 
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq, Ord, PartialOrd)]
-pub(crate) struct DnsHeader {
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize, Hash,
+)]
+pub struct DnsHeader {
     // Transaction ID
     pub id: u16,
     pub flags: u16,
@@ -186,8 +194,82 @@ pub(crate) struct DnsHeader {
 
 impl DnsHeader {
     #[inline]
+    #[must_use]
     pub fn new() -> DnsHeader {
         DnsHeader::default()
+    }
+    pub fn init(
+        &mut self,
+        id: u16,
+        qr: u8,
+        opcode: DnsOpcodes,
+        aa: u8,
+        tc: u8,
+        rd: u8,
+        ra: u8,
+        z: u8,
+        ad: u8,
+        cd: u8,
+        rcode: DnsReplyType,
+        qdcount: u16,
+        ancount: u16,
+        nscount: u16,
+        arcount: u16,
+    ) {
+        self.id = id;
+        self.qr = qr;
+        self.opcode = opcode;
+        self.aa = aa;
+        self.tc = tc;
+        self.rd = rd;
+        self.ra = ra;
+        self.z = z;
+        self.ad = ad;
+        self.cd = cd;
+        self.rcode = rcode;
+        self.qdcount = qdcount;
+        self.ancount = ancount;
+        self.nscount = nscount;
+        self.arcount = arcount;
+
+        // Reconstruct flags from individual fields
+        self.flags = ((u16::from(qr) & 0x1) << 15)
+            | ((opcode.to_u16() & 0xF) << 11)
+            | ((u16::from(aa) & 0x1) << 10)
+            | ((u16::from(tc) & 0x1) << 9)
+            | ((u16::from(rd) & 0x1) << 8)
+            | ((u16::from(ra) & 0x1) << 7)
+            | ((u16::from(z) & 0x1) << 6)
+            | ((u16::from(ad) & 0x1) << 5)
+            | ((u16::from(cd) & 0x1) << 4)
+            | (rcode.to_u16() & 0xF);
+    }
+
+    #[must_use]
+    pub fn flags_as_str(&self) -> String {
+        let mut flags = String::new();
+        if self.qr != 0 {
+            flags.push_str("qr ");
+        }
+        if self.aa != 0 {
+            flags.push_str("aa ");
+        }
+        if self.tc != 0 {
+            flags.push_str("tc ");
+        }
+        if self.rd != 0 {
+            flags.push_str("rd ");
+        }
+        if self.ra != 0 {
+            flags.push_str("ra ");
+        }
+        if self.ad != 0 {
+            flags.push_str("ad ");
+        }
+        if self.cd != 0 {
+            flags.push_str("cd ");
+        }
+        flags
     }
 
     pub fn parse(&mut self, packet: &[u8]) -> Result<usize, Box<dyn std::error::Error>> {
@@ -220,63 +302,64 @@ pub(crate) fn parse_dns(
     stats: &mut Statistics,
     config: &Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut dns_header = DnsHeader::new();
+    packet_info.header = DnsHeader::new();
+    //let dns_header = &mut packet_info.header;
     let packet = packet_in;
-    let mut offset = dns_header.parse(packet)?;
+    let mut offset = packet_info.header.parse(packet)?;
 
-    *stats.opcodes.entry(dns_header.opcode).or_insert(0) += 1;
-    if dns_header.opcode != DnsOpcodes::Query {
+    *stats.opcodes.entry(packet_info.header.opcode).or_insert(0) += 1;
+    if packet_info.header.opcode != DnsOpcodes::Query {
         // Query
         debug!("Skipping DNS packets that are not queries");
         return Ok(());
     }
 
-    if dns_header.tc != 0 {
+    if packet_info.header.tc != 0 {
         debug!("Skipping truncated DNS packets");
         stats.truncated += 1;
         return Ok(());
     }
 
-    if dns_header.qdcount == 0 {
+    if packet_info.header.qdcount == 0 {
         debug!("Empty questions section... ");
-        //      return Err(Parse_error::new(ParseErrorType::Skipped_Message, "").into());
+        //      return Err(Parse_error::new(ParseErrorType::SkippedMessage, "").into());
     }
 
-    stats.additional += u128::from(dns_header.arcount);
-    stats.authority += u128::from(dns_header.nscount);
-    stats.answers += u128::from(dns_header.ancount);
-    stats.queries += u128::from(dns_header.qdcount);
+    stats.additional += u128::from(packet_info.header.arcount);
+    stats.authority += u128::from(packet_info.header.nscount);
+    stats.answers += u128::from(packet_info.header.ancount);
+    stats.queries += u128::from(packet_info.header.qdcount);
 
-    if dns_header.qr != 1 {
+    if packet_info.header.qr != 1 {
         // we ignore questions; except for stats
         stats.sources.add(&packet_info.s_addr);
         stats.destinations.add(&packet_info.d_addr);
         return Ok(());
     }
 
-    *stats.errors.entry(dns_header.rcode).or_insert(0) += 1;
+    *stats.errors.entry(packet_info.header.rcode).or_insert(0) += 1;
 
-    for _ in 0..dns_header.qdcount {
+    for _ in 0..packet_info.header.qdcount {
         offset += parse_question(
             packet_info,
             packet,
             offset,
             stats,
-            dns_header.rcode,
+            packet_info.header.rcode,
             config,
         )?;
     }
-    for _ in 0..dns_header.ancount {
-        offset += parse_answer(packet_info, packet, offset, stats, config)?;
+    for _ in 0..packet_info.header.ancount {
+        offset += parse_answer(packet_info, packet, offset, stats, config, Answer)?;
     }
     if config.authority {
-        for _ in 0..dns_header.nscount {
-            offset += parse_answer(packet_info, packet, offset, stats, config)?;
+        for _ in 0..packet_info.header.nscount {
+            offset += parse_answer(packet_info, packet, offset, stats, config, Authority)?;
         }
     }
     if config.additional {
-        for _ in 0..dns_header.arcount {
-            offset += parse_answer(packet_info, packet, offset, stats, config)?;
+        for _ in 0..packet_info.header.arcount {
+            offset += parse_answer(packet_info, packet, offset, stats, config, Additional)?;
         }
     }
     Ok(())

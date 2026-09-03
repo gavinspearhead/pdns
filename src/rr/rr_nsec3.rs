@@ -1,7 +1,7 @@
 use crate::dns::dnssec_digest;
 use crate::dns_helper::{
-    base32hex_encode, dns_parse_slice, dns_read_u16, dns_read_u8, map_bitmap_to_rr, names_list,
-    parse_nsec_bitmap_vec, process_bitmap,
+    base32hex_encode, dns_parse_slice, dns_read_u16, dns_read_u8, map_bitmap_to_rr,
+    parse_nsec_bitmap_vec, process_bitmap, NamesList,
 };
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
@@ -85,11 +85,12 @@ impl Display for RR_NSEC3 {
 }
 
 impl DnsRecord for RR_NSEC3 {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::NSEC3
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         debug_assert!(self.salt.len() < 256 && self.next_owner.len() < 256);
         let mut res: Vec<u8> = Vec::new();
         res.push(self.hash_alg);

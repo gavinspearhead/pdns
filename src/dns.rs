@@ -1,8 +1,8 @@
-use crate::errors::DnsErrorType::Invalid_Param;
-use crate::errors::ParseErrorType::Invalid_Parameter;
+use crate::errors::DnsErrorType::InvalidParam;
+use crate::errors::ParseErrorType::InvalidParameter;
 use crate::errors::{DnsError, ParseError};
-use std::fmt;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use strum_macros::IntoStaticStr;
 use strum_macros::{EnumIter, FromRepr};
 
@@ -13,7 +13,7 @@ pub(crate) fn tlsa_cert_usage(u: u8) -> Result<&'static str, ParseError> {
         2 => Ok("DANE-TA"),
         3 => Ok("DANE-EE"),
         _ => Err(ParseError::new(
-            Invalid_Parameter,
+            InvalidParameter,
             "Unknown certificate usage",
         )),
     }
@@ -23,7 +23,7 @@ pub(crate) fn tlsa_selector(u: u8) -> Result<&'static str, ParseError> {
     match u {
         0 => Ok("All"),
         1 => Ok("Pubkey"),
-        _ => Err(ParseError::new(Invalid_Parameter, "Unknown TLSA selector")),
+        _ => Err(ParseError::new(InvalidParameter, "Unknown TLSA selector")),
     }
 }
 
@@ -32,7 +32,7 @@ pub(crate) fn tlsa_algorithm(u: u8) -> Result<&'static str, ParseError> {
         0 => Ok("None"),
         1 => Ok("SHA2-256"),
         2 => Ok("SHA2-512"),
-        _ => Err(ParseError::new(Invalid_Parameter, "Unknown algorithm")),
+        _ => Err(ParseError::new(InvalidParameter, "Unknown algorithm")),
     }
 }
 pub(crate) fn key_protocol(u: u8) -> Result<&'static str, ParseError> {
@@ -42,7 +42,7 @@ pub(crate) fn key_protocol(u: u8) -> Result<&'static str, ParseError> {
         3 => Ok("dnssec"),
         4 => Ok("ipsec"),
         255 => Ok("all"),
-        _ => Err(ParseError::new(Invalid_Parameter, "Unknown algorithm")),
+        _ => Err(ParseError::new(InvalidParameter, "Unknown algorithm")),
     }
 }
 
@@ -53,7 +53,7 @@ pub(crate) fn sshfp_algorithm(u: u8) -> Result<&'static str, ParseError> {
         3 => Ok("ECDSA"),
         4 => Ok("Ed25519"),
         5 => Ok("Ed448"),
-        _ => Err(ParseError::new(Invalid_Parameter, "Unknown algorithm")),
+        _ => Err(ParseError::new(InvalidParameter, "Unknown algorithm")),
     }
 }
 
@@ -61,7 +61,7 @@ pub(crate) fn sshfp_fp_type(u: u8) -> Result<&'static str, ParseError> {
     match u {
         1 => Ok("SHA-1"),
         2 => Ok("SHA2-256"),
-        _ => Err(ParseError::new(Invalid_Parameter, "Unknown algorithm")),
+        _ => Err(ParseError::new(InvalidParameter, "Unknown algorithm")),
     }
 }
 
@@ -86,7 +86,7 @@ pub(crate) fn dnssec_algorithm(u: u8) -> Result<&'static str, ParseError> {
         252 => Ok("Indirect"),
         253 => Ok("PrivateDNS"),
         254 => Ok("PrivateOID"),
-        _ => Err(ParseError::new(Invalid_Parameter, "Unknown algorithm")),
+        _ => Err(ParseError::new(InvalidParameter, "Unknown algorithm")),
     }
 }
 
@@ -99,7 +99,7 @@ pub(crate) fn dnssec_digest(u: u8) -> Result<&'static str, ParseError> {
         4 => Ok("SHA2-384"),
         5 => Ok("GOST R 34.11-2012"),
         6 => Ok("SM3"),
-        _ => Err(ParseError::new(Invalid_Parameter, "Unknown digest")),
+        _ => Err(ParseError::new(InvalidParameter, "Unknown digest")),
     }
 }
 
@@ -107,7 +107,7 @@ pub(crate) fn zonemd_digest(u: u8) -> Result<&'static str, ParseError> {
     match u {
         1 => Ok("SHA2-384"),
         2 => Ok("SHA2-512"),
-        _ => Err(ParseError::new(Invalid_Parameter, "Unknown digest")),
+        _ => Err(ParseError::new(InvalidParameter, "Unknown digest")),
     }
 }
 
@@ -115,7 +115,7 @@ pub(crate) fn ipsec_alg(alg: u8) -> Result<&'static str, ParseError> {
     match alg {
         1 => Ok("DSA"),
         2 => Ok("RSA"),
-        _ => Err(ParseError::new(Invalid_Parameter, "Unknown algorithm")),
+        _ => Err(ParseError::new(InvalidParameter, "Unknown algorithm")),
     }
 }
 
@@ -123,7 +123,7 @@ pub(crate) fn dhcid_alg(alg: u8) -> Result<&'static str, ParseError> {
     match alg {
         0 => Ok("Reserved"),
         1 => Ok("SHA-256"),
-        _ => Err(ParseError::new(Invalid_Parameter, "Unknown algorithm")),
+        _ => Err(ParseError::new(InvalidParameter, "Unknown algorithm")),
     }
 }
 pub(crate) fn cert_type_str(t: u16) -> Result<&'static str, ParseError> {
@@ -139,7 +139,7 @@ pub(crate) fn cert_type_str(t: u16) -> Result<&'static str, ParseError> {
         253 => Ok("URI"),
         254 => Ok("OID"),
         65280..=65534 => Ok("Experimental"),
-        _ => Err(ParseError::new(Invalid_Parameter, "Unknown digest")),
+        _ => Err(ParseError::new(InvalidParameter, "Unknown digest")),
     }
 }
 
@@ -161,19 +161,21 @@ pub(crate) fn cert_type_str(t: u16) -> Result<&'static str, ParseError> {
 )]
 #[repr(u16)]
 pub enum SvcParamKeys {
-    mandatory = 0,
-    alpn = 1,
-    no_default_alpn = 2,
-    port = 3,
-    ipv4hint = 4,
-    ech = 5,
-    ipv6hint = 6,
-    doh_path = 7,
-    ohttp = 8,
-    tls_supported_groups = 9,
-    docpath = 10,
+    Mandatory = 0,
+    Alpn = 1,
+    NoDefaultAlpn = 2,
+    Port = 3,
+    Ipv4hint = 4,
+    Ech = 5,
+    Ipv6hint = 6,
+    DohPath = 7,
+    Ohttp = 8,
+    TlsSupportedGroups = 9,
+    Docpath = 10,
+    Pvd = 11,
     #[default]
-    key_value = 255,
+    KeyValue = 255,
+    Invalid = 65535,
 }
 
 impl SvcParamKeys {
@@ -184,7 +186,7 @@ impl SvcParamKeys {
     pub(crate) fn find(val: u16) -> Result<Self, DnsError> {
         match SvcParamKeys::from_repr(val) {
             Some(x) => Ok(x),
-            None => Err(DnsError::new(Invalid_Param, &format!("{val}"))),
+            None => Err(DnsError::new(InvalidParam, &format!("{val}"))),
         }
     }
 }

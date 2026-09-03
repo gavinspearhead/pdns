@@ -1,21 +1,21 @@
-use crate::rank::Rank;
-use crate::time_stats::TimeStats;
-use serde::{Deserialize, Serialize};
 use crate::config::Config;
+use crate::dns::SvcParamKeys;
 use crate::dns_class::DnsClass;
 use crate::dns_opcodes::DnsOpcodes;
 use crate::dns_reply_type::DnsReplyType;
 use crate::dns_rr_type::DnsRRType;
-use crate::edns::DnsExtendedError;
+use crate::edns::{DnsExtendedError, EDNSOptionCodes, EDNSOptionData};
+use crate::rank::Rank;
+use crate::time_stats::TimeStats;
 use crate::util::ordered_map_value;
 use chrono::Utc;
 use flate2::write::GzEncoder;
+use serde::{Deserialize, Serialize};
 use std::fs::remove_file;
 use std::net::IpAddr;
 use std::path::Path;
 use std::{collections::HashMap, fs::File, io::BufReader, io::BufWriter, io::Write};
 use tracing::debug;
-use crate::dns::SvcParamKeys;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(default)]
@@ -45,6 +45,8 @@ pub(crate) struct Statistics {
     pub opcodes: HashMap<DnsOpcodes, u128>,
     #[serde(serialize_with = "ordered_map_value")]
     pub extended_error: HashMap<DnsExtendedError, u128>,
+    #[serde(serialize_with = "ordered_map_value")]
+    pub edns_options: HashMap<EDNSOptionCodes, u128>,
     //#[serde(deserialize_with = "deserialize_ignore_any")]
     pub sources: Rank<IpAddr>,
     // #[serde(deserialize_with = "deserialize_ignore_any")]
@@ -91,6 +93,7 @@ impl Statistics {
             erroneous: 0,
             svc_stats: HashMap::new(),
             alpn_stats: HashMap::new(),
+            edns_options: HashMap::new(),
         }
     }
 

@@ -1,12 +1,12 @@
 #![allow(non_camel_case_types)]
 use base64::engine::general_purpose::STANDARD;
 
+use crate::config::Config;
 use crate::dns_class::DnsClass;
 use crate::dns_packet::{DnsHeader, DnsQuestion};
 use crate::dns_reply_type::DnsReplyType;
 use crate::dns_rr_type::DnsRRType;
 use crate::rr::rr_a::RR_A;
-use crate::skiplist::SkipList;
 use base64::Engine;
 use log::debug;
 use std::net::{Ipv4Addr, Ipv6Addr, UdpSocket};
@@ -14,6 +14,7 @@ use std::str::FromStr;
 use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{filter, fmt, reload, Layer};
+
 pub mod dns_record_trait;
 use crate::dns_record_trait::DnsRecord;
 
@@ -22,15 +23,18 @@ pub mod dns;
 pub mod dns_answers;
 pub mod dns_cache;
 pub mod dns_class;
+pub mod dns_edns;
 pub mod dns_helper;
 pub mod dns_name;
 pub mod dns_opcodes;
 pub mod dns_packet;
 pub mod dns_protocol;
+pub mod dns_query;
 pub mod dns_record;
 pub mod dns_reply_type;
 pub mod dns_rr;
 pub mod dns_rr_type;
+pub mod ech;
 pub mod edns;
 pub mod errors;
 pub mod http_server;
@@ -693,19 +697,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with(filter)
         .with(tracing_layers)
         .init();
-    // Bind to local address and port
+    // Bind to local address and Port
     //    let host = "127.0.0.1";
     let host = "0.0.0.0";
     let port = "53";
-    //let port = "5355";
+    //let Port = "5355";
     let addr = &format!("{host}:{port}");
     debug!("UDP server listening on {addr}");
     let socket = UdpSocket::bind(addr.as_str())?;
     let mut buf = [0u8; 2048];
     debug!("started socket");
+    let config = Config::default();
 
     let mut dns_answer = DnsAnswer::new();
-    let skip_list = SkipList::new();
     loop {
         // Receive a datagram
         let (amt, src) = socket.recv_from(&mut buf)?;
@@ -720,7 +724,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         debug!("{dns_header:?}");
         let mut dns_question = DnsQuestion::new();
         offset += dns_question
-            .parse(buf.as_ref(), offset, &skip_list)
+            .parse(buf.as_ref(), offset, &config)
             .expect("Error parsing DNS question");
         debug!("{dns_question:?}");
         buf.fill(0);

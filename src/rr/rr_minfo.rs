@@ -1,4 +1,4 @@
-use crate::dns_helper::{dns_format_name, names_list};
+use crate::dns_helper::{dns_format_name, NamesList};
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
@@ -31,7 +31,7 @@ impl RR_MINFO {
         Ok(a)
     }
 
-    pub fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {
+    pub fn to_bytes(&self, names: &mut NamesList, offset: usize) -> Vec<u8> {
         let mut res: Vec<u8> = Vec::new();
         res.extend_from_slice(dns_format_name(&self.res_mb, names, offset).as_slice());
         res.extend_from_slice(dns_format_name(&self.err_mb, names, offset).as_slice());
@@ -46,11 +46,12 @@ impl Display for RR_MINFO {
 }
 
 impl DnsRecord for RR_MINFO {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::MINFO
     }
 
-    fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, names: &mut NamesList, offset: usize) -> Vec<u8> {
         let mut res: Vec<u8> = Vec::new();
         res.extend_from_slice(dns_format_name(&self.res_mb, names, offset).as_slice());
         res.extend_from_slice(dns_format_name(&self.err_mb, names, offset).as_slice());

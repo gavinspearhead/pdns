@@ -1,5 +1,5 @@
 use crate::errors::DnsError;
-use crate::errors::DnsErrorType::Invalid_reply_type;
+use crate::errors::DnsErrorType::InvalidReplyType;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
@@ -51,11 +51,14 @@ impl DnsReplyType {
     pub(crate) fn to_str(self) -> &'static str {
         self.into()
     }
-    pub(crate) fn find(val: u16) -> Result<Self, DnsError> {
+    pub fn find(val: u16) -> Result<Self, DnsError> {
         match DnsReplyType::from_repr(val) {
             Some(x) => Ok(x),
-            None => Err(DnsError::new(Invalid_reply_type, &format!("{val}"))),
+            None => Err(DnsError::new(InvalidReplyType, &format!("{val}"))),
         }
+    }
+    pub(crate) fn to_u16(self) -> u16 {
+        self as u16
     }
 }
 

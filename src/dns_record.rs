@@ -4,27 +4,52 @@ use crate::dns_rr_type::DnsRRType;
 use crate::edns::DnsExtendedError;
 use chrono::{DateTime, Utc};
 use idna::domain_to_unicode;
+use serde::{Deserialize, Serialize};
 use std::fmt;
+use strum_macros::{Display, EnumString};
 
-#[derive(Debug, Clone, Default, PartialOrd, Ord, Eq, PartialEq, Hash)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialOrd,
+    Ord,
+    Eq,
+    PartialEq,
+    Hash,
+    EnumString,
+    Display,
+    Serialize,
+    Deserialize,
+)]
+pub enum DnsField {
+    Additional,
+    Authority,
+    #[default]
+    Answer,
+    Question,
+}
+
+#[derive(Debug, Clone, Default, PartialOrd, Ord, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub(crate) struct DnsRecord {
-    pub(crate) rr_type: DnsRRType,
-    pub(crate) class: DnsClass,
-    pub(crate) error: DnsReplyType,
-    pub(crate) extended_error: DnsExtendedError,
-    pub(crate) ttl: u32,
-    pub(crate) count: u32,
-    pub(crate) asn: u32,
-    pub(crate) timestamp: DateTime<Utc>,
-    pub(crate) name: String,
-    pub(crate) rdata: String,
-    pub(crate) domain: String,
-    pub(crate) asn_owner: String,
-    pub(crate) prefix: String,
+    pub rr_type: DnsRRType,
+    pub class: DnsClass,
+    pub error: DnsReplyType,
+    pub extended_error: DnsExtendedError,
+    pub ttl: u32,
+    pub count: u32,
+    pub asn: u32,
+    pub timestamp: DateTime<Utc>,
+    pub name: String,
+    pub rdata: String,
+    pub domain: String,
+    pub asn_owner: String,
+    pub prefix: String,
+    pub source_field: DnsField,
 }
 
 impl DnsRecord {
-    pub(crate) fn new(
+    pub fn new(
         rr_type: DnsRRType,
         class: DnsClass,
         error: DnsReplyType,
@@ -33,6 +58,7 @@ impl DnsRecord {
         name: &str,
         ttl: u32,
         rdata: &str,
+        source_field: DnsField,
     ) -> DnsRecord {
         DnsRecord {
             rr_type,
@@ -48,6 +74,7 @@ impl DnsRecord {
             domain: String::new(),
             asn_owner: String::new(),
             prefix: String::new(),
+            source_field,
         }
     }
 }
@@ -64,7 +91,7 @@ impl fmt::Display for DnsRecord {
 
             write!(
                 f,
-                "  {} {}{} {} {} {} {} {} {}",
+                "  {} {}{} {} {} {} {} {} {} {}",
                 snailquote::escape(&self.name),
                 unicode_name,
                 self.class,
@@ -74,6 +101,7 @@ impl fmt::Display for DnsRecord {
                 self.timestamp,
                 self.domain,
                 self.prefix,
+                self.source_field,
             )?;
 
             if self.asn != 0 {

@@ -1,7 +1,7 @@
 [package]
 name = "pdns"
-version = "1.0.4"
-edition = "2021"
+version = "1.0.5"
+edition = "2024"
 authors = ["Gavin Spearhead"]
 description = "Passive DNS"
 license = "GPL-3.0-only"
@@ -11,8 +11,8 @@ name = "pdns"
 path = "src/main.rs"
 
 [[bin]]
-name = "dig"
-path = "src/dig_main.rs"
+name = "dot"
+path = "src/dot_main.rs"
 
 [[bin]]
 name = "dns_server"
@@ -34,8 +34,8 @@ strum =  { version = "0.28", features = ["derive"] }
 strum_macros = "0.28"
 clap = { version = "4.6", features = ["derive"] }
 hex = "0.4"
-base64 = "0.22"
-sqlx = { version = "0.8", features = ["runtime-async-std-native-tls", "mysql", "chrono", "uuid"] }
+base64 = "0.23"
+sqlx = { version = "0.9", features = [ "mysql", "chrono", "uuid", "tls-native-tls", "runtime-async-std" ] }
 futures = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -51,7 +51,7 @@ snailquote = "0.3"
 idna = "1.1"
 serde_with = "3.20"
 signal-hook = "0.4"
-actix-web = "4.13"
+actix-web = "4.15"
 vectorize = "0.2"
 parking_lot = "0.12"
 zerocopy = "0.8"
@@ -59,8 +59,16 @@ flate2 = "1.1"
 daemonize-me = "2.0"
 
 # Dependencies for the dependency audit helper binary (not used by main binaries)
-rustsec = "0.32"
+rustsec = "0.33"
 cargo-lock = "11"
 semver = "1.0"
 crates_io_api = "0.12"
 anyhow = "1.0"
+rand = "0.10"
+dns-lookup = "3.0"
+reqwest = { version = "0.13", features = ["json", "query"] }
+native-tls = "0.2"
+rustls = {  version = "0.23" , default-features = false }
+quinn = "0.11"
+tokio = "1.53"
+webpki-roots = "1.0.9"

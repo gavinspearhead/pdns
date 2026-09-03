@@ -1,4 +1,4 @@
-use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list, parse_dns_str};
+use crate::dns_helper::{dns_parse_slice, dns_read_u8, parse_dns_str, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
@@ -55,11 +55,12 @@ impl Display for RR_GPOS {
 }
 
 impl DnsRecord for RR_GPOS {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::GPOS
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut result = Vec::new();
         result.push(self.lon.len() as u8);
         result.extend_from_slice(&self.lon);

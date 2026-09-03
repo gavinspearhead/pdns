@@ -1,5 +1,5 @@
 use crate::dns::{cert_type_str, dnssec_algorithm};
-use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, names_list};
+use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
@@ -49,11 +49,12 @@ impl Display for RR_CERT {
 }
 
 impl DnsRecord for RR_CERT {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::CERT
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&self.cert_type.to_be_bytes());
         bytes.extend_from_slice(&self.key_tag.to_be_bytes());

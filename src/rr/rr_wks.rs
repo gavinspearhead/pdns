@@ -1,11 +1,11 @@
 use crate::dns_helper::{
-    dns_parse_slice, dns_read_u8, names_list, parse_bitmap_vec, parse_ipv4_addr,
+    dns_parse_slice, dns_read_u8, parse_bitmap_vec, parse_ipv4_addr, NamesList,
 };
 use crate::dns_protocol::DnsProtocol;
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
-use crate::errors::ParseErrorType::Invalid_Parameter;
+use crate::errors::ParseErrorType::InvalidParameter;
 use std::fmt::{Display, Formatter};
 use std::net::{IpAddr, Ipv4Addr};
 
@@ -55,7 +55,7 @@ impl RR_WKS {
 
         a.address = match parse_ipv4_addr(dns_parse_slice(rdata, 0..4)?)? {
             IpAddr::V4(ipv4) => ipv4,
-            IpAddr::V6(_) => return Err(ParseError::new(Invalid_Parameter, "")),
+            IpAddr::V6(_) => return Err(ParseError::new(InvalidParameter, "")),
         };
         a.protocol = dns_read_u8(rdata, 4)?;
         a.bitmap = dns_parse_slice(rdata, 5..)?.to_vec();
@@ -80,11 +80,12 @@ impl Display for RR_WKS {
 }
 
 impl DnsRecord for RR_WKS {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::WKS
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&self.address.octets());
         bytes.push(self.protocol);

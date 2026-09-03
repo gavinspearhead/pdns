@@ -1,8 +1,8 @@
 use super::super::dns_record_trait::DnsRecord;
-use crate::dns_helper::names_list;
+use crate::dns_helper::NamesList;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
-use crate::errors::ParseErrorType::Invalid_Resource_Record;
+use crate::errors::ParseErrorType::InvalidResourceRecord;
 use std::fmt::{Display, Formatter};
 use std::net::Ipv4Addr;
 
@@ -18,7 +18,7 @@ impl DnsRecord for RR_A {
     }
 
     #[inline]
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut result = Vec::with_capacity(4);
         result.extend_from_slice(&self.addr.octets());
         result
@@ -47,15 +47,15 @@ impl RR_A {
     }
 
     #[inline]
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_A, ParseError> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<Self, ParseError> {
         if rdata.len() != 4 {
             return Err(ParseError::new(
-                Invalid_Resource_Record,
+                InvalidResourceRecord,
                 &format!("Invalid A record length: {rdata:?}"),
             ));
         }
 
-        Ok(RR_A {
+        Ok(Self {
             addr: Ipv4Addr::new(rdata[0], rdata[1], rdata[2], rdata[3]),
         })
     }

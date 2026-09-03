@@ -1,16 +1,17 @@
-use clap::{arg, builder::PossibleValuesParser, value_parser, ArgAction, Command};
-use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::Error;
 use crate::dns_rr_type::DnsRRType;
 use crate::version::{AUTHOR, DESCRIPTION, PROGNAME, VERSION};
-use std::net::{IpAddr, ToSocketAddrs};
-use std::{fs::File, io::BufReader};
+use clap::{arg, builder::PossibleValuesParser, value_parser, ArgAction, Command};
 use regex::{Regex, RegexBuilder};
+use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::Error;
+use std::net::{IpAddr, ToSocketAddrs};
+use std::str::FromStr;
+use std::{fs::File, io::BufReader};
 use tracing::{debug, error};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
-pub(crate) struct Config {
+pub struct Config {
     pub rr_type: Vec<DnsRRType>,
     pub interface: Vec<String>,
     pub filter: String,
@@ -51,12 +52,16 @@ pub(crate) struct Config {
     pub ports: Vec<u16>,
     pub ignore_hosts: Vec<String>,
     pub ignore_addresses: Vec<IpAddr>,
-    #[serde(deserialize_with = "deserialize_regex", serialize_with = "serialize_regex")]
+    #[serde(
+        deserialize_with = "deserialize_regex",
+        serialize_with = "serialize_regex"
+    )]
     pub skip_domains: Vec<Regex>,
 }
 
 impl Config {
-    pub fn new() -> Config {
+    #[must_use]
+    pub fn new() -> Self {
         Config {
             rr_type: vec![
                 DnsRRType::A,
@@ -109,10 +114,7 @@ impl Config {
     }
 }
 
-
-fn deserialize_regex<'de, D>(
-    deserializer: D,
-) -> Result<Vec<Regex>, D::Error>
+fn deserialize_regex<'de, D>(deserializer: D) -> Result<Vec<Regex>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -120,24 +122,23 @@ where
     patterns
         .into_iter()
         .map(|pattern| {
-            RegexBuilder::new(&pattern).case_insensitive(true).build().map_err(|e| {
-                serde::de::Error::custom(format!("Invalid regex pattern '{pattern}': {e}"))
-            })
+            RegexBuilder::new(&pattern)
+                .case_insensitive(true)
+                .build()
+                .map_err(|e| {
+                    serde::de::Error::custom(format!("Invalid regex pattern '{pattern}': {e}"))
+                })
         })
         .collect()
 }
 
-fn serialize_regex<S>(
-    regexes: &[Regex],
-    serializer: S,
-) -> Result<S::Ok, S::Error>
+fn serialize_regex<S>(regexes: &[Regex], serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
     let patterns: Vec<String> = regexes.iter().map(|r| r.as_str().to_string()).collect();
     patterns.serialize(serializer)
 }
-
 
 pub(crate) fn parse_rrtypes(config_str: &str) -> Vec<DnsRRType> {
     if config_str.is_empty() {
@@ -149,7 +150,7 @@ pub(crate) fn parse_rrtypes(config_str: &str) -> Vec<DnsRRType> {
         .split(',')
         .map(str::trim)
         .filter_map(|i| {
-            DnsRRType::from_string(i)
+            DnsRRType::from_str(i)
                 .map_err(|_| error!("Invalid RR type: {i}"))
                 .ok()
         })
@@ -279,7 +280,7 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
                 arg!(-T --dbport <VALUE>)
                     .required(false)
                     .value_parser(value_parser!(u16))
-                    .long_help("port number of the database"),
+                    .long_help("Port number of the database"),
             )
             .arg(
                 arg!(-u --dbusername <VALUE>)
@@ -331,7 +332,7 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
             .arg(
                 arg!(-f --filter <VALUE>)
                     .required(false)
-                    .long_help("BPF filter definition (port 53)"),
+                    .long_help("BPF filter definition (Port 53)"),
             )
             .arg(
                 arg!(-o --output <VALUE>)
@@ -391,14 +392,14 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
             .arg(
                 arg!(--noauthority)
                     .required(false)
-                    .action(ArgAction::SetFalse)
+                    .action(ArgAction::SetTrue)
                     .long_help("Do not process authority records"),
             )
             .arg(
                 arg!(--noadditional)
                     .required(false)
-                    .action(ArgAction::SetFalse)
-                    .long_help("Do not process addional records"),
+                    .action(ArgAction::SetTrue)
+                    .long_help("Do not process additional records"),
             )
             .arg(
                 arg!(--authority)
@@ -410,7 +411,7 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
                 arg!(--additional)
                     .required(false)
                     .action(ArgAction::SetTrue)
-                    .long_help("Process addional records"),
+                    .long_help("Process additional records"),
             )
             .arg(
                 arg!(--create_database)
@@ -528,7 +529,6 @@ pub(crate) fn parse_config(config: &mut Config, pcap_path: &mut String) {
                     .long_help(
                         "DNS Port numbers to listen on for packet capture, comma separated (default 53)",
                     ))
-            
             .get_matches();
 
     let empty_str = String::new();

@@ -1,5 +1,5 @@
 use crate::errors::DnsError;
-use crate::errors::DnsErrorType::Invalid_Opcode;
+use crate::errors::DnsErrorType::InvalidOpcode;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
@@ -22,11 +22,12 @@ use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
     Default,
 )]
 #[repr(u16)]
-pub(crate) enum DnsOpcodes {
+pub enum DnsOpcodes {
     #[default]
     Query = 0,
     IQuery = 1,
     Status = 2,
+    // unassigned = 3
     Notify = 4,
     Update = 5,
     DSO = 6,
@@ -40,8 +41,11 @@ impl DnsOpcodes {
     pub(crate) fn find(val: u16) -> Result<Self, DnsError> {
         match DnsOpcodes::from_repr(val) {
             Some(x) => Ok(x),
-            None => Err(DnsError::new(Invalid_Opcode, &format!("{val}"))),
+            None => Err(DnsError::new(InvalidOpcode, &format!("{val}"))),
         }
+    }
+    pub(crate) fn to_u16(self) -> u16 {
+        self as u16
     }
 }
 

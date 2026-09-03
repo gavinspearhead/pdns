@@ -1,12 +1,12 @@
 use crate::dns::ipsec_alg;
 use crate::dns_helper::{
-    dns_parse_slice, dns_read_u8, names_list, parse_ipv4_addr, parse_ipv6_addr,
+    dns_parse_slice, dns_read_u8, parse_ipv4_addr, parse_ipv6_addr, NamesList,
 };
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
-use crate::errors::ParseErrorType::Invalid_Resource_Record;
+use crate::errors::ParseErrorType::InvalidResourceRecord;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use std::fmt::{Display, Formatter};
@@ -67,7 +67,7 @@ impl RR_IPSECKEY {
                 pk_offset -= offset_in;
             } // a FQDN
             e => {
-                return Err(ParseError::new(Invalid_Resource_Record, &e.to_string()));
+                return Err(ParseError::new(InvalidResourceRecord, &e.to_string()));
             }
         }
         ipseckey.pubkey = dns_parse_slice(rdata, pk_offset..)?.to_vec();
@@ -90,11 +90,12 @@ impl Display for RR_IPSECKEY {
 }
 
 impl DnsRecord for RR_IPSECKEY {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::IPSECKEY
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.push(self.precedence);
         bytes.push(self.gw_type);

@@ -1,4 +1,4 @@
-use crate::dns_helper::names_list;
+use crate::dns_helper::NamesList;
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
@@ -23,10 +23,11 @@ impl RR_DLV {
 }
 
 impl DnsRecord for RR_DLV {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::DLV
     }
-    fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, names: &mut NamesList, offset: usize) -> Vec<u8> {
         self.0.to_bytes(names, offset)
     }
 }

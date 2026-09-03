@@ -1,4 +1,4 @@
-use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list, parse_dns_str};
+use crate::dns_helper::{dns_parse_slice, dns_read_u8, parse_dns_str, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
@@ -21,8 +21,9 @@ impl RR_HINFO {
     }
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_HINFO, ParseError> {
         let mut a = RR_HINFO::new();
-        let cpu_len = usize::from(dns_read_u8(rdata, 0)?);
-        let mut offset = 1;
+        let mut offset = 0;
+        let cpu_len = usize::from(dns_read_u8(rdata, offset)?);
+        offset += 1;
         let r = dns_parse_slice(rdata, offset..offset + cpu_len)?;
         a.cpu = parse_dns_str(r)?;
         offset += cpu_len;
@@ -52,11 +53,12 @@ impl Display for RR_HINFO {
 }
 
 impl DnsRecord for RR_HINFO {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::HINFO
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut result = Vec::new();
         result.push(self.cpu.len() as u8);
         result.extend_from_slice(self.cpu.as_bytes());

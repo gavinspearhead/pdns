@@ -4,7 +4,6 @@ use std::cmp::Ordering::Equal;
 use std::fmt::Debug;
 use std::{collections::HashMap, fmt};
 
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Rank<T>
 where
@@ -67,7 +66,7 @@ where
         } else {
             // debug!("{:?}: 0", element);
             let val = if self.rank.len() >= self.size {
-                self.remove_lowest().max(1)
+                self.remove_lowest().max(1) + 1
             } else {
                 1
             };

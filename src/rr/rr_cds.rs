@@ -1,9 +1,9 @@
 use crate::dns::{dnssec_algorithm, dnssec_digest};
-use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, names_list};
+use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
-use crate::errors::ParseErrorType::Invalid_Resource_Record;
+use crate::errors::ParseErrorType::InvalidResourceRecord;
 use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
 pub struct RR_CDS {
@@ -24,11 +24,11 @@ impl RR_CDS {
         self.dig_t = dig_t;
         self.dig = hex::decode(dig).unwrap_or_default();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_CDS, ParseError> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<Self, ParseError> {
         if rdata.len() < 5 {
-            return Err(ParseError::new(Invalid_Resource_Record, ""));
+            return Err(ParseError::new(InvalidResourceRecord, ""));
         }
-        let mut cds = RR_CDS::new();
+        let mut cds = Self::new();
         cds.key_id = dns_read_u16(rdata, 0)?;
         cds.alg = dns_read_u8(rdata, 2)?;
         cds.dig_t = dns_read_u8(rdata, 3)?;
@@ -51,11 +51,12 @@ impl Display for RR_CDS {
 }
 
 impl DnsRecord for RR_CDS {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::CDS
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut result = Vec::new();
         result.extend_from_slice(&self.key_id.to_be_bytes());
         result.push(self.alg);

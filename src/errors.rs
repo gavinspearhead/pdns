@@ -1,66 +1,67 @@
+use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt};
 use strum_macros::EnumIter;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize, Hash)]
 pub(crate) enum ParseErrorType {
-    Invalid_UDP_Header,
-    Invalid_TCP_Header,
-    Invalid_IPv6_Header,
-    Invalid_IPv4_Header,
-    Invalid_DNS_Packet,
-    Invalid_TCP_Packet,
-    Invalid_UDP_Packet,
-    Invalid_IP_Version,
-    Packet_Too_Small,
-    Unknown_Packet_Type,
-    Unknown_Link_Type,
-    Unknown_Frame_Type,
-    Invalid_packet_index,
-    Invalid_timestamp,
-    Unknown_Protocol,
-    Unknown_Address_Family,
-    Invalid_Resource_Record,
-    Invalid_NSEC3PARAM,
-    Invalid_Parameter,
-    Invalid_Domain_name,
-    Invalid_Data,
-    Invalid_IPAddress,
-    Skipped_Message,
+    InvalidUdpHeader,
+    InvalidTcpHeader,
+    InvalidIpv6Header,
+    InvalidIpv4Header,
+    InvalidDnsPacket,
+    InvalidTcpPacket,
+    InvalidUdpPacket,
+    InvalidIpVersion,
+    PacketTooSmall,
+    UnknownPacketType,
+    UnknownLinkType,
+    UnknownFrameType,
+    InvalidPacketIndex,
+    InvalidTimestamp,
+    UnknownProtocol,
+    UnknownAddressFamily,
+    InvalidResourceRecord,
+    InvalidNsec3param,
+    InvalidParameter,
+    InvalidDomainName,
+    InvalidData,
+    InvalidIpaddress,
+    SkippedMessage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseError {
-    pub(crate) error_type: ParseErrorType,
+    pub error_type: ParseErrorType,
     error_str: String,
     value: String,
 }
 
 impl ParseError {
-    pub(crate) fn new(err_t: ParseErrorType, val: &str) -> ParseError {
+    pub fn new(err_t: ParseErrorType, val: &str) -> ParseError {
         let s = match err_t {
-            ParseErrorType::Invalid_UDP_Header => "Invalid UDP Header",
-            ParseErrorType::Invalid_TCP_Header => "Invalid TCP Header",
-            ParseErrorType::Invalid_TCP_Packet => "Invalid TCP Packet",
-            ParseErrorType::Invalid_UDP_Packet => "Invalid UDP Packet",
-            ParseErrorType::Invalid_IPv6_Header => "Invalid IPv6 Header",
-            ParseErrorType::Invalid_IPv4_Header => "Invalid IPv4 Header",
-            ParseErrorType::Invalid_DNS_Packet => "Invalid DNS Packet",
-            ParseErrorType::Invalid_IP_Version => "Invalid IP Version",
-            ParseErrorType::Packet_Too_Small => "Packet Too Small",
-            ParseErrorType::Unknown_Packet_Type => "Unknown Packet Type",
-            ParseErrorType::Unknown_Link_Type => "Unknown Link Type",
-            ParseErrorType::Unknown_Protocol => "Unknown protocol",
-            ParseErrorType::Unknown_Frame_Type => "Unknown Frame Type",
-            ParseErrorType::Unknown_Address_Family => "Unknown Address Family",
-            ParseErrorType::Invalid_packet_index => "Invalid packet index",
-            ParseErrorType::Invalid_timestamp => "Invalid timestamp",
-            ParseErrorType::Invalid_Resource_Record => "Invalid resource record",
-            ParseErrorType::Invalid_NSEC3PARAM => "Invalid NSEC3PARAM format",
-            ParseErrorType::Invalid_Parameter => "Invalid Parameter",
-            ParseErrorType::Invalid_Domain_name => "Invalid domain name",
-            ParseErrorType::Invalid_Data => "Invalid Data",
-            ParseErrorType::Invalid_IPAddress => "Invalid IP Address",
-            ParseErrorType::Skipped_Message => "Skipped Message",
+            ParseErrorType::InvalidUdpHeader => "Invalid UDP Header",
+            ParseErrorType::InvalidTcpHeader => "Invalid TCP Header",
+            ParseErrorType::InvalidTcpPacket => "Invalid TCP Packet",
+            ParseErrorType::InvalidUdpPacket => "Invalid UDP Packet",
+            ParseErrorType::InvalidIpv6Header => "Invalid IPv6 Header",
+            ParseErrorType::InvalidIpv4Header => "Invalid IPv4 Header",
+            ParseErrorType::InvalidDnsPacket => "Invalid DNS Packet",
+            ParseErrorType::InvalidIpVersion => "Invalid IP Version",
+            ParseErrorType::PacketTooSmall => "Packet Too Small",
+            ParseErrorType::UnknownPacketType => "Unknown Packet Type",
+            ParseErrorType::UnknownLinkType => "Unknown Link Type",
+            ParseErrorType::UnknownProtocol => "Unknown protocol",
+            ParseErrorType::UnknownFrameType => "Unknown Frame Type",
+            ParseErrorType::UnknownAddressFamily => "Unknown Address Family",
+            ParseErrorType::InvalidPacketIndex => "Invalid packet index",
+            ParseErrorType::InvalidTimestamp => "Invalid timestamp",
+            ParseErrorType::InvalidResourceRecord => "Invalid resource record",
+            ParseErrorType::InvalidNsec3param => "Invalid NSEC3PARAM format",
+            ParseErrorType::InvalidParameter => "Invalid Parameter",
+            ParseErrorType::InvalidDomainName => "Invalid domain name",
+            ParseErrorType::InvalidData => "Invalid Data",
+            ParseErrorType::InvalidIpaddress => "Invalid IP Address",
+            ParseErrorType::SkippedMessage => "Skipped Message",
         };
         ParseError {
             error_type: err_t,
@@ -84,17 +85,17 @@ impl Error for ParseError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
 pub(crate) enum DnsErrorType {
-    Invalid_RR,
-    Invalid_Param,
-    Invalid_Class,
-    Invalid_reply_type,
-    Invalid_Opcode,
-    Invalid_Extended_Error_Code,
-    Invalid_Extended_Option_Code,
+    InvalidRr,
+    InvalidParam,
+    InvalidClass,
+    InvalidReplyType,
+    InvalidOpcode,
+    InvalidExtendedErrorCode,
+    InvalidExtendedOptionCode,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct DnsError {
+pub struct DnsError {
     //error_type: DNS_Error_Type,
     error_str: String,
     value: String,
@@ -103,13 +104,13 @@ pub(crate) struct DnsError {
 impl DnsError {
     pub(crate) fn new(err_t: DnsErrorType, val: &str) -> DnsError {
         let s = match err_t {
-            DnsErrorType::Invalid_Class => "Invalid Class",
-            DnsErrorType::Invalid_Param => "Invalid Parameter",
-            DnsErrorType::Invalid_RR => "Invalid RR Type",
-            DnsErrorType::Invalid_reply_type => "Invalid Reply type",
-            DnsErrorType::Invalid_Opcode => "Invalid Opcode",
-            DnsErrorType::Invalid_Extended_Error_Code => "Invalid Extended Error Code",
-            DnsErrorType::Invalid_Extended_Option_Code => "Invalid Extended Option Code",
+            DnsErrorType::InvalidClass => "Invalid Class",
+            DnsErrorType::InvalidParam => "Invalid Parameter",
+            DnsErrorType::InvalidRr => "Invalid RR Type",
+            DnsErrorType::InvalidReplyType => "Invalid Reply type",
+            DnsErrorType::InvalidOpcode => "Invalid Opcode",
+            DnsErrorType::InvalidExtendedErrorCode => "Invalid Extended Error Code",
+            DnsErrorType::InvalidExtendedOptionCode => "Invalid Extended Option Code",
         };
 
         DnsError {

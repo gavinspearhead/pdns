@@ -1,12 +1,13 @@
 use crate::dns::dnssec_algorithm;
-use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, names_list};
+use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
-use crate::errors::ParseErrorType::Invalid_packet_index;
+use crate::errors::ParseErrorType::InvalidPacketIndex;
 use base64::engine::general_purpose;
 use base64::Engine;
 use std::fmt::{Display, Formatter};
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
 pub struct RR_CDNSKEY {
     flag: u16,
@@ -26,11 +27,11 @@ impl RR_CDNSKEY {
         self.alg = alg_nr;
         self.pubkey = pubkey;
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_CDNSKEY, ParseError> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<Self, ParseError> {
         if rdata.len() < 5 {
-            return Err(ParseError::new(Invalid_packet_index, ""));
+            return Err(ParseError::new(InvalidPacketIndex, ""));
         }
-        let mut a = RR_CDNSKEY::new();
+        let mut a = Self::new();
         a.flag = dns_read_u16(rdata, 0)?;
         a.protocol = dns_read_u8(rdata, 2)?;
         a.alg = dns_read_u8(rdata, 3)?;
@@ -53,11 +54,12 @@ impl Display for RR_CDNSKEY {
 }
 
 impl DnsRecord for RR_CDNSKEY {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::CDNSKEY
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut res: Vec<u8> = Vec::new();
         res.extend_from_slice(self.flag.to_be_bytes().as_ref());
         res.extend_from_slice(&[self.protocol]);

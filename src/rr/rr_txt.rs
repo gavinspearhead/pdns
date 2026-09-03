@@ -1,4 +1,4 @@
-use crate::dns_helper::{dns_parse_slice, names_list, parse_dns_str};
+use crate::dns_helper::{dns_parse_slice, parse_dns_str, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
@@ -14,6 +14,7 @@ impl RR_TXT {
     pub fn new() -> RR_TXT {
         RR_TXT { txt: Vec::new() }
     }
+    #[inline]
     pub fn set(&mut self, txt: &str) {
         self.txt.push(txt.to_string());
     }
@@ -49,7 +50,7 @@ impl DnsRecord for RR_TXT {
         DnsRRType::TXT
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut result = Vec::new();
         for s in &self.txt {
             let bytes = s.as_bytes();

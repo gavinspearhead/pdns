@@ -1,16 +1,17 @@
 use crate::dns_helper::{dns_parse_slice, dns_read_u16, dns_read_u8};
 use crate::errors::{ParseError, ParseErrorType};
 use byteorder::{BigEndian, ByteOrder};
+use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ECHConfig {
     version: u16,
     length: u16,
     contents: ECHConfigContents,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ECHConfigContents {
     config_id: u8,
     kem_id: u16,
@@ -21,13 +22,13 @@ pub struct ECHConfigContents {
     extensions: Vec<ECHExtension>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ECHCipherSuite {
     kdf_id: u16,
     aead_id: u16,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ECHExtension {
     extension_type: u16,
     extension_data: Vec<u8>,
@@ -37,7 +38,7 @@ impl ECHConfig {
     pub fn parse(data: &[u8]) -> Result<Vec<Self>, ParseError> {
         if data.len() < 4 {
             return Err(ParseError::new(
-                ParseErrorType::Invalid_DNS_Packet,
+                ParseErrorType::InvalidDnsPacket,
                 "Insufficient length",
             ));
         }
@@ -50,13 +51,13 @@ impl ECHConfig {
 
         if data.len() < (offset + total_length as usize) {
             return Err(ParseError::new(
-                ParseErrorType::Invalid_DNS_Packet,
+                ParseErrorType::InvalidDnsPacket,
                 "Insufficient length",
             ));
         }
 
         while offset < 2 + total_length as usize {
-            let config = Self::parse_config(&data[offset..2+total_length as usize])?;
+            let config = Self::parse_config(&data[offset..2 + total_length as usize])?;
             offset += config.length as usize + 4; // 4 = version(2) + length(2)
             configs.push(config);
         }
@@ -67,7 +68,7 @@ impl ECHConfig {
     fn parse_config(data: &[u8]) -> Result<Self, ParseError> {
         if data.len() < 4 {
             return Err(ParseError::new(
-                ParseErrorType::Invalid_DNS_Packet,
+                ParseErrorType::InvalidDnsPacket,
                 "Insufficient length",
             ));
         }
@@ -77,7 +78,7 @@ impl ECHConfig {
 
         if data.len() < (4 + length as usize) {
             return Err(ParseError::new(
-                ParseErrorType::Invalid_DNS_Packet,
+                ParseErrorType::InvalidDnsPacket,
                 "Insufficient length",
             ));
         }
@@ -96,7 +97,7 @@ impl ECHConfigContents {
     fn parse(data: &[u8]) -> Result<Self, ParseError> {
         if data.len() < 11 {
             return Err(ParseError::new(
-                ParseErrorType::Invalid_packet_index,
+                ParseErrorType::InvalidPacketIndex,
                 "Insufficient length",
             ));
         }
@@ -109,26 +110,32 @@ impl ECHConfigContents {
         let key_length = dns_read_u16(data, offset)? as usize;
         offset += 2;
         if key_length == 0 {
-            return Err(ParseError::new(ParseErrorType::Invalid_Data, "empty public key"));
+            return Err(ParseError::new(
+                ParseErrorType::InvalidData,
+                "empty public key",
+            ));
         }
         let pub_key = dns_parse_slice(data, offset..offset + key_length)?;
         offset += key_length;
         let cipher_suites_length = dns_read_u16(data, offset)? as usize;
         offset += 2;
         if cipher_suites_length == 0 {
-            return Err(ParseError::new(ParseErrorType::Invalid_Data, "empty cipher suite list"));
+            return Err(ParseError::new(
+                ParseErrorType::InvalidData,
+                "empty cipher suite list",
+            ));
         }
         let mut cipher_suites = Vec::new();
-        if cipher_suites_length % 4 != 0 {
-           return Err(ParseError::new(
-                ParseErrorType::Invalid_packet_index,
+        if !cipher_suites_length.is_multiple_of(4) {
+            return Err(ParseError::new(
+                ParseErrorType::InvalidPacketIndex,
                 "Invalid cipher suite length",
             ));
         }
 
         let cipher_suites_end = offset + cipher_suites_length;
         while offset < cipher_suites_end {
-            let kdf = dns_read_u16(data, offset )?;
+            let kdf = dns_read_u16(data, offset)?;
             offset += 2;
             let aead = dns_read_u16(data, offset)?;
             offset += 2;
@@ -183,18 +190,21 @@ impl Display for ECHConfig {
 
 impl Display for ECHConfigContents {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f,
-               "config_id:{},kem_id:{},pub_key:{},cipher:[{}],max_name_len:{},pub_name:{},exts:{}",
-               self.config_id,
-               self.kem_id,
-               hex::encode(&self.hpke_public_key),
-               self.cipher_suites.iter()
-                   .map(|cs| format!("{cs}"))
-                   .collect::<Vec<_>>()
-                   .join(","),
-               self.maximum_name_length,
-               self.public_name,
-               self.extensions.len())
+        write!(
+            f,
+            "config_id:{},kem_id:{},pub_key:{},cipher:[{}],max_name_len:{},pub_name:{},exts:{}",
+            self.config_id,
+            self.kem_id,
+            hex::encode(&self.hpke_public_key),
+            self.cipher_suites
+                .iter()
+                .map(|cs| format!("{cs}"))
+                .collect::<Vec<_>>()
+                .join(","),
+            self.maximum_name_length,
+            self.public_name,
+            self.extensions.len()
+        )
     }
 }
 

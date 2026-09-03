@@ -1,9 +1,9 @@
 use crate::dns::{sshfp_algorithm, sshfp_fp_type};
-use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list};
+use crate::dns_helper::{dns_parse_slice, dns_read_u8, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
-use crate::errors::ParseErrorType::Invalid_Resource_Record;
+use crate::errors::ParseErrorType::InvalidResourceRecord;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default)]
@@ -27,7 +27,7 @@ impl RR_SSHFP {
         let mut sshfp = RR_SSHFP::new();
 
         if rdata.len() < 3 {
-            return Err(ParseError::new(Invalid_Resource_Record, ""));
+            return Err(ParseError::new(InvalidResourceRecord, ""));
         }
         sshfp.alg = dns_read_u8(rdata, 0)?;
         sshfp.fp_type = dns_read_u8(rdata, 1)?;
@@ -58,11 +58,12 @@ impl Display for RR_SSHFP {
 }
 
 impl DnsRecord for RR_SSHFP {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::SSHFP
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut res: Vec<u8> = Vec::new();
         res.push(self.alg);
         res.push(self.fp_type);

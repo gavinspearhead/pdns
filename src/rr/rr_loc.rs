@@ -1,8 +1,8 @@
-use crate::dns_helper::{dns_read_u32, dns_read_u8, names_list};
+use crate::dns_helper::{dns_read_u32, dns_read_u8, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
-use crate::errors::ParseErrorType::Invalid_Parameter;
+use crate::errors::ParseErrorType::InvalidParameter;
 use std::fmt::{Display, Formatter};
 
 fn decode_gpos_size(val: u8) -> String {
@@ -215,7 +215,7 @@ impl RR_LOC {
         let mut a = RR_LOC::new();
         a.version = dns_read_u8(rdata, 0)?;
         if a.version != 0 {
-            return Err(ParseError::new(Invalid_Parameter, "Unknown LOC version"));
+            return Err(ParseError::new(InvalidParameter, "Unknown LOC version"));
         }
         a.size = dns_read_u8(rdata, 1)?;
         a.hor_prec = dns_read_u8(rdata, 2)?;
@@ -272,11 +272,13 @@ impl Display for RR_LOC {
 }
 
 impl DnsRecord for RR_LOC {
+    #[inline]
+
     fn get_type(&self) -> DnsRRType {
         DnsRRType::LOC
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(16);
         bytes.push(self.version);
         bytes.push(self.size);

@@ -1,9 +1,8 @@
 use crate::dns_rr_type::DnsRRType::Private;
 use crate::errors::DnsError;
-use crate::errors::DnsErrorType::Invalid_RR;
+use crate::errors::DnsErrorType::InvalidRr;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::str::FromStr;
 use strum::IntoEnumIterator;
 use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
 
@@ -127,34 +126,38 @@ pub enum DnsRRType {
     X25 = 19,
     ZONEMD = 63,
     Private = 65534,
+    Reserved = 0,
 }
 
 impl DnsRRType {
     #[inline]
-    pub(crate) fn to_str(self) -> &'static str {
+    pub fn to_str(self) -> &'static str {
         self.into()
     }
 
-    pub(crate) fn find(val: u16) -> Result<Self, DnsError> {
+    pub fn find(val: u16) -> Result<Self, DnsError> {
         match DnsRRType::from_repr(val) {
             Some(x) => Ok(x),
             None => {
                 if val > 65280 {
                     Ok(Private)
                 } else {
-                    Err(DnsError::new(Invalid_RR, &format!("{val}")))
+                    Err(DnsError::new(InvalidRr, &format!("{val}")))
                 }
             }
         }
     }
 
     #[inline]
-    pub(crate) fn collect_dns_rr_types() -> Vec<DnsRRType> {
+    #[must_use]
+    pub fn collect_dns_rr_types() -> Vec<DnsRRType> {
         DnsRRType::iter().collect::<Vec<_>>()
     }
+
     #[inline]
-    pub(crate) fn from_string(s: &str) -> Result<DnsRRType, strum::ParseError> {
-        DnsRRType::from_str(s)
+    #[must_use]
+    pub fn to_u16(&self) -> u16 {
+        *self as u16
     }
 }
 
@@ -179,6 +182,7 @@ impl From<&DnsRRType> for u16 {
         (*t) as u16
     }
 }
+
 #[cfg(test)]
 mod tests1 {
     use std::str::FromStr;

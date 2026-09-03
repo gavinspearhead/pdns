@@ -1,4 +1,4 @@
-use crate::dns_helper::names_list;
+use crate::dns_helper::NamesList;
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr::RR_TXT;
 use crate::dns_rr_type::DnsRRType;
@@ -28,6 +28,7 @@ impl RR_SPF {
 }
 
 impl Display for RR_SPF {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         self.txt.fmt(f)
     }
@@ -38,7 +39,7 @@ impl DnsRecord for RR_SPF {
         DnsRRType::WALLET
     }
 
-    fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, names: &mut NamesList, offset: usize) -> Vec<u8> {
         self.txt.to_bytes(names, offset)
     }
 }

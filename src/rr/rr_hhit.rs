@@ -1,8 +1,8 @@
-use crate::dns_helper::{dns_parse_slice, dns_read_u32, names_list};
+use crate::dns_helper::{dns_parse_slice, dns_read_u32, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
-use crate::errors::ParseErrorType::Invalid_Resource_Record;
+use crate::errors::ParseErrorType::InvalidResourceRecord;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default)]
@@ -30,7 +30,7 @@ impl RR_HHIT {
         let slice = dns_parse_slice(rdata, 8..16)?;
         a.orchid_hash = slice
             .try_into()
-            .map_err(|_| ParseError::new(Invalid_Resource_Record, "Invalid orchid_hash length"))?;
+            .map_err(|_| ParseError::new(InvalidResourceRecord, "Invalid orchid_hash length"))?;
         Ok(a)
     }
 }
@@ -42,11 +42,12 @@ impl Display for RR_HHIT {
 }
 
 impl DnsRecord for RR_HHIT {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::HHIT
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&self.prefix.to_be_bytes());
         bytes.extend_from_slice(&self.hid.to_be_bytes());

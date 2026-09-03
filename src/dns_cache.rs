@@ -1,10 +1,11 @@
 use crate::dns_record::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use std::cmp::max;
 use std::{collections::HashMap, fmt};
 
-#[derive(Debug, Clone, Default, Eq, PartialEq)]
+#[derive(Debug, Clone, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct DnsCache {
     timeout: i64,
     max_size: usize,
@@ -13,8 +14,8 @@ pub(crate) struct DnsCache {
 
 const MAX_CACHE_SIZE: usize = 1024;
 impl DnsCache {
-    pub fn new(time_out: i64) -> DnsCache {
-        DnsCache {
+    pub fn new(time_out: i64) -> Self {
+        Self {
             items: HashMap::new(),
             timeout: time_out,
             max_size: MAX_CACHE_SIZE,
@@ -55,8 +56,8 @@ impl DnsCache {
         }
         let mut expired_records = Vec::new();
         let mut first_timeout: i64 = 0;
-        let current_time = Utc::now().timestamp();
         let mut cnt = 0;
+        let current_time = Utc::now().timestamp();
         self.items.retain(|_, (record, timestamp)| {
             if current_time > *timestamp + self.timeout || cnt >= self.max_size {
                 if let Some(x) = record.take() {

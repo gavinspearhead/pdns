@@ -1,8 +1,8 @@
-use crate::dns_helper::{names_list, parse_ipv6_addr};
+use crate::dns_helper::{parse_ipv6_addr, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
-use crate::errors::ParseErrorType::{Invalid_Parameter, Invalid_Resource_Record};
+use crate::errors::ParseErrorType::{InvalidParameter, InvalidResourceRecord};
 use std::fmt::{Display, Formatter};
 use std::net::{IpAddr, Ipv6Addr};
 
@@ -32,16 +32,16 @@ impl RR_AAAA {
     }
 
     #[inline]
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_AAAA, ParseError> {
+    pub(crate) fn parse(rdata: &[u8]) -> Result<Self, ParseError> {
         if rdata.len() != 16 {
             return Err(ParseError::new(
-                Invalid_Resource_Record,
+                InvalidResourceRecord,
                 &format!("{rdata:?}"),
             ));
         }
         match parse_ipv6_addr(rdata)? {
-            IpAddr::V6(v6) => Ok(RR_AAAA { addr: v6 }),
-            IpAddr::V4(_) => Err(ParseError::new(Invalid_Parameter, "")),
+            IpAddr::V6(v6) => Ok(Self { addr: v6 }),
+            IpAddr::V4(_) => Err(ParseError::new(InvalidParameter, "")),
         }
     }
 }
@@ -60,7 +60,7 @@ impl DnsRecord for RR_AAAA {
     }
 
     #[inline]
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         self.addr.octets().to_vec()
     }
 }

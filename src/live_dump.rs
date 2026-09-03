@@ -28,6 +28,7 @@ use tracing::{debug, error};
     AsRefStr,
     FromRepr,
     Default,
+    Hash,
 )]
 
 pub(crate) enum FilterFields {
@@ -150,11 +151,11 @@ impl Filter {
             },
             None => return Err("not found".into()),
         };
-        debug!("Oper: {:?}", oper);
+        debug!("Oper: {oper:?}");
         let Some(value) = spl.next() else {
             return Err("not found".into());
         };
-        debug!("Value: {:?}", value);
+        debug!("Value: {value:?}");
 
         Ok(Filter {
             expr: (field, oper, value.to_owned()),
@@ -459,7 +460,7 @@ pub fn listen(address: &str, port: u16) -> Option<TcpListener> {
         return None;
     }
     let addr = format!("{address}:{port}");
-    debug!("Listening on {addr}");
+    debug!("Listening on {addr}:{port}");
     let x = TcpListener::bind(addr);
     match x {
         Ok(conn) => Some(conn),

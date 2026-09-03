@@ -39,7 +39,7 @@ pub mod version;
 
 use crate::config::{parse_hosts, Config};
 use crate::errors::ParseError;
-use crate::errors::ParseErrorType::Unknown_Link_Type;
+use crate::errors::ParseErrorType::UnknownLinkType;
 use crate::http_server::listen;
 use crate::network_packet::{parse_eth, parse_ip};
 use crate::packet_info::PacketInfo;
@@ -171,15 +171,9 @@ fn parse_dns_packet(
                     || link_type == Linktype::RAW
                     || link_type == Linktype(14)
                 {
-                    parse_ip(
-                        &packet,
-                        &mut packet_info,
-                        stats,
-                        tcp_list,
-                        config,
-                    )
+                    parse_ip(&packet, &mut packet_info, stats, tcp_list, config)
                 } else {
-                    Err(ParseError::new(Unknown_Link_Type, "").into())
+                    Err(ParseError::new(UnknownLinkType, "").into())
                 };
 
                 return match result {
@@ -230,7 +224,7 @@ fn poll(
         );
         Some(x)
     };
-    let asn_database = load_asn_database(config);
+    let asn_database = load_asn_database(&config.asn_database_file);
     let publicsuffixlist: publicsuffix::List = read_public_suffix_file(&config.public_suffix_file);
     let mut timeout = 50;
     let mut live_dump = LiveDump::new(&config.live_dump_host, config.live_dump_port);
@@ -292,7 +286,7 @@ fn db_insert(
     last_push: &mut i64,
     force: bool,
 ) -> i64 {
-    if let Some(ref mut db) = database_conn {
+    if let Some(db) = database_conn {
         let (records, timeout) = dns_cache.push_timed(force);
         for i in records {
             db.insert_or_update_record(&i);
@@ -364,20 +358,14 @@ fn capture_from_file(
             thread::scope(|s| {
                 let handle_tcp_list = s.spawn(|| clean_tcp_list(&tcp_list.clone(), tcp_rx));
                 let handle_poll = s.spawn(|| {
-                    poll(
-                        &packet_queue.clone(),
-                        config,
-                        pq_rx,
-                        stats,
-                        tcp_list,
-                    );
+                    poll(&packet_queue.clone(), config, pq_rx, stats, tcp_list);
                 });
                 let handle_packet_loop = s.spawn(|| {
                     packet_loop(&mut c, &packet_queue.clone(), pcap_path);
                 });
                 handle_packet_loop.join().unwrap();
                 // we wait for the main threat to terminate; then cancel the tcp cleanup threat
-                let _ = tcp_tx.send(String::from_str("the end").unwrap());
+                let _ = tcp_tx.send(String::from("the end"));
                 handle_poll.join().unwrap();
                 handle_tcp_list.join().unwrap();
             });
@@ -406,13 +394,7 @@ fn capture_from_interface(
     thread::scope(|s| {
         let handle_tcp_list = s.spawn(|| clean_tcp_list(&tcp_list.clone(), tcp_rx));
         let handle_poll = s.spawn(|| {
-            poll(
-                &packet_queue.clone(),
-                config,
-                pq_rx,
-                stats,
-                tcp_list,
-            );
+            poll(&packet_queue.clone(), config, pq_rx, stats, tcp_list);
         });
         let handle_http = s.spawn(|| {
             let _ = listen(stats, tcp_list, config, start_time);
@@ -475,32 +457,21 @@ fn run(
     let packet_queue = PacketQueue::new();
     let tcp_list = Arc::new(Mutex::new(TcpConnections::new(config.tcp_memory)));
     if !pcap_path.is_empty() {
-        capture_from_file(
-            config,
-            pcap_path,
-            stats,
-            &tcp_list,
-            &packet_queue,
-        );
+        capture_from_file(config, pcap_path, stats, &tcp_list, &packet_queue);
     } else if !config.interface.is_empty() {
         let Some(cap) = cap_in else {
             error!("Something wrong with the capture");
             exit(1);
         };
-        capture_from_interface(
-            config,
-            stats,
-            &tcp_list,
-            &packet_queue,
-            cap,
-            start_time,
-        );
+        capture_from_interface(config, stats, &tcp_list, &packet_queue, cap, start_time);
     }
 }
 
+#[inline]
 fn devnull() -> io::Result<File> {
     File::open("/dev/null")
 }
+
 fn main() {
     let start_time = Utc::now();
     let mut pcap_path = String::new();
@@ -572,7 +543,7 @@ fn main() {
             debug!("Listen on {interface}; promiscuous: {}", config.promiscuous);
             let a_cap = Capture::from_device(interface.as_str())
                 .unwrap_or_else(|e| {
-                    error!("Cannot prepare capture for interface '{}': {e}", interface);
+                    error!("Cannot prepare capture for interface '{interface}': {e}", );
                     exit(1);
                 })
                 .timeout(1000)
@@ -582,7 +553,7 @@ fn main() {
             match a_cap {
                 Ok(x) => cap_list.push((x, interface)),
                 Err(e) => {
-                    error!("Cannot open capture on interface '{}' {e}", &interface);
+                    error!("Cannot open capture on interface '{interface}' {e}");
                 }
             }
         }
@@ -637,11 +608,23 @@ fn main() {
         let daemon = Daemon::new()
             .pid_file(&config.pid_file, Some(false))
             .work_dir("/tmp")
-            .user(User::try_from(&config.uid).expect("Invalid user"))
-            .group(Group::try_from(&config.gid).expect("Invalid group"))
+            .user(User::try_from(&config.uid).unwrap_or_else(|e| {
+                error!("Invalid user {}: {e}", config.uid);
+                exit(1)
+            }))
+            .group(Group::try_from(&config.gid).unwrap_or_else(|e| {
+                error!("Invalid group {}: {e}", config.gid);
+                exit(1)
+            }))
             .umask(0o077)
-            .stdout(devnull().expect("Cannot open /dev/null"))
-            .stderr(devnull().expect("Cannot open /dev/null"));
+            .stdout(devnull().unwrap_or_else(|e| {
+                error!("Cannot open /dev/null: {e}");
+                exit(1);
+            }))
+            .stderr(devnull().unwrap_or_else(|e| {
+                error!("Cannot open /dev/null: {e}");
+                exit(1);
+            }));
 
         match daemon.start() {
             Ok(()) => {
@@ -649,7 +632,7 @@ fn main() {
                 run(&config, cap, &pcap_path, &stats, start_time);
             }
             Err(e) => {
-                error!("Error daemonising: {}", e);
+                error!("Error daemonising: {e}");
                 exit(1);
             }
         }

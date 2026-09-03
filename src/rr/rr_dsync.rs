@@ -1,4 +1,4 @@
-use crate::dns_helper::{dns_read_u16, dns_read_u8, names_list};
+use crate::dns_helper::{dns_read_u16, dns_read_u8, NamesList};
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
@@ -49,11 +49,12 @@ impl Display for RR_DSYNC {
 }
 
 impl DnsRecord for RR_DSYNC {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::DSYNC
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&self.rrtype.to_be_bytes());
         bytes.push(self.scheme);

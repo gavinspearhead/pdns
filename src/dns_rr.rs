@@ -1,6 +1,6 @@
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
-use crate::errors::ParseErrorType::Invalid_Resource_Record;
+use crate::errors::ParseErrorType::InvalidResourceRecord;
 use crate::rr::rr_a::RR_A;
 use crate::rr::rr_a6::RR_A6;
 use crate::rr::rr_aaaa::RR_AAAA;
@@ -94,19 +94,19 @@ use crate::rr::rr_wallet::RR_WALLET;
 use crate::rr::rr_wks::RR_WKS;
 use crate::rr::rr_x25::RR_X25;
 use crate::rr::rr_zonemd::RR_ZONEMD;
-use tracing::debug;
 use crate::statistics::Statistics;
+use tracing::debug;
 
 pub(crate) fn dns_parse_rdata(
     rdata: &[u8],
     rrtype: DnsRRType,
     packet: &[u8],
     offset_in: usize,
-    statistics: &mut Statistics
+    statistics: &mut Statistics,
 ) -> Result<String, ParseError> {
     match rrtype {
         DnsRRType::A => Ok(RR_A::parse(rdata)?.to_string()),
-        DnsRRType::A6 => Ok(RR_A6::parse(packet, offset_in)?.to_string()),
+        DnsRRType::A6 => Ok(RR_A6::parse(packet,offset_in)?.to_string()),
         DnsRRType::AAAA => Ok(RR_AAAA::parse(rdata)?.to_string()),
         DnsRRType::AFSDB => Ok(RR_AFSDB::parse(packet, offset_in)?.to_string()),
         DnsRRType::AMTRELAY => Ok(RR_AMTRELAY::parse(rdata, packet, offset_in)?.to_string()),
@@ -175,7 +175,7 @@ pub(crate) fn dns_parse_rdata(
         DnsRRType::RESINFO => Ok(RR_RESINFO::parse(rdata)?.to_string()),
         DnsRRType::RKEY => Ok(RR_RKEY::parse(rdata)?.to_string()),
         DnsRRType::RP => Ok(RR_RP::parse(packet, offset_in)?.to_string()),
-        DnsRRType::RRSIG => Ok(RR_RRSIG::parse(packet, offset_in)?.to_string()),
+        DnsRRType::RRSIG => Ok(RR_RRSIG::parse(packet, rdata, offset_in)?.to_string()),
         DnsRRType::RT => Ok(RR_RT::parse(packet, offset_in)?.to_string()),
         DnsRRType::SIG => Ok(RR_SIG::parse(packet, offset_in)?.to_string()),
         DnsRRType::SINK => Ok(RR_SINK::parse(rdata)?.to_string()),
@@ -199,8 +199,8 @@ pub(crate) fn dns_parse_rdata(
         DnsRRType::X25 => Ok(RR_X25::parse(rdata)?.to_string()),
         DnsRRType::ZONEMD => Ok(RR_ZONEMD::parse(rdata)?.to_string()),
         _ => {
-            debug!("Unknown RR type");
-            Err(ParseError::new(Invalid_Resource_Record, rrtype.to_str()))
+            debug!("Unknown RR type {rrtype:?}");
+            Err(ParseError::new(InvalidResourceRecord, rrtype.to_str()))
         }
     }
 }

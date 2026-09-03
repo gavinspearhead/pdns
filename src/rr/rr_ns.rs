@@ -1,4 +1,4 @@
-use crate::dns_helper::{dns_format_name, names_list};
+use crate::dns_helper::{dns_format_name, NamesList};
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
@@ -23,7 +23,7 @@ impl RR_NS {
     }
 
     #[inline]
-    pub(crate) fn parse(packet: &[u8], offset: usize) -> Result<RR_NS, ParseError> {
+    pub(crate) fn parse(packet: &[u8], offset: usize) -> Result<Self, ParseError> {
         let (ns, _offset) = dns_parse_name(packet, offset)?;
         Ok(Self { ns })
     }
@@ -43,7 +43,7 @@ impl DnsRecord for RR_NS {
     }
 
     #[inline]
-    fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, names: &mut NamesList, offset: usize) -> Vec<u8> {
         dns_format_name(&self.ns, names, offset)
     }
 }

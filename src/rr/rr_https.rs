@@ -1,21 +1,20 @@
 use crate::dns::SvcParamKeys;
 use crate::dns_helper::{
-    dns_parse_slice, dns_read_u16, dns_read_u8, names_list, parse_dns_str, parse_ipv4_addr,
-    parse_ipv6_addr,
+    dns_parse_slice, dns_read_u16, dns_read_u8, parse_dns_str, parse_ipv4_addr, parse_ipv6_addr,
+    NamesList,
 };
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::ech::ECHConfig;
 use crate::errors::ParseError;
-use crate::errors::ParseErrorType::Invalid_Parameter;
+use crate::errors::ParseErrorType::InvalidParameter;
+use crate::statistics::Statistics;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
-use std::fmt::Write;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::ops::Add;
 use strum_macros::{Display, EnumString};
-use crate::statistics::Statistics;
 
 #[derive(Debug, Clone, EnumString, PartialEq, Eq, Display)]
 pub enum HttpsSvcParam {
@@ -29,8 +28,10 @@ pub enum HttpsSvcParam {
     DohPath(String),
     KeyValue(u16, Vec<u8>), // Catch-all for unknown or private keys
     Ohttp,
-    TlsSupportedGroups(Vec<u16>), // list of 16 bit numbers
-    DocPath(Vec<String>),           // like txt record 8 bit length / n byte string
+    TlsSupportedGroups(Vec<u16>), // list of 16-bit numbers
+    DocPath(Vec<String>),         // like txt record 8-bit length / n-byte string
+    Pvd,
+    Invalid,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -42,15 +43,15 @@ pub struct RR_HTTPS {
 
 impl RR_HTTPS {
     #[must_use]
-    pub fn new() -> RR_HTTPS {
-        RR_HTTPS::default()
+    pub fn new() -> Self {
+        Self::default()
     }
     pub fn set(&mut self, target: &str, prio: u16, param: &[HttpsSvcParam]) {
         self.prio = prio;
         self.param = param.to_vec();
         self.target = target.to_string();
     }
-    pub(crate) fn parse(rdata: &[u8], statistics: &mut Statistics) -> Result<RR_HTTPS, ParseError> {
+    pub(crate) fn parse(rdata: &[u8], statistics: &mut Statistics) -> Result<Self, ParseError> {
         let mut params: Vec<HttpsSvcParam> = vec![];
         let prio = dns_read_u16(rdata, 0)?;
         let (target, mut offset) = dns_parse_name(rdata, 2)?;
@@ -63,30 +64,28 @@ impl RR_HTTPS {
             offset += 2;
             *statistics.svc_stats.entry(svc_param_key).or_insert(0) += 1;
             match svc_param_key {
-                SvcParamKeys::key_value => {
-                    let value = dns_parse_slice( rdata, offset ..offset  + svc_param_len)?;
+                SvcParamKeys::KeyValue => {
+                    let value = dns_parse_slice(rdata, offset..offset + svc_param_len)?;
                     params.push(HttpsSvcParam::KeyValue(svc_val, value.to_vec()));
                 }
-                SvcParamKeys::doh_path => {
-                    let doh_path = parse_dns_str(dns_parse_slice(
-                        rdata,
-                        offset ..offset + svc_param_len,
-                    )?)?;
+                SvcParamKeys::DohPath => {
+                    let doh_path =
+                        parse_dns_str(dns_parse_slice(rdata, offset..offset + svc_param_len)?)?;
 
                     params.push(HttpsSvcParam::DohPath(doh_path));
                 }
-                SvcParamKeys::mandatory => {
+                SvcParamKeys::Mandatory => {
                     let mut pos = 0;
                     let mut keys: Vec<SvcParamKeys> = vec![];
                     while pos < svc_param_len {
                         let man_val = SvcParamKeys::find(dns_read_u16(rdata, offset + pos)?)
-                            .map_err(|_| ParseError::new(Invalid_Parameter, "mandatory"))?;
+                            .map_err(|_| ParseError::new(InvalidParameter, "Mandatory"))?;
                         keys.push(man_val);
                         pos += 2;
                     }
                     params.push(HttpsSvcParam::Mandatory(keys));
                 }
-                SvcParamKeys::docpath | SvcParamKeys::alpn => {
+                SvcParamKeys::Docpath | SvcParamKeys::Alpn => {
                     let mut pos = 0;
                     let mut values: Vec<String> = vec![];
                     while pos < svc_param_len {
@@ -98,21 +97,20 @@ impl RR_HTTPS {
                         values.push(docpath);
                         pos += 1 + docpath_len;
                     }
-                    if svc_param_key == SvcParamKeys::docpath {
+                    if svc_param_key == SvcParamKeys::Docpath {
                         params.push(HttpsSvcParam::DocPath(values));
-                    }
-                    else {
-                        for i in values.iter() {
+                    } else {
+                        for i in &values {
                             *statistics.alpn_stats.entry(i.clone()).or_insert(0) += 1;
                         }
                         params.push(HttpsSvcParam::Alpn(values));
                     }
                 }
-                SvcParamKeys::ech => {
-                    let data_str = dns_parse_slice(rdata, offset ..offset + svc_param_len)?;
+                SvcParamKeys::Ech => {
+                    let data_str = dns_parse_slice(rdata, offset..offset + svc_param_len)?;
                     params.push(HttpsSvcParam::ECH(data_str.into()));
                 }
-                SvcParamKeys::ipv4hint => {
+                SvcParamKeys::Ipv4hint => {
                     let mut pos: usize = 0;
                     let mut ipv4hints: Vec<Ipv4Addr> = vec![];
                     while pos + 4 <= svc_param_len {
@@ -122,7 +120,7 @@ impl RR_HTTPS {
                                 IpAddr::V4(v4) => v4,
                                 IpAddr::V6(_) => {
                                     return Err(ParseError::new(
-                                        Invalid_Parameter,
+                                        InvalidParameter,
                                         "Expected IPv4 address",
                                     ))
                                 }
@@ -132,17 +130,17 @@ impl RR_HTTPS {
                     }
                     params.push(HttpsSvcParam::Ipv4Hint(ipv4hints));
                 }
-                SvcParamKeys::ipv6hint => {
+                SvcParamKeys::Ipv6hint => {
                     let mut pos: usize = 0;
                     let mut ipv6hints: Vec<Ipv6Addr> = vec![];
                     while pos + 16 <= svc_param_len {
-                        let loc = offset +  pos;
+                        let loc = offset + pos;
                         let addr: Ipv6Addr =
                             match parse_ipv6_addr(dns_parse_slice(rdata, loc..loc + 16)?)? {
                                 IpAddr::V6(v6) => v6,
                                 IpAddr::V4(_) => {
                                     return Err(ParseError::new(
-                                        Invalid_Parameter,
+                                        InvalidParameter,
                                         "Expected IPv6 address",
                                     ))
                                 }
@@ -152,13 +150,16 @@ impl RR_HTTPS {
                     }
                     params.push(HttpsSvcParam::Ipv6Hint(ipv6hints));
                 }
-                SvcParamKeys::no_default_alpn => {
+                SvcParamKeys::NoDefaultAlpn => {
                     params.push(HttpsSvcParam::NoDefaultAlpn);
                 }
-                SvcParamKeys::ohttp => {
+                SvcParamKeys::Invalid => {
+                    params.push(HttpsSvcParam::Invalid);
+                }
+                SvcParamKeys::Ohttp => {
                     params.push(HttpsSvcParam::Ohttp);
                 }
-                SvcParamKeys::tls_supported_groups => {
+                SvcParamKeys::TlsSupportedGroups => {
                     let mut pos = 0;
                     let mut values: Vec<u16> = vec![];
                     while pos < svc_param_len {
@@ -168,9 +169,12 @@ impl RR_HTTPS {
                     }
                     params.push(HttpsSvcParam::TlsSupportedGroups(values));
                 }
-                SvcParamKeys::port => {
+                SvcParamKeys::Port => {
                     let port = dns_read_u16(rdata, offset)?;
                     params.push(HttpsSvcParam::Port(port));
+                }
+                SvcParamKeys::Pvd => {
+                    params.push(HttpsSvcParam::Pvd);
                 }
             }
             offset += svc_param_len;
@@ -195,7 +199,7 @@ impl std::fmt::Display for RR_HTTPS {
                         .map(ToString::to_string)
                         .collect::<Vec<_>>()
                         .join(",");
-                    write!(f, " mandatory={value}")?;
+                    write!(f, " Mandatory={value}")?;
                 }
 
                 HttpsSvcParam::Alpn(values) => {
@@ -204,22 +208,28 @@ impl std::fmt::Display for RR_HTTPS {
                         .map(ToString::to_string)
                         .collect::<Vec<_>>()
                         .join(",");
-                    write!(f, " alpn={value}")?;
+                    write!(f, " Alpn={value}")?;
                 }
                 HttpsSvcParam::DohPath(values) => {
                     write!(f, " dohpath={values}")?;
                 }
+                HttpsSvcParam::Invalid => {
+                    write!(f, " Invalid")?;
+                }
+                HttpsSvcParam::Pvd => {
+                    write!(f, " Pvd")?;
+                }
                 HttpsSvcParam::Ohttp => {
-                    write!(f, " ohttp")?;
+                    write!(f, " Ohttp")?;
                 }
                 HttpsSvcParam::NoDefaultAlpn => {
-                    write!(f, " no-default-alpn")?;
+                    write!(f, " no-default-Alpn")?;
                 }
                 HttpsSvcParam::Port(port) => {
-                    write!(f, " port={port}")?;
+                    write!(f, " Port={port}")?;
                 }
                 HttpsSvcParam::TlsSupportedGroups(values) => {
-                     let value = values
+                    let value = values
                         .iter()
                         .map(ToString::to_string)
                         .collect::<Vec<_>>()
@@ -232,16 +242,18 @@ impl std::fmt::Display for RR_HTTPS {
                         .map(ToString::to_string)
                         .collect::<Vec<_>>()
                         .join(",");
-                    write!(f, " ipv4hint={value}")?;
+                    write!(f, " Ipv4hint={value}")?;
                 }
                 HttpsSvcParam::DocPath(addrs) => {
                     let value = String::from("/");
-                    let value = value.add(&addrs
-                        .iter()
-                        .map(ToString::to_string)
-                        .collect::<Vec<_>>()
-                        .join("/,"));
-                    write!(f, " docpath={value}")?;
+                    let value = value.add(
+                        &addrs
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join("/,"),
+                    );
+                    write!(f, " Docpath={value}")?;
                 }
                 HttpsSvcParam::Ipv6Hint(addrs) => {
                     let value = addrs
@@ -249,17 +261,15 @@ impl std::fmt::Display for RR_HTTPS {
                         .map(ToString::to_string)
                         .collect::<Vec<_>>()
                         .join(",");
-                    write!(f, " ipv6hint={value}")?;
+                    write!(f, " Ipv6hint={value}")?;
                 }
                 HttpsSvcParam::ECH(data) => {
                     let ech = ECHConfig::parse(data);
-                    let ech = if let Ok(item) = ech {
-                        item
-                    } else {
+                    let Ok(ech) = ech else {
                         return Err(std::fmt::Error);
                     };
 
-                    write!(f, " ech=")?;
+                    write!(f, " Ech=")?;
                     for i in ech {
                         write!(f, "{i}")?;
                     }
@@ -283,10 +293,11 @@ impl std::fmt::Display for RR_HTTPS {
 }
 
 impl DnsRecord for RR_HTTPS {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::HTTPS
     }
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut result = Vec::new();
         result.extend_from_slice(&self.prio.to_be_bytes());
 
@@ -304,7 +315,7 @@ impl DnsRecord for RR_HTTPS {
         for param in &self.param {
             match param {
                 HttpsSvcParam::Mandatory(keys) => {
-                    result.extend_from_slice(&(SvcParamKeys::mandatory as u16).to_be_bytes());
+                    result.extend_from_slice(&(SvcParamKeys::Mandatory as u16).to_be_bytes());
                     let param_len = keys.len() * 2;
                     result.extend_from_slice(&(param_len as u16).to_be_bytes());
                     for key in keys {
@@ -313,7 +324,7 @@ impl DnsRecord for RR_HTTPS {
                 }
                 HttpsSvcParam::TlsSupportedGroups(values) => {
                     result.extend_from_slice(
-                        &(SvcParamKeys::tls_supported_groups as u16).to_be_bytes(),
+                        &(SvcParamKeys::TlsSupportedGroups as u16).to_be_bytes(),
                     );
                     let param_len = 2 * values.len(); // length byte + string
                     result.extend_from_slice(&(param_len as u16).to_be_bytes());
@@ -322,7 +333,7 @@ impl DnsRecord for RR_HTTPS {
                     }
                 }
                 HttpsSvcParam::Alpn(values) => {
-                    result.extend_from_slice(&(SvcParamKeys::alpn as u16).to_be_bytes());
+                    result.extend_from_slice(&(SvcParamKeys::Alpn as u16).to_be_bytes());
                     let mut param_len = 0;
                     for val in values {
                         param_len += val.len() + 1; // length byte + string
@@ -335,34 +346,36 @@ impl DnsRecord for RR_HTTPS {
                     }
                 }
                 HttpsSvcParam::DohPath(values) => {
-                    result.extend_from_slice(&(SvcParamKeys::doh_path as u16).to_be_bytes());
+                    result.extend_from_slice(&(SvcParamKeys::DohPath as u16).to_be_bytes());
                     result.extend_from_slice(&(values.len() as u16).to_be_bytes());
                     result.extend_from_slice(values.as_bytes());
                 }
-
                 HttpsSvcParam::Ohttp => {
-                    result.extend_from_slice(&(SvcParamKeys::ohttp as u16).to_be_bytes());
+                    result.extend_from_slice(&(SvcParamKeys::Ohttp as u16).to_be_bytes());
+                    result.extend_from_slice(&0u16.to_be_bytes());
+                }
+                HttpsSvcParam::Pvd => {
+                    result.extend_from_slice(&(SvcParamKeys::Pvd as u16).to_be_bytes());
                     result.extend_from_slice(&0u16.to_be_bytes());
                 }
                 HttpsSvcParam::NoDefaultAlpn => {
-                    result
-                        .extend_from_slice(&(SvcParamKeys::no_default_alpn as u16).to_be_bytes());
+                    result.extend_from_slice(&(SvcParamKeys::NoDefaultAlpn as u16).to_be_bytes());
                     result.extend_from_slice(&0u16.to_be_bytes());
                 }
                 HttpsSvcParam::Port(port) => {
-                    result.extend_from_slice(&(SvcParamKeys::port as u16).to_be_bytes());
+                    result.extend_from_slice(&(SvcParamKeys::Port as u16).to_be_bytes());
                     result.extend_from_slice(&2u16.to_be_bytes());
                     result.extend_from_slice(&port.to_be_bytes());
                 }
                 HttpsSvcParam::Ipv4Hint(addrs) => {
-                    result.extend_from_slice(&(SvcParamKeys::ipv4hint as u16).to_be_bytes());
+                    result.extend_from_slice(&(SvcParamKeys::Ipv4hint as u16).to_be_bytes());
                     result.extend_from_slice(&((addrs.len() * 4) as u16).to_be_bytes());
                     for addr in addrs {
                         result.extend_from_slice(&addr.octets());
                     }
                 }
                 HttpsSvcParam::DocPath(addrs) => {
-                    result.extend_from_slice(&(SvcParamKeys::docpath as u16).to_be_bytes());
+                    result.extend_from_slice(&(SvcParamKeys::Docpath as u16).to_be_bytes());
                     let mut param_len: u16 = 0;
                     for addr in addrs {
                         param_len += addr.len() as u16 + 1;
@@ -374,14 +387,14 @@ impl DnsRecord for RR_HTTPS {
                     }
                 }
                 HttpsSvcParam::Ipv6Hint(addrs) => {
-                    result.extend_from_slice(&(SvcParamKeys::ipv6hint as u16).to_be_bytes());
+                    result.extend_from_slice(&(SvcParamKeys::Ipv6hint as u16).to_be_bytes());
                     result.extend_from_slice(&((addrs.len() * 16) as u16).to_be_bytes());
                     for addr in addrs {
                         result.extend_from_slice(&addr.octets());
                     }
                 }
                 HttpsSvcParam::ECH(data) => {
-                    result.extend_from_slice(&(SvcParamKeys::ech as u16).to_be_bytes());
+                    result.extend_from_slice(&(SvcParamKeys::Ech as u16).to_be_bytes());
                     let msg = Engine::decode(&STANDARD, data).unwrap();
                     result.extend_from_slice(&(data.len() as u16).to_be_bytes());
                     result.extend_from_slice(&msg);
@@ -390,6 +403,10 @@ impl DnsRecord for RR_HTTPS {
                     result.extend_from_slice(&key.to_be_bytes());
                     result.extend_from_slice(&(value.len() as u16).to_be_bytes());
                     result.extend_from_slice(value);
+                }
+                HttpsSvcParam::Invalid => {
+                    result.extend_from_slice(&(SvcParamKeys::Invalid as u16).to_be_bytes());
+                    result.extend_from_slice(&0u16.to_be_bytes());
                 }
             }
         }

@@ -1,4 +1,4 @@
-use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list, parse_dns_str};
+use crate::dns_helper::{dns_parse_slice, dns_read_u8, parse_dns_str, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
@@ -21,14 +21,14 @@ impl RR_CAA {
         self.tag = tag.to_string();
         self.value = value.to_string();
     }
-    pub(crate) fn parse(rdata: &[u8]) -> Result<RR_CAA, ParseError> {
-        let mut caa = RR_CAA::new();
+    pub(crate) fn parse(rdata: &[u8]) -> Result<Self, ParseError> {
+        let mut caa = Self::new();
         caa.flag = dns_read_u8(rdata, 0)?;
         let tag_len = usize::from(dns_read_u8(rdata, 1)?);
-        let r = dns_parse_slice(rdata, 2..2 + tag_len)?;
-        caa.tag = parse_dns_str(r)?;
-        let r = dns_parse_slice(rdata, 2 + tag_len..)?;
-        caa.value = parse_dns_str(r)?;
+        let tag = dns_parse_slice(rdata, 2..2 + tag_len)?;
+        caa.tag = parse_dns_str(tag)?;
+        let value = dns_parse_slice(rdata, 2 + tag_len..)?;
+        caa.value = parse_dns_str(value)?;
         Ok(caa)
     }
 }
@@ -40,10 +40,11 @@ impl Display for RR_CAA {
 }
 
 impl DnsRecord for RR_CAA {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::CAA
     }
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut result = Vec::new();
         result.push(self.flag);
         result.push(self.tag.len() as u8);

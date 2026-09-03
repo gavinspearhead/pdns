@@ -1,5 +1,5 @@
 use crate::dns_helper::{
-    base32hex_encode, dns_parse_slice, dns_read_u16, dns_read_u32, dns_read_u8, names_list,
+    base32hex_encode, dns_parse_slice, dns_read_u16, dns_read_u32, dns_read_u8, NamesList,
 };
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DnsRecord;
@@ -86,11 +86,12 @@ impl Display for RR_SIG {
 }
 
 impl DnsRecord for RR_SIG {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::SIG
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&self.type_covered.to_be_bytes());
         bytes.extend_from_slice(&self.algorithm.to_be_bytes());

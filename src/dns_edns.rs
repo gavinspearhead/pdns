@@ -1,3 +1,5 @@
+use std::net::{IpAddr, Ipv4Addr};
+use serde::{Deserialize, Serialize};
 use crate::dns::{dnssec_algorithm, dnssec_digest};
 use crate::dns_helper::{
     dns_parse_slice, dns_read_u128, dns_read_u16, dns_read_u32, dns_read_u64, dns_read_u8,
@@ -5,10 +7,18 @@ use crate::dns_helper::{
 };
 use crate::dns_name::dns_parse_name;
 use crate::dns_reply_type::DnsReplyType;
-use crate::edns::{DnsExtendedError, EDNSOptionCodes};
+use crate::edns::{DnsExtendedError, EDNSOptionCodes, EDNSOptionData};
 use crate::packet_info::PacketInfo;
 use crate::statistics::Statistics;
 use tracing::{debug, error};
+use crate::edns::EDNSOptionData::{Cookie, EdnsClientSubnet, EdnsExpire, EdnsTcpKeepalive, ExtendedDNSError, DHU, N3U, LLQ, ZoneVersion, EDNSClientTag, EDNSServerTag, EdnsKeyTag, UpdateLease, ReportChannel, NSID};
+
+#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
+pub(crate) struct EDnsRecord {
+    pub option_code: EDNSOptionCodes,
+    pub option_length: usize,
+    pub option_data: EDNSOptionData,
+}
 
 fn parse_edns_extended_dns_error(
     packet_info: &mut PacketInfo,
@@ -16,217 +26,228 @@ fn parse_edns_extended_dns_error(
     offset: usize,
     _option_length: usize,
     stats: &mut Statistics,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<DnsExtendedError, Box<dyn std::error::Error>> {
     let info_code = DnsExtendedError::find(dns_read_u16(rdata, offset + 4)?)?;
-    // debug!("info code {info_code}");
-    /*let info_text = std::str::from_utf8(dns_parse_slice(
-        rdata,
-        offset + 6..offset + 4 + option_length,
-    )?)?;*/
-    // debug!("infotext {info_text}");
+
     if !packet_info.dns_records.is_empty() {
         packet_info.dns_records[0].extended_error = info_code;
     }
     *stats.extended_error.entry(info_code).or_insert(0) += 1;
-    Ok(())
+    Ok(info_code)
 }
 
 fn parse_edns_dau(
     rdata: &[u8],
     offset_in: usize,
     option_length: usize,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut offset = offset_in + 4;
+    let mut dau = vec![];
     for _ in 0..option_length {
         let alg = dns_read_u8(rdata, offset)?;
+        dau.push(alg);
         debug!("DNS Signing Algorithm: {}", dnssec_algorithm(alg)?);
         offset += 1;
     }
-    Ok(())
+    Ok(dau)
 }
 
 fn parse_edns_dhu(
     rdata: &[u8],
     offset: usize,
     option_length: usize,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut offset = offset + 4;
+    let mut dhu = vec![];
     for _ in 0..option_length {
         let alg = dns_read_u8(rdata, offset)?;
+        dhu.push(alg);
         debug!("DNS Hash Algorithm: {}", dnssec_digest(alg)?);
         offset += 1;
     }
-    Ok(())
+    Ok(dhu)
 }
 
 fn parse_edns_n3u(
     rdata: &[u8],
     offset: usize,
     option_length: usize,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut offset = offset + 4;
+    let mut n3u = vec![];
     for _ in 0..option_length {
         let alg = dns_read_u8(rdata, offset)?;
+        n3u.push(alg);
         debug!("NSEC3 Hash Algorithm: {}", dnssec_digest(alg)?);
         offset += 1;
     }
-    Ok(())
+    Ok(n3u)
 }
 
-fn parse_edns_llq(rdata: &[u8], offset: usize) -> Result<(), Box<dyn std::error::Error>> {
+fn parse_edns_llq(rdata: &[u8], offset: usize) -> Result<(u16, u16, u16, u64, u32), Box<dyn std::error::Error>> {
     let llq_ver = dns_read_u16(rdata, offset + 4)?;
     let llq_opcode = dns_read_u16(rdata, offset + 6)?;
     let llq_error = dns_read_u16(rdata, offset + 8)?;
     let llq_id = dns_read_u64(rdata, offset + 10)?;
     let llq_lease = dns_read_u32(rdata, offset + 18)?;
     debug!( "LLQ Version: {llq_ver}, opcode: {llq_opcode}, error: {llq_error}, ID: {llq_id}, lease: {llq_lease}" );
-    Ok(())
+    Ok((llq_ver, llq_opcode, llq_error, llq_id, llq_lease))
 }
 
-fn parse_edns_zone_version(rdata: &[u8], offset: usize) -> Result<(), Box<dyn std::error::Error>> {
+fn parse_edns_zone_version(rdata: &[u8], offset: usize) -> Result<(u8, u8, Vec<u8>), Box<dyn std::error::Error>> {
     let label_count = dns_read_u8(rdata, offset + 4)?;
     let version_type = dns_read_u8(rdata, offset + 5)?;
     let Some(version) = rdata.get(offset + 6..) else {
         return Err("No version data".into());
     };
     debug!("Zone version: {label_count} {version_type} {version:x?}");
-    Ok(())
+    Ok((label_count, version_type, Vec::from(version)))
 }
 
-fn parse_edns_chain(rdata: &[u8], offset: usize) -> Result<(), Box<dyn std::error::Error>> {
-    let chain = dns_parse_name(rdata, offset + 4)?;
-    debug!("Chain {}", chain.0);
-    Ok(())
+fn parse_edns_chain(rdata: &[u8], offset: usize) -> Result<String, Box<dyn std::error::Error>> {
+    let (chain, _) = dns_parse_name(rdata, offset + 4)?;
+    debug!("Chain {}", chain);
+    Ok(chain)
 }
 
 fn parse_edns_nsid(
     rdata: &[u8],
     offset: usize,
     option_length: usize,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<String, Box<dyn std::error::Error>> {
     let nsid = std::str::from_utf8(dns_parse_slice(
         rdata,
         offset + 4..offset + 4 + option_length,
     )?)?;
     debug!("infotext {nsid:?}");
-    Ok(())
+    Ok(nsid.to_string())
 }
 
 fn parse_edns_tcp_keepalive(
     rdata: &[u8],
     offset: usize,
     option_length: usize,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<u16, Box<dyn std::error::Error>> {
+    let mut timeout = 0;
     if option_length == 2 {
-        let timeout = dns_read_u16(rdata, offset + 4)?;
+        timeout = dns_read_u16(rdata, offset + 4)?;
         debug!("TCP Keepalive {timeout}");
     }
-    Ok(())
+    Ok(timeout)
 }
 
 fn parse_edns_client_subnet(
     rdata: &[u8],
     offset: usize,
     option_length: usize,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(u16, u8, u8, IpAddr), Box<dyn std::error::Error>> {
     let family = dns_read_u16(rdata, offset + 4)?;
     let source_prefix_len = dns_read_u8(rdata, offset + 6)?;
     let scope_prefix_len = dns_read_u8(rdata, offset + 7)?;
     let addr = dns_parse_slice(rdata, offset + 8..offset + option_length + 4)?;
-
+    let mut ip_addr: IpAddr = Ipv4Addr::UNSPECIFIED.into();
     if family == 1 {
         // ipv4
         let mut addr_: [u8; 4] = [0; 4];
         addr_[..addr.len()].copy_from_slice(addr);
         let v4addr = parse_ipv4_addr(&addr_)?;
+        ip_addr = v4addr.into();
         debug!("{v4addr}/{source_prefix_len}/{scope_prefix_len} (IPv4)");
     } else if family == 2 {
         // ipv6
         let mut addr_: [u8; 16] = [0; 16];
         addr_[..addr.len()].copy_from_slice(addr);
         let v6addr = parse_ipv6_addr(&addr_)?;
+        ip_addr = v6addr.into();
         debug!("{v6addr}/{source_prefix_len}/{scope_prefix_len} (IPv6)");
     } else {
         error!("Unknown address family {family}");
     }
-    Ok(())
+    Ok((family, scope_prefix_len, scope_prefix_len, ip_addr))
 }
 
 fn parse_edns_cookie(
     rdata: &[u8],
     offset: usize,
     option_length: usize,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(u64, u128), Box<dyn std::error::Error>> {
+     let mut client_cookie= 0 ;
+     let mut server_cookie = 0 ;
     if option_length == 24 {
-        let client_cookie = dns_read_u64(rdata, offset + 4)?;
-        let server_cookie = dns_read_u128(rdata, offset + 4 + 8)?;
+        client_cookie = dns_read_u64(rdata, offset + 4)?;
+        server_cookie = dns_read_u128(rdata, offset + 4 + 8)?;
         debug!("Server cookie {server_cookie:0x}, client_cookie {client_cookie:0x}");
     } else if option_length == 8 {
-        let client_cookie = dns_read_u64(rdata, offset + 4)?;
+        client_cookie = dns_read_u64(rdata, offset + 4)?;
         debug!("client_cookie {client_cookie:x}");
     }
-    Ok(())
+    Ok((client_cookie, server_cookie))
 }
 
-fn parse_edns_client_tag(rdata: &[u8], offset: usize) -> Result<(), Box<dyn std::error::Error>> {
+fn parse_edns_client_tag(rdata: &[u8], offset: usize) -> Result<u16, Box<dyn std::error::Error>> {
     let client_tag = dns_read_u16(rdata, offset + 4)?;
     debug!("Client Tag: {client_tag}");
-    Ok(())
+    Ok(client_tag)
 }
 
-fn parse_edns_server_tag(rdata: &[u8], offset: usize) -> Result<(), Box<dyn std::error::Error>> {
+fn parse_edns_server_tag(rdata: &[u8], offset: usize) -> Result<u16, Box<dyn std::error::Error>> {
     let server_tag = dns_read_u16(rdata, offset + 4)?;
     debug!("Server Tag: {server_tag}");
-    Ok(())
+    Ok(server_tag)
 }
 
 fn parse_edns_key_tag(
     packet: &[u8],
     offset: usize,
     option_length: usize,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<Vec<u16>, Box<dyn std::error::Error>> {
     let mut offset = offset + 4;
+    let mut keys = vec![];
     for _ in 0..option_length / 2 {
         let key_tag = dns_read_u16(packet, offset)?;
         debug!("Key tag: {key_tag}");
+        keys.push(key_tag);
         offset += 2;
     }
-    Ok(())
+    Ok(keys)
 }
 
 fn parse_edns_update_lease(
     rdata: &[u8],
     offset: usize,
     option_length: usize,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(u32, u32), Box<dyn std::error::Error>> {
     let lease = dns_read_u32(rdata, offset + 4)?;
+    let mut key_lease = 0;
     debug!("Lease: {lease}");
     if option_length == 8 {
-        let key_lease = dns_read_u32(rdata, offset + 8)?;
+         key_lease = dns_read_u32(rdata, offset + 8)?;
         debug!("Key Lease: {key_lease}");
     }
-    Ok(())
+    Ok((lease, key_lease))
 }
 
 fn parse_edns_report_channel(
     rdata: &[u8],
     offset: usize,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<String, Box<dyn std::error::Error>> {
     let (name, _offset) = dns_parse_name(rdata, offset + 4)?;
     debug!("Report channel: {name}");
-    Ok(())
+    Ok(name)
 }
 
 fn parse_edns_padding(
     rdata: &[u8],
     offset: usize,
     option_length: usize,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<u8, Box<dyn std::error::Error>> {
+    let padding = hex::encode_upper(dns_parse_slice(rdata, offset + 4..)?);
+
     debug!(
         "Padding {option_length} bytes: {:x?} ",
         hex::encode_upper(dns_parse_slice(rdata, offset + 4..)?)
     );
-    Ok(())
+    Ok(padding.len() as u8)
 }
 
 pub(crate) fn parse_edns(
@@ -235,7 +256,8 @@ pub(crate) fn parse_edns(
     offset_in: usize,
     stats: &mut Statistics,
 ) -> Result<usize, Box<dyn std::error::Error>> {
-    //let payload_size = dns_read_u16(packet, offset_in)?;
+    let payload_size = dns_read_u16(packet, offset_in)?;
+    debug!("EDNS payload size {}", payload_size);
     let e_rcode = u16::from(dns_read_u8(packet, offset_in + 2)?);
     if e_rcode != 0 {
         if let Some(x) = packet_info.dns_records.first() {
@@ -245,43 +267,67 @@ pub(crate) fn parse_edns(
             packet_info.dns_records[0] = rec;
         }
     }
-    let data_length = usize::from(dns_read_u16(packet, offset_in + 6)?);
+    debug!("EDNS error code {}", e_rcode);
+    let edns_version = u8::from(dns_read_u8(packet, offset_in + 3)?);
+    packet_info.edns_version = Some(edns_version);
+    packet_info.edns_flags = Some(dns_read_u16(packet, offset_in + 4)?);
+
+    debug!("EDNS version {}", edns_version);
+    let data_length = dns_read_u16(packet, offset_in + 6)?;
+    packet_info.edns_size = Some(payload_size);
+    debug!("EDNS length {}", data_length);
     if data_length == 0 {
         return Ok(8);
     }
+    let data_length = usize::from(data_length);
     let rdata = dns_parse_slice(packet, offset_in + 8..offset_in + 8 + data_length)?;
     let mut offset = 0;
     while offset < data_length {
         let option_code = EDNSOptionCodes::find(dns_read_u16(rdata, offset)?)?;
+        *stats.edns_options.entry(option_code).or_insert(0) += 1;
         let option_length = usize::from(dns_read_u16(rdata, offset + 2)?);
+        let mut option_data = EDNSOptionData:: default();
+        debug!("EDNS option code: {option_code}, length: {option_length}");
         match option_code {
             EDNSOptionCodes::ExtendedDNSError => {
-                parse_edns_extended_dns_error(packet_info, rdata, offset, option_length, stats)?;
+                option_data = ExtendedDNSError(parse_edns_extended_dns_error(packet_info, rdata, offset, option_length, stats)?);
             }
-            EDNSOptionCodes::CHAIN => parse_edns_chain(rdata, offset)?,
-            EDNSOptionCodes::NSID => parse_edns_nsid(rdata, offset, option_length)?,
-            EDNSOptionCodes::EdnsTcpKeepalive => {
-                parse_edns_tcp_keepalive(rdata, offset, option_length)?;
+            EDNSOptionCodes::Chain => {
+              option_data = EDNSOptionData::Chain(parse_edns_chain(rdata, offset)?) ;
             }
-            EDNSOptionCodes::EDNSEXPIRE => parse_edns_expire(rdata, offset, option_length)?,
-            EDNSOptionCodes::EdnsClientSubnet => {
-                parse_edns_client_subnet(rdata, offset, option_length)?;
+            EDNSOptionCodes::NSID =>  {
+                option_data = NSID( parse_edns_nsid(rdata, offset, option_length)?)}
+            EDNSOptionCodes::EdnsTcpKeepalive => { option_data = EdnsTcpKeepalive(
+                parse_edns_tcp_keepalive(rdata, offset, option_length)?);
             }
-            EDNSOptionCodes::Padding => parse_edns_padding(rdata, offset, option_length)?,
-            EDNSOptionCodes::COOKIE => parse_edns_cookie(rdata, offset, option_length)?,
-            EDNSOptionCodes::DAU => parse_edns_dau(rdata, offset, option_length)?,
-            EDNSOptionCodes::DHU => parse_edns_dhu(rdata, offset, option_length)?,
-            EDNSOptionCodes::N3U => parse_edns_n3u(rdata, offset, option_length)?,
-            EDNSOptionCodes::LLQ => parse_edns_llq(rdata, offset)?,
-            EDNSOptionCodes::ZoneVersion => parse_edns_zone_version(rdata, offset)?,
-            EDNSOptionCodes::EDNSClientTag => parse_edns_client_tag(rdata, offset)?,
-            EDNSOptionCodes::EDNSServerTag => parse_edns_server_tag(rdata, offset)?,
-            EDNSOptionCodes::EdnsKeyTag => parse_edns_key_tag(rdata, offset, option_length)?,
-            EDNSOptionCodes::UpdateLease => parse_edns_update_lease(rdata, offset, option_length)?,
-            EDNSOptionCodes::ReportChannel => parse_edns_report_channel(rdata, offset)?,
+            EDNSOptionCodes::EdnsExpire => {
+                option_data = EdnsExpire;
+                parse_edns_expire(rdata, offset, option_length)? }
+
+            EDNSOptionCodes::EdnsClientSubnet => { option_data = EdnsClientSubnet(
+                parse_edns_client_subnet(rdata, offset, option_length)?);
+            }
+            EDNSOptionCodes::Padding => { option_data = EDNSOptionData::Padding(
+                parse_edns_padding(rdata, offset, option_length)?); }
+            EDNSOptionCodes::Cookie => {  option_data = Cookie(parse_edns_cookie(rdata, offset, option_length)? );}
+            EDNSOptionCodes::DAU => { option_data =EDNSOptionData::DAU(parse_edns_dau(rdata, offset, option_length)?); }
+            EDNSOptionCodes::DHU => { option_data =DHU(parse_edns_dhu(rdata, offset, option_length)? );}
+            EDNSOptionCodes::N3U =>{ option_data = N3U(parse_edns_n3u(rdata, offset, option_length)?);}
+            EDNSOptionCodes::LLQ =>{ option_data = LLQ(parse_edns_llq(rdata, offset)?);}
+            EDNSOptionCodes::ZoneVersion =>{ option_data =ZoneVersion(parse_edns_zone_version(rdata, offset)?);}
+            EDNSOptionCodes::EDNSClientTag => { option_data = EDNSClientTag(parse_edns_client_tag(rdata, offset)? );}
+            EDNSOptionCodes::EDNSServerTag => { option_data  = EDNSServerTag(parse_edns_server_tag(rdata, offset)? );}
+            EDNSOptionCodes::EdnsKeyTag => { option_data  = EdnsKeyTag(parse_edns_key_tag(rdata, offset, option_length)? );}
+            EDNSOptionCodes::UpdateLease => { option_data  = UpdateLease(parse_edns_update_lease(rdata, offset, option_length)?);}
+            EDNSOptionCodes::ReportChannel => { option_data = ReportChannel(parse_edns_report_channel(rdata, offset)?);}
             _ => {}
         }
         offset += option_length + 4; // need to add the option code and length fields too
+        packet_info.edns_records.push(EDnsRecord {
+            option_code,
+            option_length,
+            option_data
+        });
     }
     Ok(8 + data_length)
 }

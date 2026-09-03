@@ -1,9 +1,9 @@
 use crate::dns::{tlsa_algorithm, tlsa_cert_usage, tlsa_selector};
-use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list};
+use crate::dns_helper::{dns_parse_slice, dns_read_u8, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
-use crate::errors::ParseErrorType::Invalid_Resource_Record;
+use crate::errors::ParseErrorType::InvalidResourceRecord;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Ord, PartialOrd)]
@@ -28,7 +28,7 @@ impl RR_TLSA {
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_TLSA, ParseError> {
         let mut a = RR_TLSA::new();
         if rdata.len() < 4 {
-            return Err(ParseError::new(Invalid_Resource_Record, ""));
+            return Err(ParseError::new(InvalidResourceRecord, ""));
         }
         a.cert_usage = dns_read_u8(rdata, 0)?;
         a.selector = dns_read_u8(rdata, 1)?;
@@ -52,11 +52,12 @@ impl Display for RR_TLSA {
 }
 
 impl DnsRecord for RR_TLSA {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::TLSA
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut result = Vec::new();
         result.push(self.cert_usage);
         result.push(self.selector);

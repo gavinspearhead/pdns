@@ -1,26 +1,35 @@
+use crate::dns_packet::{DnsHeader, DnsQuestion};
 use crate::dns_protocol::DnsProtocol;
 use crate::dns_record::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use asn_db2::{Database, IpEntry};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 use std::{
     fmt,
     net::{IpAddr, Ipv4Addr},
 };
+use crate::dns_edns::EDnsRecord;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[derive(Debug, Clone,  Hash,  Serialize, Deserialize, )]
 pub(crate) struct PacketInfo {
     pub timestamp: DateTime<Utc>,
     pub s_addr: IpAddr,
     pub d_addr: IpAddr,
-    pub sp: u16, // source port
-    pub dp: u16, // destination port
+    pub sp: u16, // source Port
+    pub dp: u16, // destination Port
     pub ip_len: u16,
     pub frame_len: u32,
     pub data_len: u32,
     pub protocol: DnsProtocol,
+    pub question: DnsQuestion,
+    pub header: DnsHeader,
     pub dns_records: Vec<DnsRecord>,
+    pub edns_version: Option<u8>,
+    pub edns_flags: Option<u16>,
+    pub edns_size: Option<u16>,
+    pub edns_records : Vec<EDnsRecord>,
 }
 
 impl PacketInfo {
@@ -35,7 +44,13 @@ impl PacketInfo {
             frame_len: 0,
             data_len: 0,
             protocol: DnsProtocol::UDP,
+            question: DnsQuestion::new(),
+            header: DnsHeader::new(),
+            edns_version: None,
+            edns_size:None, 
+            edns_flags: None,
             dns_records: Vec::new(),
+            edns_records : Vec::new(),
         }
     }
 
@@ -76,12 +91,17 @@ impl PacketInfo {
         self.dns_records.push(rec);
     }
 
+    #[inline]
+    pub fn set_frame_len(&mut self, len: u32) {
+        self.frame_len = len;
+    }
+
     pub fn to_csv(&self) -> Result<String, Box<dyn std::error::Error>> {
         let mut s = String::new();
         for i in &self.dns_records {
             writeln!(
                 s,
-                "{},{},{},{},{},{},{},{},{}",
+                "{},{},{},{},{},{},{},{},1",
                 self.s_addr,
                 self.d_addr,
                 self.timestamp,
@@ -90,7 +110,6 @@ impl PacketInfo {
                 i.ttl,
                 i.name,
                 i.rdata,
-                1
             )?;
         }
         Ok(s)
@@ -109,7 +128,7 @@ impl PacketInfo {
                    \"ttl\": {},
                    \"name\": {},
                    \"rdata\": {},
-                   \"count\": {}
+                   \"count\": 1
             }},",
                 self.s_addr,
                 self.d_addr,
@@ -119,7 +138,6 @@ impl PacketInfo {
                 i.ttl,
                 i.name,
                 i.rdata,
-                1
             )?;
         }
         Ok(s)

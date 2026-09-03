@@ -1,11 +1,11 @@
 use crate::dns_helper::{
-    dns_format_name, dns_read_u8, names_list, parse_ipv4_addr, parse_ipv6_addr,
+    dns_format_name, dns_read_u8, parse_ipv4_addr, parse_ipv6_addr, NamesList,
 };
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
-use crate::errors::ParseErrorType::Invalid_Parameter;
+use crate::errors::ParseErrorType::InvalidParameter;
 use std::fmt::{Display, Formatter};
 use std::net::Ipv4Addr;
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -46,7 +46,7 @@ impl RR_AMTRELAY {
             3 => dns_parse_name(packet, offset_in + 2)?.0,
             2 => parse_ipv6_addr(&rdata[2..18])?.to_string(),
             1 => parse_ipv4_addr(&rdata[2..6])?.to_string(),
-            _ => return Err(ParseError::new(Invalid_Parameter, &a.rtype.to_string())),
+            _ => return Err(ParseError::new(InvalidParameter, &a.rtype.to_string())),
         };
         Ok(a)
     }
@@ -63,10 +63,11 @@ impl Display for RR_AMTRELAY {
 }
 
 impl DnsRecord for RR_AMTRELAY {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::AMTRELAY
     }
-    fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, names: &mut NamesList, offset: usize) -> Vec<u8> {
         let mut result = Vec::new();
         result.push(self.precedence);
         result.push(self.dbit << 7 | self.rtype);

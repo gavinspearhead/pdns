@@ -1,8 +1,8 @@
-use crate::dns_helper::{dns_parse_slice, dns_read_u8, names_list, parse_dns_str};
+use crate::dns_helper::{dns_parse_slice, dns_read_u8, parse_dns_str, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
-use crate::errors::ParseErrorType::Invalid_Parameter;
+use crate::errors::ParseErrorType::InvalidParameter;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Default)]
@@ -21,7 +21,7 @@ impl RR_X25 {
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_X25, ParseError> {
         let len = usize::from(dns_read_u8(rdata, 0)?);
         if len + 1 != rdata.len() {
-            return Err(ParseError::new(Invalid_Parameter, "Invalid X25 format"));
+            return Err(ParseError::new(InvalidParameter, "Invalid X25 format"));
         }
         Ok(RR_X25 {
             addr: parse_dns_str(dns_parse_slice(rdata, 1..=len)?)?,
@@ -36,11 +36,12 @@ impl Display for RR_X25 {
 }
 
 impl DnsRecord for RR_X25 {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::X25
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut res: Vec<u8> = Vec::new();
         res.push(self.addr.len() as u8);
         res.extend_from_slice(self.addr.as_bytes());

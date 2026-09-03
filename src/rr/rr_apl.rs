@@ -1,5 +1,5 @@
 use crate::dns_helper::{
-    dns_append_u16, dns_append_u8, dns_parse_slice, dns_read_u16, dns_read_u8, names_list,
+    dns_append_u16, dns_append_u8, dns_parse_slice, dns_read_u16, dns_read_u8, NamesList,
 };
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
@@ -80,7 +80,7 @@ impl RR_APL {
                 af.afd_part = IpAddr::V6(Ipv6Addr::from(ip));
             } else {
                 return Err(ParseError::new(
-                    ParseErrorType::Unknown_Address_Family,
+                    ParseErrorType::UnknownAddressFamily,
                     &af.to_string(),
                 ));
             }
@@ -120,10 +120,11 @@ impl Display for ApItem {
 }
 
 impl DnsRecord for RR_APL {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::APL
     }
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut res = Vec::new();
         for item in &self.ap_items {
             dns_append_u16(&mut res, item.address_family);

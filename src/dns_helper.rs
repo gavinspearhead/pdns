@@ -1,12 +1,11 @@
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
 use crate::errors::ParseErrorType::{
-    Invalid_DNS_Packet, Invalid_Parameter, Invalid_packet_index, Invalid_timestamp,
+    InvalidDnsPacket, InvalidPacketIndex, InvalidParameter, InvalidTimestamp,
 };
 use byteorder::{BigEndian, ByteOrder as _};
 use chrono::DateTime;
 use data_encoding::BASE32HEX_NOPAD;
-use log::debug;
 use std::fmt::Write;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::ops::RangeBounds;
@@ -18,14 +17,14 @@ pub(crate) fn is_between<T: PartialOrd>(value: &T, min: &T, max: &T) -> bool {
 
 pub(crate) fn timestamp_to_str(timestamp: u32) -> Result<String, ParseError> {
     let Some(dt) = DateTime::from_timestamp(i64::from(timestamp), 0) else {
-        return Err(ParseError::new(Invalid_timestamp, &timestamp.to_string()));
+        return Err(ParseError::new(InvalidTimestamp, &timestamp.to_string()));
     };
     Ok(dt.to_string())
 }
 #[inline]
 pub(crate) fn dns_read_u128(packet: &[u8], offset: usize) -> Result<u128, ParseError> {
     let Some(r) = packet.get(offset..offset + 16) else {
-        return Err(ParseError::new(Invalid_packet_index, &offset.to_string()));
+        return Err(ParseError::new(InvalidPacketIndex, &offset.to_string()));
     };
     Ok(BigEndian::read_u128(r))
 }
@@ -33,35 +32,35 @@ pub(crate) fn dns_read_u128(packet: &[u8], offset: usize) -> Result<u128, ParseE
 #[inline]
 pub(crate) fn dns_read_u48(packet: &[u8], offset: usize) -> Result<u64, ParseError> {
     let Some(r) = packet.get(offset..offset + 6) else {
-        return Err(ParseError::new(Invalid_packet_index, &offset.to_string()));
+        return Err(ParseError::new(InvalidPacketIndex, &offset.to_string()));
     };
     Ok(BigEndian::read_u48(r))
 }
 #[inline]
 pub(crate) fn dns_read_u64(packet: &[u8], offset: usize) -> Result<u64, ParseError> {
     let Some(r) = packet.get(offset..offset + 8) else {
-        return Err(ParseError::new(Invalid_packet_index, &offset.to_string()));
+        return Err(ParseError::new(InvalidPacketIndex, &offset.to_string()));
     };
     Ok(BigEndian::read_u64(r))
 }
 #[inline]
 pub(crate) fn dns_read_u32(packet: &[u8], offset: usize) -> Result<u32, ParseError> {
     let Some(r) = packet.get(offset..offset + 4) else {
-        return Err(ParseError::new(Invalid_packet_index, &offset.to_string()));
+        return Err(ParseError::new(InvalidPacketIndex, &offset.to_string()));
     };
     Ok(BigEndian::read_u32(r))
 }
 #[inline]
 pub(crate) fn dns_read_u16(packet: &[u8], offset: usize) -> Result<u16, ParseError> {
     let Some(r) = packet.get(offset..offset + 2) else {
-        return Err(ParseError::new(Invalid_packet_index, &offset.to_string()));
+        return Err(ParseError::new(InvalidPacketIndex, &offset.to_string()));
     };
     Ok(BigEndian::read_u16(r))
 }
 #[inline]
 pub(crate) fn dns_read_u8(packet: &[u8], offset: usize) -> Result<u8, ParseError> {
     let Some(&r) = packet.get(offset) else {
-        return Err(ParseError::new(Invalid_packet_index, &offset.to_string()));
+        return Err(ParseError::new(InvalidPacketIndex, &offset.to_string()));
     };
     Ok(r)
 }
@@ -98,7 +97,7 @@ pub fn parse_nsec_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, ParseError> {
             for j in 0..8 {
                 if dns_read_u8(bitmap, offset + 2 + i)? & pos != 0 {
                     let Ok(x) = (usize::from(high_byte) | ((8 * i) + j)).try_into() else {
-                        return Err(ParseError::new(Invalid_Parameter, ""));
+                        return Err(ParseError::new(InvalidParameter, ""));
                     };
                     res.push(x);
                 }
@@ -114,9 +113,9 @@ pub fn map_bitmap_to_rr(bitmap: &[u16]) -> Result<String, ParseError> {
     let mut res = String::new();
     for i in bitmap {
         let Ok(x) = DnsRRType::find(*i) else {
-            return Err(ParseError::new(Invalid_Parameter, ""));
+            return Err(ParseError::new(InvalidParameter, ""));
         };
-        write!(res, "{x} ").map_err(|_| ParseError::new(Invalid_Parameter, ""))?;
+        write!(res, "{x} ").map_err(|_| ParseError::new(InvalidParameter, ""))?;
     }
     Ok(res)
 }
@@ -128,7 +127,7 @@ pub fn parse_bitmap_vec(bitmap: &[u8]) -> Result<Vec<u16>, ParseError> {
         for j in 0..8 {
             if item & pos != 0 {
                 let Ok(x) = ((8 * i) + j).try_into() else {
-                    return Err(ParseError::new(Invalid_Parameter, ""));
+                    return Err(ParseError::new(InvalidParameter, ""));
                 };
                 res.push(x);
             }
@@ -203,14 +202,14 @@ where
         std::ops::Bound::Included(&s) => s,
         std::ops::Bound::Excluded(&s) => s
             .checked_add(1)
-            .ok_or_else(|| ParseError::new(Invalid_packet_index, ""))?,
+            .ok_or_else(|| ParseError::new(InvalidPacketIndex, ""))?,
         std::ops::Bound::Unbounded => 0,
     };
 
     let end = match range.end_bound() {
         std::ops::Bound::Included(&e) => e
             .checked_add(1)
-            .ok_or_else(|| ParseError::new(Invalid_packet_index, ""))?,
+            .ok_or_else(|| ParseError::new(InvalidPacketIndex, ""))?,
         std::ops::Bound::Excluded(&e) => e,
         std::ops::Bound::Unbounded => packet.len(),
     };
@@ -218,7 +217,7 @@ where
     if start <= end && end <= packet.len() {
         Ok(&packet[start..end])
     } else {
-        Err(ParseError::new(Invalid_packet_index, ""))
+        Err(ParseError::new(InvalidPacketIndex, ""))
     }
 }
 
@@ -226,54 +225,55 @@ pub(crate) fn parse_dns_str(rdata: &[u8]) -> Result<String, ParseError> {
     if let Ok(x) = std::str::from_utf8(rdata) {
         Ok(x.to_owned())
     } else {
-        Err(ParseError::new(Invalid_DNS_Packet, ""))
+        Err(ParseError::new(InvalidDnsPacket, ""))
     }
 }
 
 pub(crate) fn parse_ipv4_addr(data: &[u8]) -> Result<IpAddr, ParseError> {
     let r: [u8; 4] = data
         .try_into()
-        .map_err(|_| ParseError::new(Invalid_DNS_Packet, ""))?;
+        .map_err(|_| ParseError::new(InvalidDnsPacket, ""))?;
     Ok(IpAddr::V4(Ipv4Addr::from(r)))
 }
 
+#[inline]
 pub(crate) fn parse_ipv6_addr(data: &[u8]) -> Result<IpAddr, ParseError> {
     let octets: [u8; 16] = data
         .try_into()
-        .map_err(|_| ParseError::new(Invalid_DNS_Packet, ""))?;
+        .map_err(|_| ParseError::new(InvalidDnsPacket, ""))?;
 
     Ok(IpAddr::V6(Ipv6Addr::from(octets)))
 }
 
-#[derive(Debug, Clone)]
-struct elem {
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct NameElement {
     name: String,
     pos: usize,
 }
 
-impl elem {
-    fn new(name: &str, pos: usize) -> elem {
-        elem {
+impl NameElement {
+    fn new(name: &str, pos: usize) -> NameElement {
+        NameElement {
             name: name.to_string(),
             pos,
         }
     }
 }
-#[derive(Debug, Clone, Default)]
-pub struct names_list {
-    name_list: Vec<elem>,
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Hash)]
+pub struct NamesList {
+    name_list: Vec<NameElement>,
 }
 
-impl names_list {
+impl NamesList {
     #[must_use]
     #[inline]
-    pub fn new() -> names_list {
-        names_list { name_list: vec![] }
+    pub fn new() -> NamesList {
+        NamesList { name_list: vec![] }
     }
 
     #[inline]
     pub(crate) fn add(&mut self, name: &str, pos: usize) {
-        self.name_list.push(elem::new(name, pos));
+        self.name_list.push(NameElement::new(name, pos));
     }
     pub(crate) fn find_longest_match(&self, name: &str) -> (usize, usize) {
         let mut longest = Vec::new();
@@ -304,11 +304,11 @@ impl names_list {
 
 #[cfg(test)]
 mod tests_names_list {
-    use crate::dns_helper::names_list;
+    use crate::dns_helper::NamesList;
 
     #[test]
     fn test_dns_rr() {
-        let mut n = names_list::new();
+        let mut n = NamesList::new();
         n.add("www.homes.com", 1);
         n.add("www.home.com", 1);
         n.add("www.future.com", 1);
@@ -317,11 +317,11 @@ mod tests_names_list {
     }
 }
 
-pub(crate) fn dns_format_name(name_in: &str, names: &mut names_list, pos_in: usize) -> Vec<u8> {
+pub(crate) fn dns_format_name(name_in: &str, names: &mut NamesList, pos_in: usize) -> Vec<u8> {
     debug_assert!(name_in.len() <= 255 && !name_in.is_empty());
 
     let mut res: Vec<u8> = Vec::with_capacity(name_in.len() + 2);
-    debug!("{names:?}");
+    //debug!("{names:?}");
 
     let mut name = name_in.trim_end_matches('.');
     let (len, pos) = names.find_longest_match(name);
@@ -330,12 +330,12 @@ pub(crate) fn dns_format_name(name_in: &str, names: &mut names_list, pos_in: usi
     } else {
         names.add(name_in, pos_in);
     }
-    debug!("name now is : {name}");
+    //debug!("name now is : {name}");
     let parts: Vec<&str> = name.split('.').collect();
-    debug!("name parts is: {parts:?}");
+    //debug!("name parts is: {parts:?}");
     for x in parts {
-        debug_assert!(x.len() <= 63);
-        debug!("x: {} {x}", x.len());
+        // debug_assert!(x.len() <= 63);
+        // debug!("x: {} {x}", x.len());
         if !x.is_empty() {
             res.push(x.len() as u8);
             // res.push(0xc0);
@@ -350,7 +350,7 @@ pub(crate) fn dns_format_name(name_in: &str, names: &mut names_list, pos_in: usi
     } else {
         res.push(0);
     }
-    debug!("RES now is: {res:x?}");
+    //debug!("RES now is: {res:x?}");
     res
 }
 
@@ -463,6 +463,7 @@ mod tests {
     }
 }
 
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub(crate) fn encode_nsec3_bitmap(rr_types: &[u16]) -> Vec<u8> {

@@ -1,4 +1,4 @@
-use crate::dns_helper::{base32hex_encode, names_list};
+use crate::dns_helper::{base32hex_encode, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::{ParseError, ParseErrorType};
@@ -19,7 +19,7 @@ impl RR_NULL {
     pub(crate) fn parse(rdata: &[u8]) -> Result<RR_NULL, ParseError> {
         if rdata.len() > 65535 {
             return Err(ParseError::new(
-                ParseErrorType::Invalid_Data,
+                ParseErrorType::InvalidData,
                 &format!("Data too large: {} B", rdata.len()),
             ));
         }
@@ -36,11 +36,12 @@ impl Display for RR_NULL {
 }
 
 impl DnsRecord for RR_NULL {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::NULL
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         self.rdata.clone()
     }
 }

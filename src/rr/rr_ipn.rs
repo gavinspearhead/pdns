@@ -1,4 +1,4 @@
-use crate::dns_helper::{dns_read_u64, names_list};
+use crate::dns_helper::{dns_read_u64, NamesList};
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
 use crate::errors::ParseError;
@@ -29,11 +29,12 @@ impl Display for RR_IPN {
 }
 
 impl DnsRecord for RR_IPN {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::IPN
     }
 
-    fn to_bytes(&self, _names: &mut names_list, _offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, _names: &mut NamesList, _offset: usize) -> Vec<u8> {
         let mut buf = Vec::with_capacity(8);
         buf.extend_from_slice(&self.ipn.to_be_bytes());
         buf

@@ -4,8 +4,8 @@ use crate::dns_packet::parse_dns;
 use crate::dns_protocol::DnsProtocol;
 use crate::errors::ParseErrorType;
 use crate::errors::ParseErrorType::{
-    Invalid_DNS_Packet, Invalid_Data, Invalid_IP_Version, Invalid_IPv4_Header, Invalid_IPv6_Header,
-    Invalid_TCP_Header, Invalid_UDP_Header, Packet_Too_Small,
+    InvalidData, InvalidDnsPacket, InvalidIpVersion, InvalidIpv4Header, InvalidIpv6Header,
+    InvalidTcpHeader, InvalidUdpHeader, PacketTooSmall,
 };
 use crate::packet_info::PacketInfo;
 use crate::statistics::Statistics;
@@ -28,17 +28,17 @@ fn parse_tcp(
     config: &Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < 20 {
-        return Err(ParseError::new(Invalid_TCP_Header, "packet too short").into());
+        return Err(ParseError::new(InvalidTcpHeader, "packet too short").into());
     }
     let sp = dns_read_u16(packet, 0)?;
     let dp = dns_read_u16(packet, 2)?;
     //    debug!("Got TCP packet from {:?} to {:?}", sp, dp);
     if !(config.ports.contains(&sp) || config.ports.contains(&dp)) {
-        return Err(ParseError::new(Invalid_DNS_Packet, "").into());
+        return Err(ParseError::new(InvalidDnsPacket, "").into());
     }
     let data_offset = usize::from((dns_read_u8(packet, 12)? >> 4) * 4);
     if data_offset < 20 || data_offset > 60 {
-        return Err(ParseError::new(Invalid_TCP_Header, "invalid header length").into());
+        return Err(ParseError::new(InvalidTcpHeader, "Invalid header length").into());
     }
     let len = u32::try_from(packet.len() - data_offset)?;
     let flags = dns_read_u8(packet, 13)?;
@@ -67,7 +67,7 @@ fn parse_tcp(
         }
         if data_len < 2 {
             return Err(ParseError::new(
-                Invalid_TCP_Header,
+                InvalidTcpHeader,
                 "TCP data too short for DNS length field",
             )
             .into());
@@ -85,11 +85,11 @@ fn parse_tcp(
                 offset
                     ..offset
                         .checked_add(len)
-                        .ok_or_else(|| ParseError::new(Invalid_TCP_Header, "offset overflow"))?,
+                        .ok_or_else(|| ParseError::new(InvalidTcpHeader, "offset overflow"))?,
             ) {
                 Ok(s) => s,
                 Err(e) => {
-                    debug!("Invalid TCP payload for DNS: {:?}", e);
+                    debug!("Invalid TCP payload for DNS: {e:?}");
                     stats.erroneous += 1;
                     return Ok(());
                 }
@@ -97,15 +97,15 @@ fn parse_tcp(
             let rv = parse_dns(dns_payload, packet_info, stats, config);
             if let Err(e) = rv {
                 if let Some(parse_error) = e.downcast_ref::<ParseError>() {
-                    if parse_error.error_type == ParseErrorType::Skipped_Message {
+                    if parse_error.error_type == ParseErrorType::SkippedMessage {
                         stats.skipped += 1;
                     } else {
                         stats.erroneous += 1;
-                        debug!("Error parsing DNS packet: {:?}", e);
+                        debug!("Error parsing DNS packet: {e:?}");
                     }
                 } else {
                     stats.erroneous += 1;
-                    debug!("Other error for DNS packet: {:?}", e);
+                    debug!("Other error for DNS packet: {e:?}");
                 }
                 return Err(e);
             }
@@ -126,7 +126,7 @@ fn parse_udp(
     config: &Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if packet.len() < UDP_MIN_PACKET_LEN {
-        return Err(ParseError::new(Invalid_UDP_Header, "").into());
+        return Err(ParseError::new(InvalidUdpHeader, "").into());
     }
     let sp = dns_read_u16(packet, 0)?;
     let dp = dns_read_u16(packet, 2)?;
@@ -141,7 +141,7 @@ fn parse_udp(
         let dns_payload = match dns_parse_slice(packet, 8..) {
             Ok(s) => s,
             Err(e) => {
-                debug!("Invalid UDP payload for DNS: {:?}", e);
+                debug!("Invalid UDP payload for DNS: {e:?}");
                 stats.erroneous += 1;
                 return Ok(());
             }
@@ -150,20 +150,20 @@ fn parse_udp(
 
         if let Err(e) = rv {
             if let Some(parse_error) = e.downcast_ref::<ParseError>() {
-                if parse_error.error_type == ParseErrorType::Skipped_Message {
+                if parse_error.error_type == ParseErrorType::SkippedMessage {
                     stats.skipped += 1;
                 } else {
-                    debug!("Error parsing DNS packet: {:?}", e);
+                    debug!("Error parsing DNS packet: {e:?}");
                     stats.erroneous += 1;
                 }
             } else {
-                debug!("Other DNS error: {:?}", e);
+                debug!("Other DNS error: {e:?}");
                 stats.erroneous += 1;
             }
         }
         Ok(())
     } else {
-        Err(ParseError::new(Invalid_DNS_Packet, &format!("{dp} {sp}")).into())
+        Err(ParseError::new(InvalidDnsPacket, &format!("{dp} {sp}")).into())
     }
 }
 
@@ -180,7 +180,7 @@ fn parse_ip_data(
         //        debug!("Got TCP packet");
         if config.capture_tcp {
             packet_info.set_protocol(DnsProtocol::TCP);
-            parse_tcp(packet, packet_info, stats, tcp_list, config, )
+            parse_tcp(packet, packet_info, stats, tcp_list, config)
         } else {
             Ok(())
         }
@@ -188,7 +188,7 @@ fn parse_ip_data(
         //  UDP
         //        debug!("Got UDP packet");
         packet_info.set_protocol(DnsProtocol::UDP);
-        parse_udp(packet, packet_info, stats, config, )
+        parse_udp(packet, packet_info, stats, config)
     } else if protocol == DnsProtocol::SCTP.as_u8() {
         // sctp TODO
         Ok(())
@@ -206,20 +206,20 @@ fn parse_ipv4(
 ) -> Result<(), Box<dyn std::error::Error>> {
     stats.ipv4 += 1;
     if packet.len() < IPV4_MIN_PACKET_LEN {
-        return Err(ParseError::new(Invalid_IPv4_Header, "Incomplete Header").into());
+        return Err(ParseError::new(InvalidIpv4Header, "Incomplete Header").into());
     }
     if packet[0] >> 4 != 4 {
-        return Err(ParseError::new(Invalid_IP_Version, &format!("{:x}", &packet[0] >> 4)).into());
+        return Err(ParseError::new(InvalidIpVersion, &format!("{:x}", &packet[0] >> 4)).into());
     }
     let ihl = (u16::from(packet[0] & 0xf)) * 4;
     if ihl < IPV4_MIN_PACKET_LEN as u16 || ihl > 56 {
-        return Err(ParseError::new(Invalid_IPv4_Header, &format!("{ihl}")).into());
+        return Err(ParseError::new(InvalidIpv4Header, &format!("{ihl}")).into());
     }
     let src = dns_helper::parse_ipv4_addr(&packet[12..16])?;
     let dst = dns_helper::parse_ipv4_addr(&packet[16..20])?;
 
     if config.ignore_addresses.contains(&src) || config.ignore_addresses.contains(&dst) {
-        debug!("Ignoring packet from {:?} to {:?}", src, dst);
+        debug!("Ignoring packet from {src} to {dst}");
         return Ok(());
     }
     //    debug!("Got IPv4 packet from {:?} to {:?}", src, dst );
@@ -249,28 +249,21 @@ fn parse_tunneling(
     if next_header == 4 || next_header == 41 {
         // IPIP
         if packet.len() < IPV4_MIN_PACKET_LEN {
-            return Err(ParseError::new(Packet_Too_Small, &format!("{}", packet.len())).into());
+            return Err(ParseError::new(PacketTooSmall, &format!("{}", packet.len())).into());
             //ip packets are always >= 20 bytes
         }
         let ip_ver = packet[0] >> 4;
         if ip_ver == 4 {
             //            debug!("Got IPIP packet");
-            parse_ipv4(packet, packet_info, stats, tcp_list, config, )
+            parse_ipv4(packet, packet_info, stats, tcp_list, config)
         } else if ip_ver == 6 {
-            parse_ipv6(packet, packet_info, stats, tcp_list, config, )
+            parse_ipv6(packet, packet_info, stats, tcp_list, config)
         } else {
-            Err(ParseError::new(Invalid_IP_Version, &format!("{ip_ver}")).into())
+            Err(ParseError::new(InvalidIpVersion, &format!("{ip_ver}")).into())
         }
     } else {
         //        debug!("Got tunneling packet {} -> {}", packet_info.s_addr.to_string(), packet_info.d_addr.to_string());
-        parse_ip_data(
-            packet,
-            next_header,
-            packet_info,
-            stats,
-            tcp_list,
-            config,
-        )
+        parse_ip_data(packet, next_header, packet_info, stats, tcp_list, config)
     }
 }
 
@@ -283,10 +276,10 @@ fn parse_ipv6(
 ) -> Result<(), Box<dyn std::error::Error>> {
     stats.ipv6 += 1;
     if packet.len() < IPV6_MIN_PACKET_LEN {
-        return Err(ParseError::new(Invalid_IPv6_Header, &format!("{}", packet.len())).into());
+        return Err(ParseError::new(InvalidIpv6Header, &format!("{}", packet.len())).into());
     }
     if packet[0] >> 4 != 6 {
-        return Err(ParseError::new(Invalid_IP_Version, &format!("{}", &packet[0] >> 4)).into());
+        return Err(ParseError::new(InvalidIpVersion, &format!("{}", &packet[0] >> 4)).into());
     }
 
     //    let _len  = dns_read_u16(packet, 4)?;
@@ -294,7 +287,7 @@ fn parse_ipv6(
     let src = dns_helper::parse_ipv6_addr(&packet[8..24])?;
     let dst = dns_helper::parse_ipv6_addr(&packet[24..40])?;
     if config.ignore_addresses.contains(&src) || config.ignore_addresses.contains(&dst) {
-        debug!("Ignoring packet from {:?} to {:?}", src, dst);
+        debug!("Ignoring packet from {src} to {dst}");
         return Ok(());
     }
     packet_info.set_dest_ip(dst);
@@ -319,25 +312,13 @@ pub(crate) fn parse_ip(
     if packet.is_empty() {
         debug!("Empty packet for link_type");
         stats.lock().erroneous += 1;
-        return Err(ParseError::new(Invalid_Data, "Empty packet").into());
+        return Err(ParseError::new(InvalidData, "Empty packet").into());
     }
     let first_byte = packet[0];
     if first_byte >> 4 == 6 {
-        parse_ipv6(
-            packet,
-            packet_info,
-            &mut stats.lock(),
-            tcp_list,
-            config,
-        )
+        parse_ipv6(packet, packet_info, &mut stats.lock(), tcp_list, config)
     } else {
-        parse_ipv4(
-            packet,
-            packet_info,
-            &mut stats.lock(),
-            tcp_list,
-            config,
-        )
+        parse_ipv4(packet, packet_info, &mut stats.lock(), tcp_list, config)
     }
 }
 
@@ -376,6 +357,6 @@ pub(crate) fn parse_eth(
             config,
         )
     } else {
-        Err(ParseError::new(Invalid_IP_Version, &format!("{}", &packet[0] >> 4)).into())
+        Err(ParseError::new(InvalidIpVersion, &format!("{}", &packet[0] >> 4)).into())
     }
 }

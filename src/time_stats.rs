@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::ops::AddAssign;
 use tracing::debug;
 
-#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+#[derive(Serialize, Deserialize, Default, Debug, Hash, Clone)]
 pub(crate) struct Bucket<T> {
     last_post: usize,
     last_group: usize,
@@ -139,7 +139,7 @@ mod tests {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub(crate) enum STAT_ITEM {
+pub(crate) enum StatItem {
     MONTH,
     MINUTE,
     HOUR,
@@ -191,13 +191,13 @@ impl TimeStats {
         self.per_second.add(second, count, absolute_minute);
     }
 
-    pub(crate) fn get_item(&self, stat_item: &STAT_ITEM) -> &Vec<u128> {
+    pub(crate) fn get_item(&self, stat_item: &StatItem) -> &Vec<u128> {
         match stat_item {
-            STAT_ITEM::MONTH => self.per_month.get_item(),
-            STAT_ITEM::MINUTE => self.per_minute.get_item(),
-            STAT_ITEM::HOUR => self.per_hour.get_item(),
-            STAT_ITEM::DAY => self.per_day.get_item(),
-            STAT_ITEM::SECOND => self.per_second.get_item(),
+            StatItem::MONTH => self.per_month.get_item(),
+            StatItem::MINUTE => self.per_minute.get_item(),
+            StatItem::HOUR => self.per_hour.get_item(),
+            StatItem::DAY => self.per_day.get_item(),
+            StatItem::SECOND => self.per_second.get_item(),
         }
     }
 }

@@ -1,4 +1,4 @@
-use crate::dns_helper::{dns_format_name, dns_read_u8, names_list};
+use crate::dns_helper::{dns_format_name, dns_read_u8, NamesList};
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DnsRecord;
 use crate::dns_rr_type::DnsRRType;
@@ -23,10 +23,11 @@ impl Default for RR_A6 {
 }
 
 impl DnsRecord for RR_A6 {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::A6
     }
-    fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, names: &mut NamesList, offset: usize) -> Vec<u8> {
         let mut result = Vec::new();
         result.push(self.prefix_len as u8);
 

@@ -1,6 +1,6 @@
 use crate::dns_helper::{
-    dns_format_name, dns_parse_slice, map_bitmap_to_rr, names_list, parse_nsec_bitmap_vec,
-    process_bitmap,
+    dns_format_name, dns_parse_slice, map_bitmap_to_rr, parse_nsec_bitmap_vec, process_bitmap,
+    NamesList,
 };
 use crate::dns_name::dns_parse_name;
 use crate::dns_record_trait::DnsRecord;
@@ -55,11 +55,12 @@ impl Display for RR_NSEC {
 }
 
 impl DnsRecord for RR_NSEC {
+    #[inline]
     fn get_type(&self) -> DnsRRType {
         DnsRRType::NSEC
     }
 
-    fn to_bytes(&self, names: &mut names_list, offset: usize) -> Vec<u8> {
+    fn to_bytes(&self, names: &mut NamesList, offset: usize) -> Vec<u8> {
         let mut res: Vec<u8> = Vec::new();
         res.append(&mut dns_format_name(&self.domain, names, offset));
         let bitmap_bytes = process_bitmap(&self.bitmap);
